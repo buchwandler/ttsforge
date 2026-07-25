@@ -8,6 +8,7 @@ Commands for converting EPUB/text files to audiobooks:
 - read: Interactive read command
 """
 
+import logging
 import re
 import sys
 import tempfile
@@ -46,6 +47,17 @@ from ..conversion import (
     TTSConverter,
     detect_language_from_iso,
     get_default_voice_for_language,
+)
+from ..short_sentence_config import (
+    DEFAULT_SHORT_SENTENCE,
+    resolve_short_sentence_config,
+    short_sentence_fallback_note,
+    validate_short_sentence_config,
+)
+from ..short_sentence_stats import format_short_sentence_stats
+from ..text_postprocessing import (
+    postprocess_extracted_text,
+    resolve_text_postprocess_options,
 )
 from ..utils import (
     format_chapters_range,
@@ -154,16 +166,34 @@ def get_voices() -> list[str]:
     help="Random variance added to pauses in seconds (default: 0.05).",
 )
 @click.option(
+    "--seed",
+    "random_seed",
+    type=int,
+    default=None,
+    help="Random seed for reproducible pause variance and randomized handling.",
+)
+@click.option(
     "--pause-mode",
     type=str,
     default=None,
     help="Pause mode: 'tts', 'manual', or 'auto' (default: auto).",
 )
 @click.option(
-    "--enable-short-sentence/--disable-short-sentence",
+    "--disable-short-sentence",
     "enable_short_sentence",
+    flag_value=False,
     default=None,
-    help="Enable/disable special handling for short sentences.",
+    help="Disable special handling for short sentences.",
+)
+@click.option(
+    "--short-sentence",
+    type=str,
+    default=None,
+    help=(
+        "Short-sentence handling config, e.g. "
+        "'mode=randomized,threshold=30,selection=auto,max-tries=5' "
+        "or 'config=path/to/short_sentence.json'."
+    ),
 )
 @click.option(
     "--announce-chapters/--no-announce-chapters",
@@ -310,8 +340,10 @@ def convert(  # noqa: C901
     pause_sentence: float | None,
     pause_paragraph: float | None,
     pause_variance: float | None,
+    random_seed: int | None,
     pause_mode: str | None,
     enable_short_sentence: bool | None,
+    short_sentence: str | None,
     announce_chapters: bool | None,
     chapter_pause: float | None,
     title: str | None,
@@ -338,12 +370,32 @@ def convert(  # noqa: C901
 
     EPUB_FILE is the path to the EPUB file to convert.
     """
+    if verbose:
+        logging.basicConfig(
+            level=logging.DEBUG,
+            format="%(levelname)s [%(name)s] - %(message)s",
+        )
+
     config = load_config()
     model_path = ctx.obj.get("model_path") if ctx.obj else None
     voices_path = ctx.obj.get("voices_path") if ctx.obj else None
     model_source, model_variant = _resolve_model_source_and_variant(config)
     model_quality = cast(
         ModelQuality, config.get("model_quality", DEFAULT_MODEL_QUALITY)
+    )
+    text_postprocess_options = resolve_text_postprocess_options(config)
+    effective_language = language or config.get("default_language", "a")
+    effective_enable_short_sentence = (
+        enable_short_sentence
+        if enable_short_sentence is not None
+        else config.get("enable_short_sentence", None)
+    )
+    effective_short_sentence = (
+        short_sentence if short_sentence is not None else config.get("short_sentence")
+    )
+    _validate_short_sentence_or_abort(
+        effective_short_sentence,
+        effective_enable_short_sentence,
     )
 
     # Get format first (needed for output path construction)
@@ -356,7 +408,10 @@ def convert(  # noqa: C901
 
     # Parse input file
     try:
-        reader = InputReader(epub_file)
+        reader = InputReader(
+            epub_file,
+            postprocess_options=text_postprocess_options,
+        )
     except Exception as e:
         console.print(f"[red]Error loading file:[/red] {e}")
         sys.exit(1)
@@ -477,14 +532,13 @@ def convert(  # noqa: C901
         parsed_mixed_language_allowed = [
             lang.strip() for lang in mixed_language_allowed.split(",")
         ]
-
     # Show conversion summary
     _show_conversion_summary(
         epub_file=epub_file,
         output=output,
         output_format=output_format or config.get("default_format", "m4b"),
         voice=voice or "af_bella",
-        language=language or "a",
+        language=effective_language,
         speed=speed or config.get("default_speed", 1.0),
         use_gpu=use_gpu if use_gpu is not None else config.get("use_gpu", False),
         model_source=model_source,
@@ -503,6 +557,22 @@ def convert(  # noqa: C901
         mixed_language_confidence=mixed_language_confidence
         if mixed_language_confidence is not None
         else config.get("mixed_language_confidence", 0.7),
+        random_seed=random_seed,
+        short_sentence=_format_short_sentence_summary(
+            effective_short_sentence,
+            effective_enable_short_sentence,
+            effective_language,
+        ),
+        short_sentence_note=_format_short_sentence_note(
+            effective_short_sentence,
+            effective_enable_short_sentence,
+            effective_language,
+        ),
+        short_sentence_hint=_format_short_sentence_hint(
+            effective_short_sentence,
+            effective_enable_short_sentence,
+            effective_language,
+        ),
     )
 
     # Confirm
@@ -528,7 +598,7 @@ def convert(  # noqa: C901
     # Create conversion options
     options = ConversionOptions(
         voice=voice or config.get("default_voice", "af_heart"),
-        language=language or config.get("default_language", "a"),
+        language=effective_language,
         speed=speed or config.get("default_speed", 1.0),
         output_format=output_format or config.get("default_format", "m4b"),
         output_dir=output.parent,
@@ -579,14 +649,12 @@ def convert(  # noqa: C901
             if pause_variance is not None
             else config.get("pause_variance", 0.05)
         ),
+        random_seed=random_seed,
         pause_mode=(
             pause_mode if pause_mode is not None else config.get("pause_mode", "auto")
         ),
-        enable_short_sentence=(
-            enable_short_sentence
-            if enable_short_sentence is not None
-            else config.get("enable_short_sentence", None)
-        ),
+        enable_short_sentence=effective_enable_short_sentence,
+        short_sentence=effective_short_sentence,
         announce_chapters=(
             announce_chapters
             if announce_chapters is not None
@@ -613,6 +681,7 @@ def convert(  # noqa: C901
         voices_path=voices_path,
         generate_ssmd_only=generate_ssmd_only,
         detect_emphasis=detect_emphasis,
+        text_postprocess_options=text_postprocess_options,
     )
 
     # Set up progress display
@@ -715,7 +784,10 @@ def convert(  # noqa: C901
         else:
             console.print(
                 Panel(
-                    f"[green]Audiobook saved to:[/green]\n{result.output_path}",
+                    "[green]Audiobook saved to:[/green]\n"
+                    f"{result.output_path}\n\n"
+                    "[bold]Short sentence handling:[/bold] "
+                    f"{format_short_sentence_stats(result.short_sentence_stats)}",
                     title="[bold green]Conversion Complete[/bold green]",
                 )
             )
@@ -856,6 +928,13 @@ def info(epub_file: Path) -> None:
 )
 @click.option("-s", "--speed", type=float, help="Speech speed (default: 1.0).")
 @click.option(
+    "--seed",
+    "random_seed",
+    type=int,
+    default=None,
+    help="Random seed for reproducible pause variance and randomized handling.",
+)
+@click.option(
     "--gpu/--no-gpu",
     "use_gpu",
     default=None,
@@ -924,6 +1003,7 @@ def sample(
     language: str | None,
     lang: str | None,
     speed: float | None,
+    random_seed: int | None,
     use_gpu: bool | None,
     split_mode: str | None,
     play_audio: bool,
@@ -1011,6 +1091,7 @@ def sample(
         voice_blend=parsed_voice_blend,
         language=resolved_defaults["language"],
         speed=resolved_defaults["speed"],
+        random_seed=random_seed,
         output_format=output_format,
         use_gpu=resolved_defaults["use_gpu"],
         split_mode=resolved_defaults["split_mode"],
@@ -1166,6 +1247,10 @@ def _show_conversion_summary(
     mixed_language_primary: str | None = None,
     mixed_language_allowed: list[str] | None = None,
     mixed_language_confidence: float = 0.7,
+    random_seed: int | None = None,
+    short_sentence: str = DEFAULT_SHORT_SENTENCE,
+    short_sentence_note: str | None = None,
+    short_sentence_hint: str | None = None,
 ) -> None:
     """Show conversion summary before starting."""
     console.print()
@@ -1193,12 +1278,105 @@ def _show_conversion_summary(
             table.add_row("  Allowed Langs", ", ".join(mixed_language_allowed))
         table.add_row("  Confidence", f"{mixed_language_confidence:.2f}")
     table.add_row("Speed", f"{speed}x")
+    if random_seed is not None:
+        table.add_row("Seed", str(random_seed))
+    table.add_row("Short Sentence", short_sentence)
+    if short_sentence_note:
+        table.add_row("Short Sentence Note", short_sentence_note)
     table.add_row("GPU", "Enabled" if use_gpu else "Disabled")
     table.add_row("Title", title)
     table.add_row("Author", author)
 
     console.print(table)
+    if short_sentence_hint:
+        console.print(f"[yellow]Hint: {short_sentence_hint}[/yellow]")
     console.print()
+
+
+def _format_short_sentence_summary(
+    short_sentence: str | None,
+    enable_short_sentence: bool | None,
+    language_code: str | None,
+) -> str:
+    """Return the applied short-sentence config as a CLI-compatible value."""
+    if enable_short_sentence is False:
+        return "off"
+
+    resolved = resolve_short_sentence_config(short_sentence, language_code=language_code)
+    if resolved is None or not resolved.enabled or resolved.resolve_mode is False:
+        return "off"
+
+    mode = str(resolved.resolve_mode)
+    mode_value = "randomized" if mode == "randomized-phrase" else mode
+    parts: list[tuple[str, object]] = [
+        ("mode", mode_value),
+        ("threshold", resolved.min_phoneme_length),
+    ]
+
+    mode_config = resolved.resolve_modes.get(mode)
+    selection = getattr(mode_config, "phrase_selection", None)
+    if selection is not None:
+        parts.append(("selection", selection))
+        parts.append(("max-tries", resolved.phrase_fallback_tries))
+
+    if mode == "wrap":
+        parts.append(("pretext", resolved.phoneme_pretext))
+
+    return ",".join(f"{key}={_short_sentence_cli_value(value)}" for key, value in parts)
+
+
+def _short_sentence_cli_value(value: object) -> str:
+    text = str(value)
+    if "," not in text and '"' not in text:
+        return text
+    return '"' + text.replace('"', '""') + '"'
+
+
+def _format_short_sentence_note(
+    short_sentence: str | None,
+    enable_short_sentence: bool | None,
+    language_code: str | None,
+) -> str | None:
+    if enable_short_sentence is False:
+        return None
+    return short_sentence_fallback_note(
+        short_sentence,
+        language_code=language_code,
+    )
+
+
+def _format_short_sentence_hint(
+    short_sentence: str | None,
+    enable_short_sentence: bool | None,
+    language_code: str | None,
+) -> str | None:
+    if enable_short_sentence is False:
+        return None
+    # phrase short-sentence handling currently only supports english.
+    if language_code not in {"a", "b"}:
+        return None
+    resolved = resolve_short_sentence_config(short_sentence, language_code=language_code)
+    if resolved is None or not resolved.enabled or resolved.resolve_mode is False:
+        return None
+    return (
+        "If some words in shorter sentences sound slightly distorted, try "
+        "increasing the short-sentence threshold or max-retries, though it might "
+        "negatively impact the generation speed. "
+        "--short-sentence 'threshold=40,max-tries=10'"
+    )
+
+
+def _validate_short_sentence_or_abort(
+    short_sentence: str | None,
+    enable_short_sentence: bool | None,
+) -> None:
+    if enable_short_sentence is False:
+        return
+    errors = validate_short_sentence_config(short_sentence)
+    if errors:
+        raise click.ClickException(
+            "Invalid short-sentence config: " + "; ".join(errors)
+        )
 
 
 @click.command()
@@ -1310,15 +1488,34 @@ def _show_conversion_summary(
     help="Random variance added to pauses in seconds.",
 )
 @click.option(
+    "--seed",
+    "random_seed",
+    type=int,
+    default=None,
+    help="Random seed for reproducible pause variance and randomized handling.",
+)
+@click.option(
     "--pause-mode",
     type=str,
     default=None,
     help="Trim leading/trailing silence from audio.",
 )
 @click.option(
-    "--enable-short-sentence/--disable-short-sentence",
+    "--disable-short-sentence",
+    "enable_short_sentence",
+    flag_value=False,
     default=None,
-    help="Enable special handling for short sentences.",
+    help="Disable special handling for short sentences.",
+)
+@click.option(
+    "--short-sentence",
+    type=str,
+    default=None,
+    help=(
+        "Short-sentence handling config, e.g. "
+        "'mode=randomized,threshold=30,selection=auto,max-tries=5' "
+        "or 'config=path/to/short_sentence.json'."
+    ),
 )
 @click.pass_context
 def read(  # noqa: C901
@@ -1341,8 +1538,10 @@ def read(  # noqa: C901
     pause_sentence: float | None,
     pause_paragraph: float | None,
     pause_variance: float | None,
+    random_seed: int | None,
     pause_mode: str | None,
     enable_short_sentence: bool | None,
+    short_sentence: str | None,
 ) -> None:
     """Read an EPUB or text file aloud with streaming playback.
 
@@ -1394,6 +1593,7 @@ def read(  # noqa: C901
     model_quality = cast(
         ModelQuality, config.get("model_quality", DEFAULT_MODEL_QUALITY)
     )
+    text_postprocess_options = resolve_text_postprocess_options(config)
     resolved_defaults = resolve_conversion_defaults(
         config,
         {
@@ -1448,6 +1648,10 @@ def read(  # noqa: C901
         if enable_short_sentence is not None
         else config.get("enable_short_sentence", None)
     )
+    effective_short_sentence_config = resolve_short_sentence_config(
+        short_sentence if short_sentence is not None else config.get("short_sentence"),
+        warn=lambda message: console.print(f"[yellow]Warning:[/yellow] {message}"),
+    )
 
     # Get language code for TTS
     espeak_lang = LANG_CODE_TO_ONNX.get(effective_language, "en-us")
@@ -1476,7 +1680,10 @@ def read(  # noqa: C901
             sys.exit(1)
 
         # Read from stdin
-        text_content = sys.stdin.read().strip()
+        text_content = postprocess_extracted_text(
+            sys.stdin.read().strip(),
+            text_postprocess_options,
+        )
         if not text_content:
             console.print("[red]Error:[/red] No text received from stdin.")
             sys.exit(1)
@@ -1499,7 +1706,10 @@ def read(  # noqa: C901
         try:
             from ..input_reader import InputReader
 
-            reader = InputReader(input_file)
+            reader = InputReader(
+                input_file,
+                postprocess_options=text_postprocess_options,
+            )
             metadata = reader.get_metadata()
         except Exception as e:
             console.print(f"[red]Error loading file:[/red] {e}")
@@ -1540,7 +1750,10 @@ def read(  # noqa: C901
                         ContentItem,
                         {
                             "title": f"Page {p.page_number}",
-                            "text": p.text,
+                            "text": postprocess_extracted_text(
+                                p.text,
+                                text_postprocess_options,
+                            ),
                             "index": i,
                             "page_number": p.page_number,
                         },
@@ -1558,19 +1771,12 @@ def read(  # noqa: C901
 
                 console.print(f"[dim]{len(epub_chapters)} chapters[/dim]")
 
-                # Convert to our format - remove chapter markers
                 content_data = [
                     cast(
                         ContentItem,
                         {
                             "title": ch.title or f"Chapter {i + 1}",
-                            "text": re.sub(
-                                r"^\s*<<CHAPTER:[^>]*>>\s*\n*",
-                                "",
-                                ch.text,
-                                count=1,
-                                flags=re.MULTILINE,
-                            ),
+                            "text": ch.text,
                             "index": i,
                         },
                     )
@@ -1704,6 +1910,7 @@ def read(  # noqa: C901
             model_path=model_path,
             voices_path=voices_path,
             use_gpu=effective_use_gpu,
+            short_sentence_config=effective_short_sentence_config,
             model_quality=model_quality,
             model_source=model_source,
             model_variant=model_variant,
@@ -1717,6 +1924,7 @@ def read(  # noqa: C901
             pause_sentence=effective_pause_sentence,
             pause_paragraph=effective_pause_paragraph,
             pause_variance=effective_pause_variance,
+            random_seed=random_seed,
         )
         pipeline_config = PipelineConfig(
             voice=effective_voice,
@@ -1726,6 +1934,7 @@ def read(  # noqa: C901
             model_variant=model_variant,
             model_path=model_path,
             voices_path=voices_path,
+            short_sentence_config=effective_short_sentence_config,
         )
         pipeline = KokoroPipeline(
             pipeline_config,

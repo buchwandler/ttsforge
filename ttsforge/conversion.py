@@ -30,11 +30,17 @@ from .constants import (
 )
 from .kokoro_lang import get_onnx_lang_code
 from .kokoro_runner import KokoroRunner, KokoroRunOptions
+from .short_sentence_config import resolve_short_sentence_config
+from .short_sentence_stats import ShortSentenceStats
 from .ssmd_generator import (
     SSMDGenerationError,
     chapter_to_ssmd,
     load_ssmd_file,
     save_ssmd_file,
+)
+from .text_postprocessing import (
+    TextPostprocessOptions,
+    postprocess_extracted_text,
 )
 from .utils import (
     atomic_write_json,
@@ -100,6 +106,7 @@ class ConversionResult:
     subtitle_path: Path | None = None
     error_message: str | None = None
     chapters_dir: Path | None = None
+    short_sentence_stats: ShortSentenceStats = field(default_factory=ShortSentenceStats)
 
 
 @dataclass
@@ -139,8 +146,10 @@ class ConversionState:
     pause_sentence: float = 0.5
     pause_paragraph: float = 0.9
     pause_variance: float = 0.05
+    random_seed: int | None = None
     pause_mode: str = "auto"  # "tts", "manual", or "auto
     enable_short_sentence: bool | None = None
+    short_sentence: str | None = None
     lang: str | None = None  # Language override for phonemization
     chapters: list[ChapterState] = field(default_factory=list)
     started_at: str = ""
@@ -193,10 +202,14 @@ class ConversionState:
                 data["pause_paragraph"] = 0.9
             if "pause_variance" not in data:
                 data["pause_variance"] = 0.05
+            if "random_seed" not in data:
+                data["random_seed"] = None
             if "pause_mode" not in data:
                 data["pause_mode"] = "auto"
             if "enable_short_sentence" not in data:
                 data["enable_short_sentence"] = None
+            if "short_sentence" not in data:
+                data["short_sentence"] = None
             if "lang" not in data:
                 data["lang"] = None
             if "model_quality" not in data:
@@ -232,8 +245,10 @@ class ConversionState:
             "pause_sentence": self.pause_sentence,
             "pause_paragraph": self.pause_paragraph,
             "pause_variance": self.pause_variance,
+            "random_seed": self.random_seed,
             "pause_mode": self.pause_mode,
             "enable_short_sentence": self.enable_short_sentence,
+            "short_sentence": self.short_sentence,
             "lang": self.lang,
             "chapters": [
                 {
@@ -317,8 +332,10 @@ class ConversionOptions:
     pause_sentence: float = 0.5  # For sentence boundaries
     pause_paragraph: float = 0.9  # For paragraph boundaries
     pause_variance: float = 0.05  # Standard deviation for natural variation
+    random_seed: int | None = None  # Random seed for reproducible pause variance
     pause_mode: str = "auto"  # "tts", "manual", or "auto
     enable_short_sentence: bool | None = None  # Enable short sentence handling
+    short_sentence: str | None = None  # Short-sentence handling config
     # Chapter announcement settings
     announce_chapters: bool = True  # Read chapter titles aloud before content
     chapter_pause_after_title: float = 2.0  # Pause after chapter title (seconds)
@@ -349,6 +366,9 @@ class ConversionOptions:
     # SSMD generation control
     generate_ssmd_only: bool = False  # If True, only generate SSMD files, no audio
     detect_emphasis: bool = False  # If True, detect emphasis from HTML tags in EPUB
+    text_postprocess_options: TextPostprocessOptions = field(
+        default_factory=TextPostprocessOptions
+    )
 
 
 # Pattern to detect chapter markers in text
@@ -448,6 +468,13 @@ class TTSConverter:
             pause_sentence=self.options.pause_sentence,
             pause_paragraph=self.options.pause_paragraph,
             pause_variance=self.options.pause_variance,
+            random_seed=self.options.random_seed,
+            enable_short_sentence=self.options.enable_short_sentence,
+            short_sentence_config=resolve_short_sentence_config(
+                self.options.short_sentence,
+                language_code=self.options.language,
+                warn=lambda message: self.log(message, "warning"),
+            ),
             model_quality=self.options.model_quality,
             model_source=self.options.model_source,
             model_variant=self.options.model_variant,
@@ -656,9 +683,11 @@ class TTSConverter:
                                 or state.pause_sentence != self.options.pause_sentence
                                 or state.pause_paragraph != self.options.pause_paragraph
                                 or state.pause_variance != self.options.pause_variance
+                                or state.random_seed != self.options.random_seed
                                 or state.pause_mode != self.options.pause_mode
                                 or state.enable_short_sentence
                                 != self.options.enable_short_sentence
+                                or state.short_sentence != self.options.short_sentence
                                 or state.lang != self.options.lang
                             )
 
@@ -674,9 +703,11 @@ class TTSConverter:
                                     f"sent={state.pause_sentence}s "
                                     f"para={state.pause_paragraph}s "
                                     f"var={state.pause_variance}s "
+                                    f"seed={state.random_seed} "
                                     f"pause_mode={state.pause_mode}, "
                                     f"enable_short_sentence="
                                     f"{state.enable_short_sentence}, "
+                                    f"short_sentence={state.short_sentence}, "
                                     f"model_source={state.model_source}, "
                                     f"model_variant={state.model_variant}, "
                                     f"model_quality={state.model_quality}",
@@ -696,10 +727,12 @@ class TTSConverter:
                             self.options.pause_sentence = state.pause_sentence
                             self.options.pause_paragraph = state.pause_paragraph
                             self.options.pause_variance = state.pause_variance
+                            self.options.random_seed = state.random_seed
                             self.options.pause_mode = state.pause_mode
                             self.options.enable_short_sentence = (
                                 state.enable_short_sentence
                             )
+                            self.options.short_sentence = state.short_sentence
                             self.options.lang = state.lang
                             self.options.model_quality = state.model_quality
                             self.options.model_source = state.model_source
@@ -726,8 +759,10 @@ class TTSConverter:
                     pause_sentence=self.options.pause_sentence,
                     pause_paragraph=self.options.pause_paragraph,
                     pause_variance=self.options.pause_variance,
+                    random_seed=self.options.random_seed,
                     pause_mode=self.options.pause_mode,
                     enable_short_sentence=self.options.enable_short_sentence,
+                    short_sentence=self.options.short_sentence,
                     lang=self.options.lang,
                     chapters=[
                         ChapterState(
@@ -943,6 +978,7 @@ class TTSConverter:
                     success=True,
                     chapters_dir=work_dir,
                     output_path=None,  # No audio output in SSMD-only mode
+                    short_sentence_stats=self._short_sentence_stats(),
                 )
 
             # All chapters completed, merge into final output
@@ -975,6 +1011,7 @@ class TTSConverter:
                 success=True,
                 output_path=output_path,
                 chapters_dir=work_dir,
+                short_sentence_stats=self._short_sentence_stats(),
             )
 
         except Exception as e:
@@ -984,6 +1021,11 @@ class TTSConverter:
             return ConversionResult(success=False, error_message=error_msg)
         finally:
             prevent_sleep_end()
+
+    def _short_sentence_stats(self) -> ShortSentenceStats:
+        if self._runner is None:
+            return ShortSentenceStats()
+        return self._runner.get_short_sentence_stats()
 
     def convert_chapters(
         self,
@@ -1028,7 +1070,11 @@ class TTSConverter:
         Returns:
             ConversionResult
         """
-        chapters = [Chapter(title="Text", content=text, index=0)]
+        content = postprocess_extracted_text(
+            text,
+            self.options.text_postprocess_options,
+        )
+        chapters = [Chapter(title="Text", content=content, index=0)]
         return self.convert_chapters(chapters, output_path)
 
     def convert_epub(
@@ -1075,15 +1121,11 @@ class TTSConverter:
             ]
 
         # Convert to our Chapter format - epub2text Chapter has .text attribute
-        # Remove <<CHAPTER: ...>> markers that epub2text adds at the start of content
-        # since we now announce chapter titles separately
         chapters = []
         for i, ch in enumerate(epub_chapters):
-            # Remove the <<CHAPTER: title>> marker from the beginning of content
-            content = ch.text
-            # Pattern matches: <<CHAPTER: anything>> followed by whitespace/newlines
-            content = re.sub(
-                r"^\s*<<CHAPTER:[^>]*>>\s*\n*", "", content, count=1, flags=re.MULTILINE
+            content = postprocess_extracted_text(
+                ch.text,
+                self.options.text_postprocess_options,
             )
             chapters.append(Chapter(title=ch.title, content=content, index=i))
 

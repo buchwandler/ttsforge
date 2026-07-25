@@ -26,9 +26,10 @@ from pykokoro.onnx_backend import (
 
 from .audio_merge import AudioMerger, MergeMeta
 from .chapter_selection import parse_chapter_selection
-from .constants import SAMPLE_RATE, SUPPORTED_OUTPUT_FORMATS
+from .constants import ISO_TO_LANG_CODE, SAMPLE_RATE, SUPPORTED_OUTPUT_FORMATS
 from .kokoro_lang import get_onnx_lang_code
 from .kokoro_runner import KokoroRunner, KokoroRunOptions
+from .short_sentence_config import resolve_short_sentence_config
 from .phonemes import PhonemeBook, PhonemeChapter, PhonemeSegment
 from .utils import (
     atomic_write_json,
@@ -110,8 +111,10 @@ class PhonemeConversionState:
     pause_sentence: float = 0.5
     pause_paragraph: float = 0.9
     pause_variance: float = 0.05
+    random_seed: int | None = None
     pause_mode: str = "auto"
     enable_short_sentence: bool | None = None
+    short_sentence: str | None = None
     lang: str | None = None  # Language override for phonemization
     chapters: list[PhonemeChapterState] = field(default_factory=list)
     started_at: str = ""
@@ -164,10 +167,14 @@ class PhonemeConversionState:
                 data["pause_paragraph"] = 0.9
             if "pause_variance" not in data:
                 data["pause_variance"] = 0.05
+            if "random_seed" not in data:
+                data["random_seed"] = None
             if "pause_mode" not in data:
                 data["pause_mode"] = "auto"
             if "enable_short_sentence" not in data:
                 data["enable_short_sentence"] = None
+            if "short_sentence" not in data:
+                data["short_sentence"] = None
             if "lang" not in data:
                 data["lang"] = None
             if "model_quality" not in data:
@@ -200,8 +207,10 @@ class PhonemeConversionState:
             "pause_sentence": self.pause_sentence,
             "pause_paragraph": self.pause_paragraph,
             "pause_variance": self.pause_variance,
+            "random_seed": self.random_seed,
             "pause_mode": self.pause_mode,
             "enable_short_sentence": self.enable_short_sentence,
+            "short_sentence": self.short_sentence,
             "lang": self.lang,
             "chapters": [
                 {
@@ -238,8 +247,10 @@ class PhonemeConversionOptions:
     pause_sentence: float = 0.5  # For sentence boundaries
     pause_paragraph: float = 0.9  # For paragraph boundaries
     pause_variance: float = 0.05  # Standard deviation for natural variation
+    random_seed: int | None = None  # Random seed for reproducible pause variance
     pause_mode: str = "auto"  # "tts", "manual", or "auto"
     enable_short_sentence: bool | None = None  # Enable short sentence handling
+    short_sentence: str | None = None  # Short-sentence handling config
     # Chapter announcement settings
     announce_chapters: bool = True  # Read chapter titles aloud before content
     chapter_pause_after_title: float = 2.0  # Pause after chapter title (seconds)
@@ -549,6 +560,19 @@ class PhonemeConverter:
 
         return parse_chapter_selection(self.options.chapters, len(self.book.chapters))
 
+    def _short_sentence_language_code(self) -> str | None:
+        """Return the ttsforge language code for short-sentence phrase selection."""
+        if self.options.lang:
+            lang = self.options.lang.strip().lower()
+            return ISO_TO_LANG_CODE.get(lang, lang)
+
+        for chapter in self.book.chapters:
+            for segment in chapter.segments:
+                lang = segment.lang.strip().lower()
+                if lang:
+                    return ISO_TO_LANG_CODE.get(lang, lang)
+        return None
+
     def convert(self, output_path: Path) -> PhonemeConversionResult:
         """
         Convert PhonemeBook to audio with resume capability.
@@ -610,9 +634,11 @@ class PhonemeConverter:
                         or state.pause_sentence != self.options.pause_sentence
                         or state.pause_paragraph != self.options.pause_paragraph
                         or state.pause_variance != self.options.pause_variance
+                        or state.random_seed != self.options.random_seed
                         or state.pause_mode != self.options.pause_mode
                         or state.enable_short_sentence
                         != self.options.enable_short_sentence
+                        or state.short_sentence != self.options.short_sentence
                         or state.model_quality != self.options.model_quality
                         or state.model_source != self.options.model_source
                         or state.model_variant != self.options.model_variant
@@ -625,8 +651,10 @@ class PhonemeConverter:
                             f"pause_sentence={state.pause_sentence}s, "
                             f"pause_paragraph={state.pause_paragraph}s, "
                             f"pause_variance={state.pause_variance}s, "
+                            f"random_seed={state.random_seed}, "
                             f"pause_mode={state.pause_mode}, "
                             f"enable_short_sentence={state.enable_short_sentence}, "
+                            f"short_sentence={state.short_sentence}, "
                             f"model_source={state.model_source}, "
                             f"model_variant={state.model_variant}, "
                             f"model_quality={state.model_quality}",
@@ -643,8 +671,10 @@ class PhonemeConverter:
                         self.options.pause_sentence = state.pause_sentence
                         self.options.pause_paragraph = state.pause_paragraph
                         self.options.pause_variance = state.pause_variance
+                        self.options.random_seed = state.random_seed
                         self.options.pause_mode = state.pause_mode
                         self.options.enable_short_sentence = state.enable_short_sentence
+                        self.options.short_sentence = state.short_sentence
                         self.options.model_quality = state.model_quality
                         self.options.model_source = state.model_source
                         self.options.model_variant = state.model_variant
@@ -666,8 +696,10 @@ class PhonemeConverter:
                     pause_sentence=self.options.pause_sentence,
                     pause_paragraph=self.options.pause_paragraph,
                     pause_variance=self.options.pause_variance,
+                    random_seed=self.options.random_seed,
                     pause_mode=self.options.pause_mode,
                     enable_short_sentence=self.options.enable_short_sentence,
+                    short_sentence=self.options.short_sentence,
                     chapters=[
                         PhonemeChapterState(
                             index=idx,
@@ -693,6 +725,13 @@ class PhonemeConverter:
                 pause_sentence=self.options.pause_sentence,
                 pause_paragraph=self.options.pause_paragraph,
                 pause_variance=self.options.pause_variance,
+                random_seed=self.options.random_seed,
+                enable_short_sentence=self.options.enable_short_sentence,
+                short_sentence_config=resolve_short_sentence_config(
+                    self.options.short_sentence,
+                    language_code=self._short_sentence_language_code(),
+                    warn=lambda message: self.log(message, "warning"),
+                ),
                 model_quality=self.options.model_quality,
                 model_source=self.options.model_source,
                 model_variant=self.options.model_variant,
@@ -896,6 +935,13 @@ class PhonemeConverter:
                 pause_sentence=self.options.pause_sentence,
                 pause_paragraph=self.options.pause_paragraph,
                 pause_variance=self.options.pause_variance,
+                random_seed=self.options.random_seed,
+                enable_short_sentence=self.options.enable_short_sentence,
+                short_sentence_config=resolve_short_sentence_config(
+                    self.options.short_sentence,
+                    language_code=self._short_sentence_language_code(),
+                    warn=lambda message: self.log(message, "warning"),
+                ),
                 model_quality=self.options.model_quality,
                 model_source=self.options.model_source,
                 model_variant=self.options.model_variant,

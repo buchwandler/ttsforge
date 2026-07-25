@@ -85,8 +85,13 @@ Options
 ``--pause-mode MODE``
    Pause mode: ``tts``, ``manual``, or ``auto``. Default: ``auto``.
 
-``--enable-short-sentence``
-   Enable special handling for short sentences (less than 5 words).
+``--disable-short-sentence``
+   Disable special handling for short sentences.
+
+``--short-sentence TEXT``
+   Short-sentence handling config. Example:
+   ``mode=randomized,threshold=30,selection=auto,max-tries=3``.
+   Can also reference a JSON config with ``config=path/to/short_sentence.json``. See ``ttsforge short-sentence-advanced-config init``.
 
 ``--announce-chapters / --no-announce-chapters``
    Read chapter titles aloud before chapter content. Default: enabled.
@@ -412,6 +417,14 @@ Options
 ``--pause-mode MODE``
    Pause mode: ``tts``, ``manual``, or ``auto``.
 
+``--disable-short-sentence``
+   Disable special handling for short sentences.
+
+``--short-sentence TEXT``
+   Short-sentence handling config. Example:
+   ``mode=randomized,threshold=30,selection=auto,max-tries=3``.
+   Can also reference a JSON config with ``config=path/to/short_sentence.json``. See ``ttsforge short-sentence-advanced-config init``.
+
 **Note:** Playback requires the optional ``ttsforge[audio]`` extra.
 
 Examples
@@ -601,6 +614,45 @@ Examples
 See :doc:`configuration` for all available options.
 
 
+short-sentence-advanced-config
+------------------------------
+
+Create, link, or inspect the advanced short-sentence JSON configuration.
+
+.. code-block:: bash
+
+   ttsforge short-sentence-advanced-config [show|init|reset]
+
+Called without an action, this command prints its help.
+
+Arguments
+^^^^^^^^^
+
+``show``
+   Show the advanced JSON config.
+
+``init``
+   Write the advanced JSON config and update the ttsforge config to use it.
+
+``reset``
+   Recreate the advanced JSON config from defaults and update the ttsforge config
+   to use it.
+
+Examples
+^^^^^^^^
+
+.. code-block:: bash
+
+   # Create and link the advanced short-sentence config
+   ttsforge short-sentence-advanced-config init
+
+   # Show the advanced short-sentence config
+   ttsforge short-sentence-advanced-config show
+
+   # Reset the advanced short-sentence config to defaults
+   ttsforge short-sentence-advanced-config reset
+
+
 phonemes
 --------
 
@@ -712,6 +764,11 @@ Options
 
 ``--pause-mode MODE``
    Pause mode: ``tts``, ``manual``, or ``auto``. Default: ``auto``.
+
+``--short-sentence TEXT``
+   Short-sentence handling config. Example:
+   ``mode=randomized,threshold=30,selection=auto,max-tries=3``.
+   Can also reference a JSON config with ``config=path/to/short_sentence.json``. See ``ttsforge short-sentence-advanced-config init``.
 
 ``--announce-chapters / --no-announce-chapters``
    Read chapter titles aloud before chapter content. Default: enabled.

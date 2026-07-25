@@ -10,6 +10,10 @@ import re
 from dataclasses import dataclass, field
 from pathlib import Path
 
+from .text_postprocessing import (
+    TextPostprocessOptions,
+    postprocess_extracted_text,
+)
 from .utils import detect_encoding
 
 
@@ -47,13 +51,18 @@ class Chapter:
 class InputReader:
     """Unified reader for EPUB, TXT (Gutenberg), and SSMD files."""
 
-    def __init__(self, file_path: Path | str):
+    def __init__(
+        self,
+        file_path: Path | str,
+        postprocess_options: TextPostprocessOptions | None = None,
+    ):
         """Initialize the reader with a file path.
 
         Args:
             file_path: Path to the input file (EPUB, TXT, or SSMD)
         """
         self.file_path = Path(file_path)
+        self.postprocess_options = postprocess_options or TextPostprocessOptions()
         self._metadata: Metadata | None = None
         self._chapters: list[Chapter] | None = None
 
@@ -191,9 +200,9 @@ class InputReader:
         # Convert to our Chapter format
         chapters = []
         for i, ch in enumerate(epub_chapters):
-            # Remove <<CHAPTER: ...>> markers that epub2text adds
-            content = re.sub(
-                r"^\s*<<CHAPTER:[^>]*>>\s*\n*", "", ch.text, count=1, flags=re.MULTILINE
+            content = postprocess_extracted_text(
+                ch.text,
+                self.postprocess_options,
             )
             chapters.append(Chapter(title=ch.title, text=content, index=i))
 
@@ -215,9 +224,9 @@ class InputReader:
         # Convert to our Chapter format with HTML
         chapters_with_html = []
         for i, ch in enumerate(epub_chapters):
-            # Remove <<CHAPTER: ...>> markers from plain text
-            content = re.sub(
-                r"^\s*<<CHAPTER:[^>]*>>\s*\n*", "", ch.text, count=1, flags=re.MULTILINE
+            content = postprocess_extracted_text(
+                ch.text,
+                self.postprocess_options,
             )
             chapter = Chapter(title=ch.title, text=content, index=i)
 
@@ -340,7 +349,16 @@ class InputReader:
                 text = content[start:end].strip()
 
                 if text:  # Only add non-empty chapters
-                    chapters.append(Chapter(title=title, text=text, index=i))
+                    chapters.append(
+                        Chapter(
+                            title=title,
+                            text=postprocess_extracted_text(
+                                text,
+                                self.postprocess_options,
+                            ),
+                            index=i,
+                        )
+                    )
 
             return chapters
         else:
@@ -364,7 +382,16 @@ class InputReader:
                     text = content[start:end].strip()
 
                     if text and len(text) > 100:  # Only add substantial sections
-                        chapters.append(Chapter(title=title, text=text, index=i))
+                        chapters.append(
+                            Chapter(
+                                title=title,
+                                text=postprocess_extracted_text(
+                                    text,
+                                    self.postprocess_options,
+                                ),
+                                index=i,
+                            )
+                        )
 
                 if chapters:
                     return chapters
@@ -372,7 +399,16 @@ class InputReader:
             # No chapter structure found, return entire content as one chapter
             metadata = self.get_metadata()
             title = metadata.title or self.file_path.stem
-            return [Chapter(title=title, text=content, index=0)]
+            return [
+                Chapter(
+                    title=title,
+                    text=postprocess_extracted_text(
+                        content,
+                        self.postprocess_options,
+                    ),
+                    index=0,
+                )
+            ]
 
     def _get_ssmd_metadata(self) -> Metadata:
         """Extract metadata from an SSMD file."""

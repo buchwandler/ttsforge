@@ -198,6 +198,12 @@ class TestDefaultConfig:
         """Silence between chapters should be non-negative."""
         assert DEFAULT_CONFIG["silence_between_chapters"] >= 0
 
+    def test_short_sentence_default_uses_randomized_phrase_mode(self):
+        """Short sentence defaults should use randomized phrase handling."""
+        assert DEFAULT_CONFIG["short_sentence"] == (
+            "mode=randomized,threshold=30,selection=auto,max-tries=5"
+        )
+
 
 class TestAudioSettings:
     """Tests for audio settings."""
