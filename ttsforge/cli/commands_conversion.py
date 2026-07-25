@@ -34,7 +34,7 @@ from rich.prompt import Confirm
 from rich.table import Table
 from typing_extensions import NotRequired
 
-from ..chapter_selection import parse_chapter_selection
+from ..chapter_selection import parse_chapter_selection, resolve_chapter_selection
 from ..constants import (
     LANGUAGE_DESCRIPTIONS,
     SUPPORTED_OUTPUT_FORMATS,
@@ -135,6 +135,11 @@ def get_voices() -> list[str]:
     "--chapters",
     type=str,
     help="Chapters to convert (e.g., '1-5', '1,3,5', 'all').",
+)
+@click.option(
+    "--skip-chapters",
+    type=str,
+    help="Chapters to skip (e.g., '5', '2,4,6', '10-12').",
 )
 @click.option(
     "--silence",
@@ -335,6 +340,7 @@ def convert(  # noqa: C901
     speed: float | None,
     use_gpu: bool | None,
     chapters: str | None,
+    skip_chapters: str | None,
     silence: float | None,
     pause_clause: float | None,
     pause_sentence: float | None,
@@ -473,9 +479,11 @@ def convert(  # noqa: C901
 
     # Chapter selection
     selected_indices: list[int] | None = None
-    if chapters:
+    if chapters or skip_chapters:
         try:
-            selected_indices = parse_chapter_selection(chapters, len(epub_chapters))
+            selected_indices = resolve_chapter_selection(
+                chapters, skip_chapters, len(epub_chapters)
+            )
         except ValueError as exc:
             console.print(f"[yellow]{exc}[/yellow]")
             sys.exit(1)
