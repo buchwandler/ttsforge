@@ -121,6 +121,15 @@ def phonemes() -> None:
     default=300,
     help="Maximum characters per segment (for additional splitting of long segments).",
 )
+@click.option(
+    "--subchapter-marker",
+    "subchapter_markers",
+    multiple=True,
+    help=(
+        "Exact line marker to convert into a paragraph pause. "
+        "Repeat for multiple markers."
+    ),
+)
 def phonemes_export(
     epub_file: Path,
     output: Path | None,
@@ -130,6 +139,7 @@ def phonemes_export(
     vocab_version: str,
     split_mode: str,
     max_chars: int,
+    subchapter_markers: tuple[str, ...],
 ) -> None:
     """Export an EPUB as pre-tokenized phoneme data.
 
@@ -158,7 +168,10 @@ def phonemes_export(
     from ..phonemes import PhonemeBook
 
     config = load_config()
-    text_postprocess_options = resolve_text_postprocess_options(config)
+    text_postprocess_options = resolve_text_postprocess_options(
+        config,
+        subchapter_markers=subchapter_markers,
+    )
 
     console.print(f"[bold]Loading:[/bold] {epub_file}")
 

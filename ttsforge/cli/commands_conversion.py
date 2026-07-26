@@ -328,6 +328,15 @@ def get_voices() -> list[str]:
     is_flag=True,
     help="Make phoneme dictionary matching case-sensitive (default: case-insensitive).",
 )
+@click.option(
+    "--subchapter-marker",
+    "subchapter_markers",
+    multiple=True,
+    help=(
+        "Exact line marker to convert into a paragraph pause. "
+        "Repeat for multiple markers."
+    ),
+)
 @click.pass_context
 def convert(  # noqa: C901
     ctx: click.Context,
@@ -371,6 +380,7 @@ def convert(  # noqa: C901
     mixed_language_confidence: float | None,
     phoneme_dictionary_path: str | None,
     phoneme_dict_case_sensitive: bool,
+    subchapter_markers: tuple[str, ...],
 ) -> None:
     """Convert an EPUB file to an audiobook.
 
@@ -389,7 +399,9 @@ def convert(  # noqa: C901
     model_quality = cast(
         ModelQuality, config.get("model_quality", DEFAULT_MODEL_QUALITY)
     )
-    text_postprocess_options = resolve_text_postprocess_options(config)
+    text_postprocess_options = resolve_text_postprocess_options(
+        config,
+        subchapter_markers=subchapter_markers,
     effective_language = language or config.get("default_language", "a")
     effective_enable_short_sentence = (
         enable_short_sentence

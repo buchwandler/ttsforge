@@ -198,6 +198,9 @@ class TestDefaultConfig:
         """Silence between chapters should be non-negative."""
         assert DEFAULT_CONFIG["silence_between_chapters"] >= 0
 
+    def test_subchapter_marker_default(self):
+        """Subchapter markers should default to disabled."""
+        assert DEFAULT_CONFIG["subchapter_markers"] == []
     def test_short_sentence_default_uses_randomized_phrase_mode(self):
         """Short sentence defaults should use randomized phrase handling."""
         assert DEFAULT_CONFIG["short_sentence"] == (
