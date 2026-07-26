@@ -85,6 +85,10 @@ class AudioMerger:
         output_path: Path,
         meta: MergeMeta,
     ) -> None:
+        if meta.fmt == "wav":
+            self._merge_wavs(chapter_files, output_path, meta.silence_between_chapters)
+            return
+
         ffmpeg = get_ffmpeg_path()
 
         concat_file = output_path.with_suffix(".concat.txt")
@@ -156,6 +160,45 @@ class AudioMerger:
                 if i < len(chapter_durations) - 1:
                     t += meta.silence_between_chapters
             self.add_chapters_to_m4b(output_path, times, meta.cover_image)
+
+    def _merge_wavs(
+        self,
+        chapter_files: list[Path],
+        output_path: Path,
+        silence_between_chapters: float,
+    ) -> None:
+        """Merge WAV chapters without requiring an external encoder."""
+        silence_samples = int(silence_between_chapters * SAMPLE_RATE)
+        silence = np.zeros(min(silence_samples, 65536), dtype="float32")
+
+        with sf.SoundFile(
+            str(output_path),
+            "w",
+            samplerate=SAMPLE_RATE,
+            channels=1,
+            format="WAV",
+            subtype="PCM_16",
+        ) as output:
+            for chapter_index, chapter_file in enumerate(chapter_files):
+                with sf.SoundFile(str(chapter_file), "r") as chapter:
+                    if chapter.samplerate != SAMPLE_RATE or chapter.channels != 1:
+                        raise ValueError(
+                            "WAV chapters must be mono files at "
+                            f"{SAMPLE_RATE} Hz: {chapter_file}"
+                        )
+
+                    while True:
+                        audio = chapter.read(65536, dtype="float32")
+                        if len(audio) == 0:
+                            break
+                        output.write(audio)
+
+                if chapter_index < len(chapter_files) - 1:
+                    remaining = silence_samples
+                    while remaining > 0:
+                        chunk_size = min(remaining, len(silence))
+                        output.write(silence[:chunk_size])
+                        remaining -= chunk_size
 
     def _write_silence_wav(self, path: Path, duration: float) -> None:
         samples = int(duration * SAMPLE_RATE)

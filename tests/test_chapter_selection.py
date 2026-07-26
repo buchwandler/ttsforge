@@ -1,6 +1,9 @@
 import pytest
 
-from ttsforge.chapter_selection import parse_chapter_selection, resolve_chapter_selection
+from ttsforge.chapter_selection import (
+    parse_chapter_selection,
+    resolve_chapter_selection,
+)
 
 
 def test_parse_all() -> None:

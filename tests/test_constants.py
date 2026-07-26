@@ -91,9 +91,9 @@ class TestVoices:
         """All voice prefixes should be in VOICE_PREFIX_TO_LANG."""
         for voice in VOICES:
             prefix = voice[:2]
-            assert (
-                prefix in VOICE_PREFIX_TO_LANG
-            ), f"Prefix {prefix} from {voice} not in mapping"
+            assert prefix in VOICE_PREFIX_TO_LANG, (
+                f"Prefix {prefix} from {voice} not in mapping"
+            )
 
     def test_american_english_voices_exist(self):
         """American English voices should exist."""
@@ -128,9 +128,9 @@ class TestDefaultVoiceForLang:
     def test_all_languages_have_default_voice(self):
         """All languages should have a default voice."""
         for lang in LANGUAGE_DESCRIPTIONS:
-            assert (
-                lang in DEFAULT_VOICE_FOR_LANG
-            ), f"Language {lang} needs default voice"
+            assert lang in DEFAULT_VOICE_FOR_LANG, (
+                f"Language {lang} needs default voice"
+            )
 
     def test_default_voices_match_language(self):
         """Default voices should match their language."""
@@ -201,6 +201,7 @@ class TestDefaultConfig:
     def test_subchapter_marker_default(self):
         """Subchapter markers should default to disabled."""
         assert DEFAULT_CONFIG["subchapter_markers"] == []
+
     def test_short_sentence_default_uses_randomized_phrase_mode(self):
         """Short sentence defaults should use randomized phrase handling."""
         assert DEFAULT_CONFIG["short_sentence"] == (

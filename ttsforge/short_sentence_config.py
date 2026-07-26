@@ -438,9 +438,7 @@ def _fallback_mode(
     return "wrap"
 
 
-def _selection(
-    value: object, *, warn: Callable[[str], None] | None = None
-) -> str:
+def _selection(value: object, *, warn: Callable[[str], None] | None = None) -> str:
     text = str(value).strip()
     if text == "natural":
         return "neutral"

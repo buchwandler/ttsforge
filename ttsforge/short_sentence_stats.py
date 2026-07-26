@@ -48,10 +48,7 @@ class ShortSentenceStats:
 
 
 def format_short_sentence_stats(stats: ShortSentenceStats) -> str:
-    return (
-        f"total={stats.total}, retries={stats.retries}, "
-        f"fallbacks={stats.fallbacks}"
-    )
+    return f"total={stats.total}, retries={stats.retries}, fallbacks={stats.fallbacks}"
 
 
 def _int_value(value: object) -> int:

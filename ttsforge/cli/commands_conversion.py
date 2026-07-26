@@ -402,6 +402,7 @@ def convert(  # noqa: C901
     text_postprocess_options = resolve_text_postprocess_options(
         config,
         subchapter_markers=subchapter_markers,
+    )
     effective_language = language or config.get("default_language", "a")
     effective_enable_short_sentence = (
         enable_short_sentence
@@ -1322,7 +1323,9 @@ def _format_short_sentence_summary(
     if enable_short_sentence is False:
         return "off"
 
-    resolved = resolve_short_sentence_config(short_sentence, language_code=language_code)
+    resolved = resolve_short_sentence_config(
+        short_sentence, language_code=language_code
+    )
     if resolved is None or not resolved.enabled or resolved.resolve_mode is False:
         return "off"
 
@@ -1375,7 +1378,9 @@ def _format_short_sentence_hint(
     # phrase short-sentence handling currently only supports english.
     if language_code not in {"a", "b"}:
         return None
-    resolved = resolve_short_sentence_config(short_sentence, language_code=language_code)
+    resolved = resolve_short_sentence_config(
+        short_sentence, language_code=language_code
+    )
     if resolved is None or not resolved.enabled or resolved.resolve_mode is False:
         return None
     return (
@@ -2152,7 +2157,6 @@ def _split_text_into_segments(
     Returns:
         List of text segments
     """
-    import re
 
     # First split on sentence-ending punctuation
     sentence_pattern = r"(?<=[.!?])\s+"

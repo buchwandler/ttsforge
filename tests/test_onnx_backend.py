@@ -75,6 +75,15 @@ class TestVoiceBlend:
 class TestModelPaths:
     """Tests for model path functions."""
 
+    @staticmethod
+    def _assert_model_filename(path: Path, filename: str) -> None:
+        """Accept legacy and timestamped HuggingFace cache filenames."""
+        expected = Path(filename)
+        timestamped = expected.with_name(
+            f"{expected.stem}-timestamped{expected.suffix}"
+        )
+        assert path.name in {expected.name, timestamped.name}
+
     def test_model_quality_files_not_empty(self):
         """Should have model quality files defined."""
         assert len(MODEL_QUALITY_FILES) > 0
@@ -97,12 +106,12 @@ class TestModelPaths:
         path = get_model_path("fp32")
         assert isinstance(path, Path)
         # The actual filename includes subdirectory for HuggingFace
-        assert "model.onnx" in str(path)
+        self._assert_model_filename(path, MODEL_QUALITY_FILES_HF["fp32"])
 
     def test_get_model_path_q8(self):
         """Should return correct path for q8 quality."""
         path = get_model_path("q8")
-        assert "model_quantized.onnx" in str(path)
+        self._assert_model_filename(path, MODEL_QUALITY_FILES_HF["q8"])
 
     def test_get_model_filename(self):
         """Should return correct filename for each quality."""

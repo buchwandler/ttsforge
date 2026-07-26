@@ -961,9 +961,7 @@ def short_sentence_advanced_config(ctx: click.Context, action: str | None) -> No
         help_lines = ctx.get_help().splitlines()
         if help_lines and help_lines[0].startswith("Usage:"):
             command_usage = help_lines[0].split(" [OPTIONS]", 1)[0]
-            help_lines[0] = (
-                f"{command_usage} [OPTIONS] [show|init|reset]"
-            )
+            help_lines[0] = f"{command_usage} [OPTIONS] [show|init|reset]"
         console.print("\n".join(help_lines), markup=False)
         return
 
@@ -1361,7 +1359,7 @@ def list_names(  # noqa: C901
         items.sort(key=lambda x: x[0].lower())
     elif sort_by == "count":
         items.sort(
-            key=lambda x: (x[1].get("occurrences", 0) if isinstance(x[1], dict) else 0),
+            key=lambda x: x[1].get("occurrences", 0) if isinstance(x[1], dict) else 0,
             reverse=True,
         )
 

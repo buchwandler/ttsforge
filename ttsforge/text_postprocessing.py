@@ -7,10 +7,7 @@ from collections.abc import Iterable
 from dataclasses import dataclass, field
 from typing import Any
 
-
-EPUB_CHAPTER_MARKER_PATTERN = re.compile(
-    r"^\s*<<CHAPTER:[^>]*>>\s*\n*", re.MULTILINE
-)
+EPUB_CHAPTER_MARKER_PATTERN = re.compile(r"^\s*<<CHAPTER:[^>]*>>\s*\n*", re.MULTILINE)
 ELLIPSIS_PATTERN = re.compile(r"\.\.\.(?=\s|$)")
 
 

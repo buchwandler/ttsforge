@@ -269,12 +269,10 @@ class TestConvertCommand:
 
         summary = _format_short_sentence_summary(f"config={config_path}", None, "b")
 
-        assert summary == (
-            "mode=randomized,threshold=7,selection=end,max-tries=2"
-        )
+        assert summary == ("mode=randomized,threshold=7,selection=end,max-tries=2")
 
     def test_short_sentence_summary_disable_override_wins(self):
-        """Disable override should be represented as an accepted short-sentence value."""
+        """Disable override should be represented as accepted short-sentence value."""
         summary = _format_short_sentence_summary(
             "mode=randomized,threshold=7",
             False,
@@ -300,8 +298,7 @@ class TestConvertCommand:
         assert hint is not None
         assert "--short-sentence 'threshold=40,max-tries=10'" in hint
         assert (
-            _format_short_sentence_hint("mode=phrase,threshold=40", None, "d")
-            is None
+            _format_short_sentence_hint("mode=phrase,threshold=40", None, "d") is None
         )
         assert _format_short_sentence_hint("mode=off", None, "a") is None
 

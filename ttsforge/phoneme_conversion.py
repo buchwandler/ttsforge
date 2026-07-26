@@ -29,8 +29,8 @@ from .chapter_selection import parse_chapter_selection
 from .constants import ISO_TO_LANG_CODE, SAMPLE_RATE, SUPPORTED_OUTPUT_FORMATS
 from .kokoro_lang import get_onnx_lang_code
 from .kokoro_runner import KokoroRunner, KokoroRunOptions
-from .short_sentence_config import resolve_short_sentence_config
 from .phonemes import PhonemeBook, PhonemeChapter, PhonemeSegment
+from .short_sentence_config import resolve_short_sentence_config
 from .utils import (
     atomic_write_json,
     create_process,
