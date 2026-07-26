@@ -1,20 +1,68 @@
 """Constants for ttsforge - voices, languages, and formats."""
 
-# from pykokoro.onnx_backend import VOICE_NAMES_V1_0
-# from pykokoro.onnx_backend import VOICE_NAMES_V1_1_ZH, VOICE_NAMES_V1_1_DE
+# Keep these values local so importing configuration and CLI metadata does not
+# import pykokoro's ONNX backend (and therefore does not require a provider).
+DEFAULT_MODEL_SOURCE = "huggingface"
+SAMPLE_RATE = 24000
 
-from pykokoro.onnx_backend import DEFAULT_MODEL_SOURCE, VOICE_NAMES_V1_0
-
-# Re-export from pykokoro for convenience
-VOICES = VOICE_NAMES_V1_0
-
-# Audio constants from pykokoro
-try:
-    from pykokoro.constants import SAMPLE_RATE as _SAMPLE_RATE
-
-    SAMPLE_RATE: int = int(_SAMPLE_RATE)
-except ImportError:
-    SAMPLE_RATE = 24000  # Fallback value
+# pykokoro's v1.0 voice catalogue is data, not backend functionality. Keeping
+# the catalogue here makes Click option construction and lightweight help safe.
+VOICES = [
+    "af",
+    "af_alloy",
+    "af_aoede",
+    "af_bella",
+    "af_heart",
+    "af_jessica",
+    "af_kore",
+    "af_nicole",
+    "af_nova",
+    "af_river",
+    "af_sarah",
+    "af_sky",
+    "am_adam",
+    "am_echo",
+    "am_eric",
+    "am_fenrir",
+    "am_liam",
+    "am_michael",
+    "am_onyx",
+    "am_puck",
+    "am_santa",
+    "bf_alice",
+    "bf_emma",
+    "bf_isabella",
+    "bf_lily",
+    "bm_daniel",
+    "bm_fable",
+    "bm_george",
+    "bm_lewis",
+    "ef_dora",
+    "em_alex",
+    "em_santa",
+    "ff_siwis",
+    "hf_alpha",
+    "hf_beta",
+    "hm_omega",
+    "hm_psi",
+    "if_sara",
+    "im_nicola",
+    "jf_alpha",
+    "jf_gongitsune",
+    "jf_nezumi",
+    "jf_tebukuro",
+    "jm_kumo",
+    "pf_dora",
+    "pm_alex",
+    "pm_santa",
+    "zf_xiaobei",
+    "zf_xiaoni",
+    "zf_xiaoxiao",
+    "zm_yunjian",
+    "zm_yunxi",
+    "zm_yunxia",
+    "zm_yunyang",
+]
 
 # Program Information
 PROGRAM_NAME = "ttsforge"

@@ -9,7 +9,7 @@ import shlex
 import shutil
 import subprocess
 import sys
-import warnings
+import tempfile
 from collections.abc import Callable
 from pathlib import Path
 from threading import Thread
@@ -18,8 +18,6 @@ from typing import Any, Literal, overload
 from platformdirs import user_cache_dir, user_config_dir
 
 from .constants import DEFAULT_CONFIG, PROGRAM_NAME
-
-warnings.filterwarnings("ignore")
 
 _LEGACY_GPU_KEY_WARNED = False
 _PHONEME_DICT_WARNED_PATHS: set[str] = set()
@@ -94,22 +92,20 @@ def resolve_conversion_defaults(
     config: dict[str, Any], overrides: dict[str, Any]
 ) -> dict[str, Any]:
     """Resolve conversion defaults with CLI > config > DEFAULT_CONFIG."""
+
+    def resolve(name: str, config_key: str, default_key: str) -> Any:
+        value = overrides.get(name)
+        if value is not None:
+            return value
+        return config.get(config_key, DEFAULT_CONFIG[default_key])
+
     return {
-        "voice": overrides.get("voice")
-        or config.get("default_voice", DEFAULT_CONFIG["default_voice"]),
-        "language": overrides.get("language")
-        or config.get("default_language", DEFAULT_CONFIG["default_language"]),
-        "speed": overrides.get("speed")
-        if overrides.get("speed") is not None
-        else config.get("default_speed", DEFAULT_CONFIG["default_speed"]),
-        "split_mode": overrides.get("split_mode")
-        or config.get("default_split_mode", DEFAULT_CONFIG["default_split_mode"]),
-        "use_gpu": overrides.get("use_gpu")
-        if overrides.get("use_gpu") is not None
-        else config.get("use_gpu", DEFAULT_CONFIG["use_gpu"]),
-        "lang": overrides.get("lang")
-        if overrides.get("lang") is not None
-        else config.get("phonemization_lang", DEFAULT_CONFIG["phonemization_lang"]),
+        "voice": resolve("voice", "default_voice", "default_voice"),
+        "language": resolve("language", "default_language", "default_language"),
+        "speed": resolve("speed", "default_speed", "default_speed"),
+        "split_mode": resolve("split_mode", "default_split_mode", "default_split_mode"),
+        "use_gpu": resolve("use_gpu", "use_gpu", "use_gpu"),
+        "lang": resolve("lang", "phonemization_lang", "phonemization_lang"),
     }
 
 
@@ -177,13 +173,27 @@ def atomic_write_json(
 ) -> None:
     """Write JSON to a temp file and atomically replace the target."""
     path.parent.mkdir(parents=True, exist_ok=True)
-    tmp_path = path.with_name(f"{path.name}.tmp")
+    fd, tmp_name = tempfile.mkstemp(
+        prefix=f".{path.name}.", suffix=".tmp", dir=path.parent
+    )
+    tmp_path = Path(tmp_name)
     try:
-        with open(tmp_path, "w", encoding="utf-8") as f:
+        with os.fdopen(fd, "w", encoding="utf-8") as f:
             json.dump(data, f, indent=indent, ensure_ascii=ensure_ascii)
             f.flush()
             os.fsync(f.fileno())
         os.replace(tmp_path, path)
+        # Persist the directory entry when the platform supports directory
+        # descriptors. This is best-effort because Windows does not provide
+        # the same fsync semantics for directories.
+        try:
+            directory_fd = os.open(path.parent, os.O_RDONLY)
+            try:
+                os.fsync(directory_fd)
+            finally:
+                os.close(directory_fd)
+        except OSError:
+            pass
     finally:
         if tmp_path.exists():
             try:

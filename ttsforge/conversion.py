@@ -8,11 +8,10 @@ import time
 from collections.abc import Callable
 from dataclasses import dataclass, field
 from pathlib import Path
-from typing import Any, Literal, Optional, cast
+from typing import TYPE_CHECKING, Any, Literal, Optional, cast
 
 import soundfile as sf
-from pykokoro.onnx_backend import (
-    DEFAULT_MODEL_QUALITY,
+from pykokoro.config_types import (
     DEFAULT_MODEL_SOURCE,
     DEFAULT_MODEL_VARIANT,
     ModelQuality,
@@ -29,7 +28,6 @@ from .constants import (
     VOICE_PREFIX_TO_LANG,
 )
 from .kokoro_lang import get_onnx_lang_code
-from .kokoro_runner import KokoroRunner, KokoroRunOptions
 from .short_sentence_config import resolve_short_sentence_config
 from .short_sentence_stats import ShortSentenceStats
 from .ssmd_generator import (
@@ -51,6 +49,11 @@ from .utils import (
     prevent_sleep_start,
     sanitize_filename,
 )
+
+if TYPE_CHECKING:
+    from .kokoro_runner import KokoroRunner
+
+DEFAULT_MODEL_QUALITY: ModelQuality = "fp32"
 
 
 @dataclass
@@ -122,12 +125,15 @@ class ChapterState:
     char_count: int = 0
     ssmd_file: str | None = None  # Relative path to SSMD file
     ssmd_hash: str | None = None  # Hash of SSMD content for change detection
+    render_fingerprint: str = ""  # Inputs that produced the audio artifact
 
 
 @dataclass
 class ConversionState:
     """Persistent state for resumable conversions."""
 
+    # Keep the constructor default compatible with callers that create legacy
+    # records directly; conversion-created records explicitly use schema v2.
     version: int = 1
     source_file: str = ""
     source_hash: str = ""  # Hash of source file for change detection
@@ -152,6 +158,8 @@ class ConversionState:
     short_sentence: str | None = None
     lang: str | None = None  # Language override for phonemization
     chapters: list[ChapterState] = field(default_factory=list)
+    source_selection: list[int] = field(default_factory=list)
+    generation_fingerprint: str = ""
     started_at: str = ""
     last_updated: str = ""
 
@@ -167,6 +175,8 @@ class ConversionState:
             # Reconstruct ChapterState objects
             chapters = [ChapterState(**ch) for ch in data.get("chapters", [])]
             data["chapters"] = chapters
+            data.setdefault("source_selection", [])
+            data.setdefault("generation_fingerprint", "")
 
             # Handle missing fields for backward compatibility
             if "silence_between_chapters" not in data:
@@ -261,11 +271,14 @@ class ConversionState:
                     "char_count": ch.char_count,
                     "ssmd_file": ch.ssmd_file,
                     "ssmd_hash": ch.ssmd_hash,
+                    "render_fingerprint": ch.render_fingerprint,
                 }
                 for ch in self.chapters
             ],
             "started_at": self.started_at,
             "last_updated": self.last_updated,
+            "source_selection": self.source_selection,
+            "generation_fingerprint": self.generation_fingerprint,
         }
         atomic_write_json(state_file, data, indent=2, ensure_ascii=True)
 
@@ -287,22 +300,67 @@ class ConversionState:
 
 def _hash_content(content: str) -> str:
     """Generate a hash of content for integrity checking."""
-    return hashlib.md5(content.encode("utf-8")).hexdigest()[:12]
+    return hashlib.sha256(content.encode("utf-8")).hexdigest()[:12]
 
 
 def _hash_file(file_path: Path) -> str:
     """Generate a hash of a file for change detection."""
     if not file_path.exists():
         return ""
-    hasher = hashlib.md5()
+    hasher = hashlib.sha256()
     with open(file_path, "rb") as f:
         for chunk in iter(lambda: f.read(8192), b""):
             hasher.update(chunk)
     return hasher.hexdigest()[:12]
 
 
+def _canonical_fingerprint(data: Any) -> str:
+    """Hash JSON-compatible data using a stable representation."""
+    payload = json.dumps(data, sort_keys=True, separators=(",", ":"), default=str)
+    return hashlib.sha256(payload.encode("utf-8")).hexdigest()
+
+
+def _path_identity(path: Path | str | None) -> dict[str, str] | None:
+    """Return stable path/content identity without embedding file contents."""
+    if path is None:
+        return None
+    resolved = Path(path)
+    return {"path": str(resolved), "sha256": _hash_file(resolved)}
+
+
 # Split mode options
 SPLIT_MODES = ["auto", "line", "paragraph", "sentence", "clause"]
+
+
+def validate_generation_ranges(
+    *,
+    speed: float,
+    mixed_language_confidence: float | None = None,
+    silence_between_chapters: float | None = None,
+    pause_clause: float | None = None,
+    pause_sentence: float | None = None,
+    pause_paragraph: float | None = None,
+    pause_variance: float | None = None,
+    chapter_pause_after_title: float | None = None,
+) -> None:
+    """Validate numeric generation settings shared by CLI and library APIs."""
+    if not 0.5 <= speed <= 2.0:
+        raise ValueError("speed must be between 0.5 and 2.0")
+    if (
+        mixed_language_confidence is not None
+        and not 0.0 <= mixed_language_confidence <= 1.0
+    ):
+        raise ValueError("mixed_language_confidence must be between 0.0 and 1.0")
+    for name, value in (
+        ("silence_between_chapters", silence_between_chapters),
+        ("pause_clause", pause_clause),
+        ("pause_sentence", pause_sentence),
+        ("pause_paragraph", pause_paragraph),
+        ("pause_variance", pause_variance),
+        ("chapter_pause_after_title", chapter_pause_after_title),
+    ):
+        if value is not None and value < 0:
+            raise ValueError(f"{name} must be non-negative")
 
 
 @dataclass
@@ -369,6 +427,18 @@ class ConversionOptions:
     text_postprocess_options: TextPostprocessOptions = field(
         default_factory=TextPostprocessOptions
     )
+
+    def __post_init__(self) -> None:
+        validate_generation_ranges(
+            speed=self.speed,
+            mixed_language_confidence=self.mixed_language_confidence,
+            silence_between_chapters=self.silence_between_chapters,
+            pause_clause=self.pause_clause,
+            pause_sentence=self.pause_sentence,
+            pause_paragraph=self.pause_paragraph,
+            pause_variance=self.pause_variance,
+            chapter_pause_after_title=self.chapter_pause_after_title,
+        )
 
 
 # Pattern to detect chapter markers in text
@@ -445,6 +515,8 @@ class TTSConverter:
         """Initialize the Kokoro runner."""
         if self._runner is not None:
             return
+
+        from .kokoro_runner import KokoroRunner, KokoroRunOptions
 
         self.log("Initializing ONNX TTS pipeline...")
 
@@ -590,6 +662,115 @@ class TTSConverter:
 
         return len(samples) / SAMPLE_RATE
 
+    def _generation_fingerprint(self) -> str:
+        """Fingerprint every option that can affect generated audio."""
+        options = self.options
+        dictionary = _path_identity(options.phoneme_dictionary_path)
+        payload = {
+            "voice": options.voice,
+            "voice_blend": options.voice_blend,
+            "voice_database": _path_identity(options.voice_database),
+            "language": options.language,
+            "lang": options.lang,
+            "speed": options.speed,
+            "output_format": options.output_format,
+            "use_gpu": options.use_gpu,
+            "model_quality": str(options.model_quality),
+            "model_source": str(options.model_source),
+            "model_variant": str(options.model_variant),
+            "model_path": _path_identity(options.model_path),
+            "voices_path": _path_identity(options.voices_path),
+            "silence_between_chapters": options.silence_between_chapters,
+            "pause_clause": options.pause_clause,
+            "pause_sentence": options.pause_sentence,
+            "pause_paragraph": options.pause_paragraph,
+            "pause_variance": options.pause_variance,
+            "random_seed": options.random_seed,
+            "pause_mode": options.pause_mode,
+            "enable_short_sentence": options.enable_short_sentence,
+            "short_sentence": options.short_sentence,
+            "use_mixed_language": options.use_mixed_language,
+            "mixed_language_primary": options.mixed_language_primary,
+            "mixed_language_allowed": options.mixed_language_allowed,
+            "mixed_language_confidence": options.mixed_language_confidence,
+            "phoneme_dictionary": dictionary,
+            "phoneme_dict_case_sensitive": options.phoneme_dict_case_sensitive,
+            "announce_chapters": options.announce_chapters,
+            "chapter_pause_after_title": options.chapter_pause_after_title,
+            "split_mode": options.split_mode,
+            "generate_ssmd_only": options.generate_ssmd_only,
+            "detect_emphasis": options.detect_emphasis,
+            "text_postprocess_options": vars(options.text_postprocess_options),
+        }
+        return _canonical_fingerprint(payload)
+
+    def _resume_state_matches(
+        self,
+        state: ConversionState,
+        chapters: list[Chapter],
+        source_hash: str,
+        generation_fingerprint: str,
+        work_dir: Path,
+    ) -> bool:
+        """Allow reuse only when v2 inputs and completed artifacts still match."""
+        if state.version < 2:
+            self.log(
+                "Legacy resume state is unsafe; starting fresh conversion", "warning"
+            )
+            return False
+        if state.source_hash != source_hash:
+            self.log(
+                "Source file or chapter inputs changed, starting fresh conversion",
+                "warning",
+            )
+            return False
+        if state.source_selection != [chapter.index for chapter in chapters]:
+            self.log("Chapter selection changed, starting fresh conversion", "warning")
+            return False
+        if state.generation_fingerprint != generation_fingerprint:
+            self.log(
+                "Generation settings changed, starting fresh conversion", "warning"
+            )
+            return False
+        if len(state.chapters) != len(chapters):
+            self.log("Chapter count changed, starting fresh conversion", "warning")
+            return False
+
+        for saved, chapter in zip(state.chapters, chapters, strict=True):
+            content_hash = _hash_content(chapter.content)
+            render_fingerprint = _canonical_fingerprint(
+                {
+                    "generation": generation_fingerprint,
+                    "source_index": chapter.index,
+                    "title": chapter.title,
+                    "content_sha256": content_hash,
+                }
+            )
+            if (
+                saved.index != chapter.index
+                or saved.title != chapter.title
+                or saved.content_hash != content_hash
+                or saved.render_fingerprint != render_fingerprint
+            ):
+                self.log(
+                    f"Chapter {chapter.index + 1} changed, starting fresh conversion",
+                    "warning",
+                )
+                return False
+            if saved.completed:
+                if not saved.audio_file:
+                    return False
+                audio_path = work_dir / saved.audio_file
+                try:
+                    if (
+                        not audio_path.is_file()
+                        or sf.info(str(audio_path)).duration <= 0
+                    ):
+                        return False
+                except Exception:
+                    return False
+        return True
+
     def convert_chapters_resumable(  # noqa: C901 - Complex but necessary for resume logic
         self,
         chapters: list[Chapter],
@@ -627,123 +808,45 @@ class TTSConverter:
         prevent_sleep_start()
 
         try:
-            # Set up work directory for chapter files (use book title)
+            # Include source/content identity so same-title books cannot collide.
             safe_book_title = sanitize_filename(self.options.title or output_path.stem)[
                 :50
             ]
-            work_dir = output_path.parent / f".{safe_book_title}_chapters"
+            source_hash = (
+                _hash_file(source_file)
+                if source_file
+                else _canonical_fingerprint(
+                    [
+                        {
+                            "index": chapter.index,
+                            "title": chapter.title,
+                            "content": chapter.content,
+                        }
+                        for chapter in chapters
+                    ]
+                )
+            )
+            source_key = source_hash[:12]
+            work_dir = output_path.parent / f".{safe_book_title}-{source_key}_chapters"
             work_dir.mkdir(parents=True, exist_ok=True)
-            state_file = work_dir / f"{safe_book_title}_state.json"
+            state_file = work_dir / "state.json"
+            generation_fingerprint = self._generation_fingerprint()
 
             # Load or create state
             state: ConversionState | None = None
             if resume and state_file.exists():
                 state = ConversionState.load(state_file)
-                if state:
-                    # Verify source file hasn't changed
-                    source_hash = _hash_file(source_file) if source_file else ""
-                    if source_file and state.source_hash != source_hash:
-                        self.log(
-                            "Source file changed, starting fresh conversion",
-                            "warning",
-                        )
-                        state = None
-                    # Verify chapter count matches
-                    elif len(state.chapters) != len(chapters):
-                        self.log(
-                            f"Chapter count changed "
-                            f"({len(state.chapters)} -> {len(chapters)}), "
-                            "starting fresh conversion",
-                            "warning",
-                        )
-                        state = None
-                    else:
-                        model_settings_changed = (
-                            state.model_quality != self.options.model_quality
-                            or state.model_source != self.options.model_source
-                            or state.model_variant != self.options.model_variant
-                        )
-
-                        if model_settings_changed:
-                            self.log(
-                                "Model settings changed, starting fresh conversion",
-                                "warning",
-                            )
-                            state = None
-                        else:
-                            # Check if settings differ from saved state
-                            settings_changed = (
-                                state.voice != self.options.voice
-                                or state.language != self.options.language
-                                or state.speed != self.options.speed
-                                or state.split_mode != self.options.split_mode
-                                or state.silence_between_chapters
-                                != self.options.silence_between_chapters
-                                or state.pause_clause != self.options.pause_clause
-                                or state.pause_sentence != self.options.pause_sentence
-                                or state.pause_paragraph != self.options.pause_paragraph
-                                or state.pause_variance != self.options.pause_variance
-                                or state.random_seed != self.options.random_seed
-                                or state.pause_mode != self.options.pause_mode
-                                or state.enable_short_sentence
-                                != self.options.enable_short_sentence
-                                or state.short_sentence != self.options.short_sentence
-                                or state.lang != self.options.lang
-                            )
-
-                            if settings_changed:
-                                self.log(
-                                    f"Restoring settings from previous session: "
-                                    f"voice={state.voice}, language={state.language}, "
-                                    f"lang_override={state.lang}, "
-                                    f"speed={state.speed}, "
-                                    f"split_mode={state.split_mode}, "
-                                    f"silence={state.silence_between_chapters}s, "
-                                    f"pauses: clause={state.pause_clause}s "
-                                    f"sent={state.pause_sentence}s "
-                                    f"para={state.pause_paragraph}s "
-                                    f"var={state.pause_variance}s "
-                                    f"seed={state.random_seed} "
-                                    f"pause_mode={state.pause_mode}, "
-                                    f"enable_short_sentence="
-                                    f"{state.enable_short_sentence}, "
-                                    f"short_sentence={state.short_sentence}, "
-                                    f"model_source={state.model_source}, "
-                                    f"model_variant={state.model_variant}, "
-                                    f"model_quality={state.model_quality}",
-                                    "info",
-                                )
-
-                            # Apply saved settings to options for consistency
-                            self.options.voice = state.voice
-                            self.options.language = state.language
-                            self.options.speed = state.speed
-                            self.options.split_mode = state.split_mode
-                            self.options.output_format = state.output_format
-                            self.options.silence_between_chapters = (
-                                state.silence_between_chapters
-                            )
-                            self.options.pause_clause = state.pause_clause
-                            self.options.pause_sentence = state.pause_sentence
-                            self.options.pause_paragraph = state.pause_paragraph
-                            self.options.pause_variance = state.pause_variance
-                            self.options.random_seed = state.random_seed
-                            self.options.pause_mode = state.pause_mode
-                            self.options.enable_short_sentence = (
-                                state.enable_short_sentence
-                            )
-                            self.options.short_sentence = state.short_sentence
-                            self.options.lang = state.lang
-                            self.options.model_quality = state.model_quality
-                            self.options.model_source = state.model_source
-                            self.options.model_variant = state.model_variant
+                if state and not self._resume_state_matches(
+                    state, chapters, source_hash, generation_fingerprint, work_dir
+                ):
+                    state = None
 
             if state is None:
                 # Create new state
-                source_hash = _hash_file(source_file) if source_file else ""
                 state = ConversionState(
                     source_file=str(source_file) if source_file else "",
                     source_hash=source_hash,
+                    version=2,
                     output_file=str(output_path),
                     work_dir=str(work_dir),
                     voice=self.options.voice,
@@ -766,13 +869,23 @@ class TTSConverter:
                     lang=self.options.lang,
                     chapters=[
                         ChapterState(
-                            index=i,
+                            index=ch.index,
                             title=ch.title,
                             content_hash=_hash_content(ch.content),
                             char_count=ch.char_count,
+                            render_fingerprint=_canonical_fingerprint(
+                                {
+                                    "generation": generation_fingerprint,
+                                    "source_index": ch.index,
+                                    "title": ch.title,
+                                    "content_sha256": _hash_content(ch.content),
+                                }
+                            ),
                         )
-                        for i, ch in enumerate(chapters)
+                        for ch in chapters
                     ],
+                    source_selection=[chapter.index for chapter in chapters],
+                    generation_fingerprint=generation_fingerprint,
                     started_at=time.strftime("%Y-%m-%d %H:%M:%S"),
                 )
                 state.save(state_file)
@@ -780,9 +893,6 @@ class TTSConverter:
                 completed = state.get_completed_count()
                 total = len(chapters)
                 self.log(f"Resuming conversion: {completed}/{total} chapters completed")
-
-            # Initialize runner
-            self._init_runner()
 
             phoneme_dict = None
             if self.options.phoneme_dictionary_path:
@@ -928,6 +1038,9 @@ class TTSConverter:
                         self.progress_callback(progress)
                     continue
 
+                # SSMD-only conversion is backend-independent. Initialize the
+                # runner only when an audio artifact is actually rendered.
+                self._init_runner()
                 duration = self._render_chapter_wav(
                     chapter,
                     chapter_file,

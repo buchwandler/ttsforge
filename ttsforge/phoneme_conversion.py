@@ -12,14 +12,13 @@ from collections.abc import Callable
 from dataclasses import dataclass, field
 from pathlib import Path
 from typing import Any, Literal, Optional, cast
+from typing import Literal as _Literal
 
 import numpy as np
 import soundfile as sf
-from pykokoro.onnx_backend import (
-    DEFAULT_MODEL_QUALITY,
+from pykokoro.config_types import (
     DEFAULT_MODEL_SOURCE,
     DEFAULT_MODEL_VARIANT,
-    ModelQuality,
     ModelSource,
     ModelVariant,
 )
@@ -27,8 +26,8 @@ from pykokoro.onnx_backend import (
 from .audio_merge import AudioMerger, MergeMeta
 from .chapter_selection import parse_chapter_selection
 from .constants import ISO_TO_LANG_CODE, SAMPLE_RATE, SUPPORTED_OUTPUT_FORMATS
+from .conversion import _canonical_fingerprint, validate_generation_ranges
 from .kokoro_lang import get_onnx_lang_code
-from .kokoro_runner import KokoroRunner, KokoroRunOptions
 from .phonemes import PhonemeBook, PhonemeChapter, PhonemeSegment
 from .short_sentence_config import resolve_short_sentence_config
 from .utils import (
@@ -41,6 +40,13 @@ from .utils import (
     prevent_sleep_start,
     sanitize_filename,
 )
+
+KokoroRunner: Any | None = None
+KokoroRunOptions: Any | None = None
+ModelQuality = _Literal[
+    "fp32", "fp16", "fp16-gpu", "q8", "q8f16", "q4", "q4f16", "uint8", "uint8f16"
+]
+DEFAULT_MODEL_QUALITY: ModelQuality = "fp32"
 
 
 @dataclass
@@ -90,6 +96,8 @@ class PhonemeChapterState:
     completed: bool = False
     audio_file: str | None = None  # Relative path to chapter audio
     duration: float = 0.0
+    content_hash: str = ""
+    render_fingerprint: str = ""
 
 
 @dataclass
@@ -98,6 +106,7 @@ class PhonemeConversionState:
 
     version: int = 1
     source_file: str = ""
+    source_hash: str = ""
     output_file: str = ""
     work_dir: str = ""
     voice: str = ""
@@ -121,6 +130,7 @@ class PhonemeConversionState:
     last_updated: str = ""
     # Track selected chapters (0-based indices)
     selected_chapters: list[int] = field(default_factory=list)
+    generation_fingerprint: str = ""
 
     def get_completed_count(self) -> int:
         """Get number of completed chapters."""
@@ -138,6 +148,8 @@ class PhonemeConversionState:
             # Reconstruct PhonemeChapterState objects
             chapters = [PhonemeChapterState(**ch) for ch in data.get("chapters", [])]
             data["chapters"] = chapters
+            data.setdefault("source_hash", "")
+            data.setdefault("generation_fingerprint", "")
 
             # Handle missing fields for backward compatibility
             if "silence_between_chapters" not in data:
@@ -194,6 +206,7 @@ class PhonemeConversionState:
         data = {
             "version": self.version,
             "source_file": self.source_file,
+            "source_hash": self.source_hash,
             "output_file": self.output_file,
             "work_dir": self.work_dir,
             "voice": self.voice,
@@ -220,12 +233,15 @@ class PhonemeConversionState:
                     "completed": ch.completed,
                     "audio_file": ch.audio_file,
                     "duration": ch.duration,
+                    "content_hash": ch.content_hash,
+                    "render_fingerprint": ch.render_fingerprint,
                 }
                 for ch in self.chapters
             ],
             "started_at": self.started_at,
             "last_updated": self.last_updated,
             "selected_chapters": self.selected_chapters,
+            "generation_fingerprint": self.generation_fingerprint,
         }
         atomic_write_json(state_file, data, indent=2, ensure_ascii=True)
 
@@ -278,6 +294,17 @@ class PhonemeConversionOptions:
     # Custom voices.bin path (None = use default downloaded voices)
     voices_path: Path | None = None
 
+    def __post_init__(self) -> None:
+        validate_generation_ranges(
+            speed=self.speed,
+            silence_between_chapters=self.silence_between_chapters,
+            pause_clause=self.pause_clause,
+            pause_sentence=self.pause_sentence,
+            pause_paragraph=self.pause_paragraph,
+            pause_variance=self.pause_variance,
+            chapter_pause_after_title=self.chapter_pause_after_title,
+        )
+
 
 class PhonemeConverter:
     """Converts PhonemeBook to audio using pre-tokenized phonemes/tokens."""
@@ -303,7 +330,7 @@ class PhonemeConverter:
         self.progress_callback = progress_callback
         self.log_callback = log_callback
         self._cancel_event = threading.Event()
-        self._runner: KokoroRunner | None = None
+        self._runner: Any | None = None
         self._merger = AudioMerger(log=self.log)
 
     @property
@@ -573,6 +600,102 @@ class PhonemeConverter:
                     return ISO_TO_LANG_CODE.get(lang, lang)
         return None
 
+    def _generation_fingerprint(self) -> str:
+        """Fingerprint every option that can affect phoneme audio output."""
+        options = self.options
+        return _canonical_fingerprint(
+            {
+                "book_vocab_version": self.book.vocab_version,
+                "book_lang": self.book.lang,
+                "voice": options.voice,
+                "voice_blend": options.voice_blend,
+                "voice_database": str(options.voice_database)
+                if options.voice_database
+                else None,
+                "speed": options.speed,
+                "output_format": options.output_format,
+                "use_gpu": options.use_gpu,
+                "model_quality": str(options.model_quality),
+                "model_source": str(options.model_source),
+                "model_variant": str(options.model_variant),
+                "model_path": str(options.model_path) if options.model_path else None,
+                "voices_path": str(options.voices_path)
+                if options.voices_path
+                else None,
+                "silence_between_chapters": options.silence_between_chapters,
+                "pause_clause": options.pause_clause,
+                "pause_sentence": options.pause_sentence,
+                "pause_paragraph": options.pause_paragraph,
+                "pause_variance": options.pause_variance,
+                "random_seed": options.random_seed,
+                "pause_mode": options.pause_mode,
+                "enable_short_sentence": options.enable_short_sentence,
+                "short_sentence": options.short_sentence,
+                "announce_chapters": options.announce_chapters,
+                "chapter_pause_after_title": options.chapter_pause_after_title,
+            }
+        )
+
+    @staticmethod
+    def _chapter_content_hash(chapter: PhonemeChapter) -> str:
+        return _canonical_fingerprint(chapter.to_dict())
+
+    def _resume_state_matches(
+        self,
+        state: PhonemeConversionState,
+        selected_chapters: list[PhonemeChapter],
+        selected_indices: list[int],
+        source_hash: str,
+        generation_fingerprint: str,
+        work_dir: Path,
+    ) -> bool:
+        if state.version < 2:
+            self.log("Legacy phoneme resume state is unsafe; starting fresh", "warning")
+            return False
+        if state.source_hash != source_hash:
+            self.log("Phoneme book contents changed, starting fresh", "warning")
+            return False
+        if state.selected_chapters != selected_indices:
+            self.log("Chapter selection changed, starting fresh conversion", "warning")
+            return False
+        if state.generation_fingerprint != generation_fingerprint:
+            self.log("Phoneme generation settings changed, starting fresh", "warning")
+            return False
+        if len(state.chapters) != len(selected_chapters):
+            return False
+        for saved, chapter, source_index in zip(
+            state.chapters, selected_chapters, selected_indices, strict=True
+        ):
+            content_hash = self._chapter_content_hash(chapter)
+            render_fingerprint = _canonical_fingerprint(
+                {
+                    "generation": generation_fingerprint,
+                    "source_index": source_index,
+                    "title": chapter.title,
+                    "content_sha256": content_hash,
+                }
+            )
+            if (
+                saved.index != source_index
+                or saved.title != chapter.title
+                or saved.content_hash != content_hash
+                or saved.render_fingerprint != render_fingerprint
+            ):
+                return False
+            if saved.completed:
+                if not saved.audio_file:
+                    return False
+                try:
+                    audio_path = work_dir / saved.audio_file
+                    if (
+                        not audio_path.is_file()
+                        or sf.info(str(audio_path)).duration <= 0
+                    ):
+                        return False
+                except Exception:
+                    return False
+        return True
+
     def convert(self, output_path: Path) -> PhonemeConversionResult:
         """
         Convert PhonemeBook to audio with resume capability.
@@ -604,85 +727,37 @@ class PhonemeConverter:
         prevent_sleep_start()
 
         try:
-            # Set up work directory for chapter files (use book title)
             safe_book_title = sanitize_filename(
                 self.options.title or self.book.title or output_path.stem
             )[:50]
-            work_dir = output_path.parent / f".{safe_book_title}_chapters"
+            source_hash = _canonical_fingerprint(self.book.to_dict())
+            work_dir = (
+                output_path.parent / f".{safe_book_title}-{source_hash[:12]}_chapters"
+            )
             work_dir.mkdir(parents=True, exist_ok=True)
-            state_file = work_dir / f"{safe_book_title}_state.json"
+            state_file = work_dir / "state.json"
+            generation_fingerprint = self._generation_fingerprint()
 
             # Load or create state
             state: PhonemeConversionState | None = None
             if self.options.resume and state_file.exists():
                 state = PhonemeConversionState.load(state_file)
-                if state:
-                    # Check if selected chapters match
-                    if state.selected_chapters != selected_indices:
-                        self.log(
-                            "Chapter selection changed, starting fresh conversion",
-                            "warning",
-                        )
-                        state = None
-                    # Check if settings differ from saved state
-                    elif (
-                        state.voice != self.options.voice
-                        or state.speed != self.options.speed
-                        or state.silence_between_chapters
-                        != self.options.silence_between_chapters
-                        or state.pause_clause != self.options.pause_clause
-                        or state.pause_sentence != self.options.pause_sentence
-                        or state.pause_paragraph != self.options.pause_paragraph
-                        or state.pause_variance != self.options.pause_variance
-                        or state.random_seed != self.options.random_seed
-                        or state.pause_mode != self.options.pause_mode
-                        or state.enable_short_sentence
-                        != self.options.enable_short_sentence
-                        or state.short_sentence != self.options.short_sentence
-                        or state.model_quality != self.options.model_quality
-                        or state.model_source != self.options.model_source
-                        or state.model_variant != self.options.model_variant
-                    ):
-                        self.log(
-                            f"Restoring settings from previous session: "
-                            f"voice={state.voice}, speed={state.speed}, "
-                            f"silence={state.silence_between_chapters}s, "
-                            f"pause_clause={state.pause_clause}s, "
-                            f"pause_sentence={state.pause_sentence}s, "
-                            f"pause_paragraph={state.pause_paragraph}s, "
-                            f"pause_variance={state.pause_variance}s, "
-                            f"random_seed={state.random_seed}, "
-                            f"pause_mode={state.pause_mode}, "
-                            f"enable_short_sentence={state.enable_short_sentence}, "
-                            f"short_sentence={state.short_sentence}, "
-                            f"model_source={state.model_source}, "
-                            f"model_variant={state.model_variant}, "
-                            f"model_quality={state.model_quality}",
-                            "info",
-                        )
-                        # Apply saved settings for consistency
-                        self.options.voice = state.voice
-                        self.options.speed = state.speed
-                        self.options.output_format = state.output_format
-                        self.options.silence_between_chapters = (
-                            state.silence_between_chapters
-                        )
-                        self.options.pause_clause = state.pause_clause
-                        self.options.pause_sentence = state.pause_sentence
-                        self.options.pause_paragraph = state.pause_paragraph
-                        self.options.pause_variance = state.pause_variance
-                        self.options.random_seed = state.random_seed
-                        self.options.pause_mode = state.pause_mode
-                        self.options.enable_short_sentence = state.enable_short_sentence
-                        self.options.short_sentence = state.short_sentence
-                        self.options.model_quality = state.model_quality
-                        self.options.model_source = state.model_source
-                        self.options.model_variant = state.model_variant
+                if state and not self._resume_state_matches(
+                    state,
+                    selected_chapters,
+                    selected_indices,
+                    source_hash,
+                    generation_fingerprint,
+                    work_dir,
+                ):
+                    state = None
 
             if state is None:
                 # Create new state
                 state = PhonemeConversionState(
+                    version=2,
                     source_file=str(self.book.title),
+                    source_hash=source_hash,
                     output_file=str(output_path),
                     work_dir=str(work_dir),
                     voice=self.options.voice,
@@ -705,11 +780,25 @@ class PhonemeConverter:
                             index=idx,
                             title=self.book.chapters[idx].title,
                             segment_count=len(self.book.chapters[idx].segments),
+                            content_hash=self._chapter_content_hash(
+                                self.book.chapters[idx]
+                            ),
+                            render_fingerprint=_canonical_fingerprint(
+                                {
+                                    "generation": generation_fingerprint,
+                                    "source_index": idx,
+                                    "title": self.book.chapters[idx].title,
+                                    "content_sha256": self._chapter_content_hash(
+                                        self.book.chapters[idx]
+                                    ),
+                                }
+                            ),
                         )
                         for idx in selected_indices
                     ],
                     started_at=time.strftime("%Y-%m-%d %H:%M:%S"),
                     selected_chapters=selected_indices,
+                    generation_fingerprint=generation_fingerprint,
                 )
                 state.save(state_file)
             else:
@@ -717,7 +806,16 @@ class PhonemeConverter:
                 total = len(selected_chapters)
                 self.log(f"Resuming conversion: {completed}/{total} chapters completed")
 
-            opts = KokoroRunOptions(
+            runner_options = cast(Any, KokoroRunOptions)
+            runner_type = cast(Any, KokoroRunner)
+            if runner_options is None:
+                from .kokoro_runner import (
+                    KokoroRunOptions as runner_options,
+                )
+            if runner_type is None:
+                from .kokoro_runner import KokoroRunner as runner_type
+
+            opts = runner_options(
                 voice=self.options.voice,
                 speed=self.options.speed,
                 use_gpu=self.options.use_gpu,
@@ -740,7 +838,7 @@ class PhonemeConverter:
                 voice_blend=self.options.voice_blend,
                 voice_database=self.options.voice_database,
             )
-            self._runner = KokoroRunner(opts, log=self.log)
+            self._runner = runner_type(opts, log=self.log)
             self._runner.ensure_ready()
 
             total_segments = sum(len(ch.segments) for ch in selected_chapters)
@@ -927,7 +1025,16 @@ class PhonemeConverter:
         prevent_sleep_start()
 
         try:
-            opts = KokoroRunOptions(
+            runner_options = cast(Any, KokoroRunOptions)
+            runner_type = cast(Any, KokoroRunner)
+            if runner_options is None:
+                from .kokoro_runner import (
+                    KokoroRunOptions as runner_options,
+                )
+            if runner_type is None:
+                from .kokoro_runner import KokoroRunner as runner_type
+
+            opts = runner_options(
                 voice=self.options.voice,
                 speed=self.options.speed,
                 use_gpu=self.options.use_gpu,
@@ -950,7 +1057,7 @@ class PhonemeConverter:
                 voice_blend=self.options.voice_blend,
                 voice_database=self.options.voice_database,
             )
-            self._runner = KokoroRunner(opts, log=self.log)
+            self._runner = runner_type(opts, log=self.log)
             self._runner.ensure_ready()
 
             total_segments = sum(len(ch.segments) for ch in selected_chapters)

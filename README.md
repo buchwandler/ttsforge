@@ -33,6 +33,10 @@ with support for 54 neural voices across 9 languages.
 pip install ttsforge
 ```
 
+The base installation includes the CPU ONNX Runtime provider. Provider-dependent modules
+are loaded only when rendering audio, so `import ttsforge` and `ttsforge --help` remain
+usable for configuration and inspection operations.
+
 Optional extras:
 
 ```bash
@@ -42,7 +46,7 @@ pip install "ttsforge[audio]"
 # Bundled ffmpeg (if you cannot install system ffmpeg)
 pip install "ttsforge[static_ffmpeg]"
 
-# GPU acceleration (CUDA)
+# GPU acceleration (CUDA; use a fresh environment when replacing the CPU provider)
 pip install "ttsforge[gpu]"
 ```
 

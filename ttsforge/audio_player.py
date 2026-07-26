@@ -322,6 +322,21 @@ class StreamingAudioPlayer:
             audio = audio.flatten()
 
         audio_len = len(audio)
+        if audio_len == 0:
+            return
+
+        # A single chunk larger than the configured capacity can never pass
+        # the backpressure condition. Split it before reserving queue space.
+        chunk_limit = max(1, self._max_buffer_samples)
+        for start in range(0, audio_len, chunk_limit):
+            if self._should_stop.is_set():
+                return
+            self._enqueue_chunk(audio[start : start + chunk_limit])
+
+    def _enqueue_chunk(self, audio: np.ndarray) -> None:
+        """Reserve and enqueue one chunk, rolling back on every failed put."""
+        audio_len = len(audio)
+        reserved = False
         with self._queue_not_full:
             while self._queued_samples + audio_len > self._max_buffer_samples:
                 if self._should_stop.is_set():
@@ -332,20 +347,29 @@ class StreamingAudioPlayer:
                 return
 
             self._queued_samples += audio_len
+            reserved = True
 
-        while True:
-            try:
-                self._audio_queue.put(audio, timeout=0.1)
-                break
-            except queue.Full:
-                if self._should_stop.is_set():
-                    break
-
-        if self._should_stop.is_set():
-            with self._queue_not_full:
-                self._queued_samples = max(0, self._queued_samples - audio_len)
-                self._queue_not_full.notify_all()
-            return
+        try:
+            while True:
+                try:
+                    self._audio_queue.put(audio, timeout=0.1)
+                    reserved = False
+                    return
+                except queue.Full:
+                    if self._should_stop.is_set():
+                        return
+        except Exception:
+            if reserved:
+                with self._queue_not_full:
+                    self._queued_samples = max(0, self._queued_samples - audio_len)
+                    self._queue_not_full.notify_all()
+                reserved = False
+            raise
+        finally:
+            if reserved:
+                with self._queue_not_full:
+                    self._queued_samples = max(0, self._queued_samples - audio_len)
+                    self._queue_not_full.notify_all()
 
     def finish_adding(self) -> None:
         """Signal that no more audio will be added."""

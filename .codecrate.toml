@@ -5,7 +5,30 @@ dedupe = false
 metadata = false
 manifest = false
 respect_gitignore = true
-exclude = ["*/.venv/*"]
-include = ["**/*.py", "**/*.toml", "**/*.rst", "**/*.md"]
+exclude = [
+  "*/.venv/*",
+  ".sample-*",
+  "context_ttsforge.*",
+  "reconstructed",
+  "reconstructed/**",
+  "**/reconstructed/**",
+  "codecrate-pack.log",
+]
+gitignore_allow = ["ttsforge/_version.py"]
+include = [
+  "**/*.py",
+  "**/*.toml",
+  "**/*.rst",
+  "**/*.md",
+  "**/*.json",
+  "**/*.txt",
+  "**/*.csv",
+  "**/*.tsv",
+  "**/*.yaml",
+  "**/*.yml",
+  "LICENSE",
+]
 split_max_chars = 0
 layout = "full"
+profile = "portable-agent"
+emit_standalone_unpacker = true

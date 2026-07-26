@@ -224,7 +224,7 @@ demo_*.py
 # Test data files
 test_*.txt
 punctuation_phonemes.json
-context_ttsforge.md
+context_ttsforge.*
 *.epub
 *.pdf
 .sample_chapters

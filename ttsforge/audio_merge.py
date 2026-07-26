@@ -1,6 +1,9 @@
 # ttsforge/audio_merge.py
 from __future__ import annotations
 
+import os
+import subprocess
+import tempfile
 from dataclasses import dataclass
 from pathlib import Path
 from typing import Any, Protocol
@@ -28,6 +31,60 @@ class AudioMerger:
     def __init__(self, log: LogCallback):
         self.log = log
 
+    @staticmethod
+    def _concat_path(path: Path) -> str:
+        """Quote a path for FFmpeg's concat demuxer."""
+        value = str(path.absolute())
+        if "\n" in value or "\r" in value:
+            raise ValueError(f"FFmpeg concat paths cannot contain newlines: {path}")
+        value = value.replace("\\", "\\\\").replace("'", "'\\''")
+        return f"'{value}'"
+
+    @staticmethod
+    def _metadata_value(value: object) -> str:
+        """Escape FFmetadata control characters without changing semantics."""
+        return (
+            str(value)
+            .replace("\\", "\\\\")
+            .replace("\r", "\\r")
+            .replace("\n", "\\n")
+            .replace("=", "\\=")
+            .replace(";", "\\;")
+            .replace("#", "\\#")
+        )
+
+    @staticmethod
+    def _validate_inputs(
+        chapter_files: list[Path],
+        chapter_durations: list[float],
+        chapter_titles: list[str],
+    ) -> None:
+        if not chapter_files:
+            raise ValueError("At least one chapter file is required")
+        if not (len(chapter_files) == len(chapter_durations) == len(chapter_titles)):
+            raise ValueError(
+                "chapter_files, chapter_durations, and chapter_titles must have "
+                "equal lengths"
+            )
+        missing = [str(path) for path in chapter_files if not path.is_file()]
+        if missing:
+            raise FileNotFoundError(
+                f"Chapter audio file(s) not found: {', '.join(missing)}"
+            )
+        if any(duration < 0 for duration in chapter_durations):
+            raise ValueError("Chapter durations cannot be negative")
+
+    @staticmethod
+    def _run_ffmpeg(cmd: list[str], operation: str) -> None:
+        result = create_process(cmd, capture_output=True)
+        assert isinstance(result, subprocess.CompletedProcess)
+        if result.returncode == 0:
+            return
+        stderr = result.stderr or ""
+        tail = str(stderr)[-2000:]
+        detail = f"\nFFmpeg output (tail):\n{tail}" if tail else ""
+        raise RuntimeError(f"ffmpeg failed while {operation}{detail}")
+
     def add_chapters_to_m4b(
         self, output_path: Path, chapters: list[dict[str, Any]], cover: Path | None
     ) -> None:
@@ -35,47 +92,47 @@ class AudioMerger:
             return
         ffmpeg = get_ffmpeg_path()
 
-        chapters_file = output_path.with_suffix(".chapters.txt")
-        chapters_file.write_text(self._ffmetadata(chapters), encoding="utf-8")
-
-        tmp_path = output_path.with_suffix(".tmp.m4b")
-        cmd = [
-            ffmpeg,
-            "-y",
-            "-i",
-            str(output_path),
-            "-i",
-            str(chapters_file),
-            "-map",
-            "0:a",
-            "-map_metadata",
-            "1",
-            "-map_chapters",
-            "1",
-            "-c:a",
-            "copy",
-        ]
-
-        if cover and cover.exists():
-            cmd += [
+        if not output_path.is_file():
+            raise FileNotFoundError(f"M4B output not found: {output_path}")
+        with tempfile.TemporaryDirectory(
+            dir=output_path.parent, prefix=f".{output_path.stem}.ttsforge-"
+        ) as temp_name:
+            temp_dir = Path(temp_name)
+            chapters_file = temp_dir / "chapters.txt"
+            chapters_file.write_text(self._ffmetadata(chapters), encoding="utf-8")
+            tmp_path = temp_dir / output_path.name
+            cmd = [
+                ffmpeg,
+                "-y",
                 "-i",
-                str(cover),
+                str(output_path),
+                "-i",
+                str(chapters_file),
                 "-map",
-                "2",
-                "-c:v",
+                "0:a",
+                "-map_metadata",
+                "1",
+                "-map_chapters",
+                "1",
+                "-c:a",
                 "copy",
-                "-disposition:v",
-                "attached_pic",
             ]
 
-        cmd.append(str(tmp_path))
-        proc = create_process(cmd, suppress_output=True)
-        rc = proc.wait()
-        if rc != 0:
-            raise RuntimeError("ffmpeg failed while adding m4b chapters")
+            if cover and cover.exists():
+                cmd += [
+                    "-i",
+                    str(cover),
+                    "-map",
+                    "2",
+                    "-c:v",
+                    "copy",
+                    "-disposition:v",
+                    "attached_pic",
+                ]
 
-        tmp_path.replace(output_path)
-        chapters_file.unlink(missing_ok=True)
+            cmd.append(str(tmp_path))
+            self._run_ffmpeg(cmd, "adding m4b chapters")
+            os.replace(tmp_path, output_path)
 
     def merge_chapter_wavs(
         self,
@@ -85,75 +142,80 @@ class AudioMerger:
         output_path: Path,
         meta: MergeMeta,
     ) -> None:
+        self._validate_inputs(chapter_files, chapter_durations, chapter_titles)
         if meta.fmt == "wav":
-            self._merge_wavs(chapter_files, output_path, meta.silence_between_chapters)
+            with tempfile.TemporaryDirectory(
+                dir=output_path.parent, prefix=f".{output_path.stem}.ttsforge-"
+            ) as temp_name:
+                temp_output = Path(temp_name) / output_path.name
+                self._merge_wavs(
+                    chapter_files, temp_output, meta.silence_between_chapters
+                )
+                os.replace(temp_output, output_path)
             return
 
         ffmpeg = get_ffmpeg_path()
+        with tempfile.TemporaryDirectory(
+            dir=output_path.parent, prefix=f".{output_path.stem}.ttsforge-"
+        ) as temp_name:
+            temp_dir = Path(temp_name)
+            concat_file = temp_dir / "concat.txt"
+            silence_file = temp_dir / "silence.wav"
+            temp_output = temp_dir / output_path.name
 
-        concat_file = output_path.with_suffix(".concat.txt")
-        silence_file = output_path.parent / "_silence.wav"
+            if meta.silence_between_chapters > 0 and len(chapter_files) > 1:
+                self._write_silence_wav(silence_file, meta.silence_between_chapters)
 
-        if meta.silence_between_chapters > 0 and len(chapter_files) > 1:
-            self._write_silence_wav(silence_file, meta.silence_between_chapters)
+            with concat_file.open("w", encoding="utf-8") as f:
+                for i, ch in enumerate(chapter_files):
+                    f.write(f"file {self._concat_path(ch)}\n")
+                    if i < len(chapter_files) - 1 and meta.silence_between_chapters > 0:
+                        f.write(f"file {self._concat_path(silence_file)}\n")
 
-        with concat_file.open("w", encoding="utf-8") as f:
-            for i, ch in enumerate(chapter_files):
-                f.write(f"file '{ch.absolute()}'\n")
-                if i < len(chapter_files) - 1 and meta.silence_between_chapters > 0:
-                    f.write(f"file '{silence_file.absolute()}'\n")
+            cmd = [ffmpeg, "-y", "-f", "concat", "-safe", "0", "-i", str(concat_file)]
 
-        cmd = [ffmpeg, "-y", "-f", "concat", "-safe", "0", "-i", str(concat_file)]
-
-        if meta.fmt == "m4b":
-            if meta.cover_image and meta.cover_image.exists():
+            if meta.fmt == "m4b":
+                if meta.cover_image and meta.cover_image.exists():
+                    cmd += [
+                        "-i",
+                        str(meta.cover_image),
+                        "-map",
+                        "0:a",
+                        "-map",
+                        "1",
+                        "-c:v",
+                        "copy",
+                        "-disposition:v",
+                        "attached_pic",
+                    ]
                 cmd += [
-                    "-i",
-                    str(meta.cover_image),
-                    "-map",
-                    "0:a",
-                    "-map",
-                    "1",
-                    "-c:v",
-                    "copy",
-                    "-disposition:v",
-                    "attached_pic",
+                    "-c:a",
+                    "aac",
+                    "-q:a",
+                    "2",
+                    "-movflags",
+                    "+faststart+use_metadata_tags",
                 ]
-            cmd += [
-                "-c:a",
-                "aac",
-                "-q:a",
-                "2",
-                "-movflags",
-                "+faststart+use_metadata_tags",
-            ]
-            if meta.title:
-                cmd += ["-metadata", f"title={meta.title}"]
-            if meta.author:
-                cmd += ["-metadata", f"artist={meta.author}"]
-        elif meta.fmt == "opus":
-            cmd += ["-c:a", "libopus", "-b:a", "24000"]
-        elif meta.fmt == "mp3":
-            cmd += ["-c:a", "libmp3lame", "-q:a", "2"]
-        elif meta.fmt == "flac":
-            cmd += ["-c:a", "flac"]
-        elif meta.fmt == "wav":
-            cmd += ["-c:a", "pcm_s16le"]
+                if meta.title:
+                    cmd += ["-metadata", f"title={meta.title}"]
+                if meta.author:
+                    cmd += ["-metadata", f"artist={meta.author}"]
+            elif meta.fmt == "opus":
+                cmd += ["-c:a", "libopus", "-b:a", "24000"]
+            elif meta.fmt == "mp3":
+                cmd += ["-c:a", "libmp3lame", "-q:a", "2"]
+            elif meta.fmt == "flac":
+                cmd += ["-c:a", "flac"]
 
-        cmd.append(str(output_path))
-        proc = create_process(cmd, suppress_output=True)
-        rc = proc.wait()
-        if rc != 0:
-            raise RuntimeError("ffmpeg failed while merging chapters")
-
-        concat_file.unlink(missing_ok=True)
-        silence_file.unlink(missing_ok=True)
+            cmd.append(str(temp_output))
+            self._run_ffmpeg(cmd, "merging chapters")
+            os.replace(temp_output, output_path)
 
         if meta.fmt == "m4b" and len(chapter_files) > 1:
             times = []
             t = 0.0
             for i, (dur, title) in enumerate(
-                zip(chapter_durations, chapter_titles, strict=False)
+                zip(chapter_durations, chapter_titles, strict=True)
             ):
                 times.append({"title": title, "start": t, "end": t + dur})
                 t += dur
@@ -211,7 +273,7 @@ class AudioMerger:
     def _ffmetadata(self, chapters: list[dict[str, Any]]) -> str:
         lines = [";FFMETADATA1"]
         for ch in chapters:
-            title = str(ch["title"]).replace("=", "\\=")
+            title = self._metadata_value(ch["title"])
             lines += [
                 "[CHAPTER]",
                 "TIMEBASE=1/1000",

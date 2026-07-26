@@ -114,6 +114,11 @@ From PyPI (Recommended)
 
    pip install ttsforge
 
+The base installation includes the CPU ONNX Runtime provider. Provider-dependent
+modules are loaded only when audio rendering starts, so ``import ttsforge``,
+``ttsforge --help``, and configuration/inspection commands work without model
+initialization.
+
 Optional extras:
 
 .. code-block:: bash
@@ -151,11 +156,12 @@ For development with testing and linting tools:
 GPU Acceleration (Optional)
 ---------------------------
 
-For GPU-accelerated inference, install onnxruntime-gpu:
+For GPU-accelerated inference, install the GPU extra in a fresh environment so
+the CPU and GPU ONNX Runtime distributions are not installed together:
 
 .. code-block:: bash
 
-   pip install onnxruntime-gpu
+   pip install "ttsforge[gpu]"
 
 Then enable GPU in your configuration:
 

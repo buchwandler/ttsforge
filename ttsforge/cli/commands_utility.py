@@ -617,7 +617,7 @@ def _resolve_voice_names(
     model_variant: ModelVariant = "v1.0",
 ) -> list[str]:
     """Return the list of voice names for the given model variant."""
-    return VOICE_NAMES_BY_VARIANT.get(model_variant, VOICE_NAMES)
+    return list(VOICE_NAMES_BY_VARIANT.get(model_variant, VOICE_NAMES))
 
 
 def _get_cache_voices_path(

@@ -12,6 +12,7 @@ from ttsforge.utils import (
     create_process,
     ensure_ffmpeg,
     format_filename_template,
+    resolve_conversion_defaults,
     run_process,
     sanitize_filename,
 )
@@ -19,6 +20,30 @@ from ttsforge.utils import (
 
 def test_sanitize_filename() -> None:
     assert sanitize_filename("Hello: World/Testing?") == "Hello_WorldTesting"
+
+
+@pytest.mark.parametrize(
+    ("key", "value"),
+    [
+        ("voice", ""),
+        ("language", ""),
+        ("speed", 0.0),
+        ("use_gpu", False),
+        ("split_mode", ""),
+    ],
+)
+def test_resolve_conversion_defaults_preserves_falsey_overrides(
+    key: str, value: object
+) -> None:
+    config = {
+        "default_voice": "af_heart",
+        "default_language": "a",
+        "default_speed": 1.0,
+        "default_split_mode": "auto",
+        "use_gpu": True,
+        "phonemization_lang": "en-us",
+    }
+    assert resolve_conversion_defaults(config, {key: value})[key] == value
 
 
 def test_format_filename_template() -> None:
@@ -65,6 +90,37 @@ def test_atomic_write_json_preserves_original(
         atomic_write_json(path, {"ok": False}, indent=2, ensure_ascii=True)
 
     assert path.read_text(encoding="utf-8") == original
+
+
+def test_atomic_write_json_uses_unique_same_directory_temps(tmp_path: Path) -> None:
+    path = tmp_path / "state.json"
+    temp_names: list[str] = []
+    original_replace = os.replace
+
+    def record_replace(
+        src: str | os.PathLike[str], dst: str | os.PathLike[str]
+    ) -> None:
+        temp_names.append(Path(src).name)
+        original_replace(src, dst)
+
+    import threading
+
+    # Sequential calls still prove the old shared `<target>.tmp` protocol is
+    # gone; separate threads exercise the same-directory writer path.
+    with pytest.MonkeyPatch.context() as monkeypatch:
+        monkeypatch.setattr(os, "replace", record_replace)
+        threads = [
+            threading.Thread(target=atomic_write_json, args=(path, {"i": i}))
+            for i in range(4)
+        ]
+        for thread in threads:
+            thread.start()
+        for thread in threads:
+            thread.join()
+
+    assert len(temp_names) == 4
+    assert len(set(temp_names)) == 4
+    assert not (tmp_path / "state.json.tmp").exists()
 
 
 def test_ensure_ffmpeg_system_available(monkeypatch: pytest.MonkeyPatch) -> None:

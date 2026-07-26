@@ -15,6 +15,7 @@ Kokoro ONNX TTS (Text-to-Speech).
    configuration
    filename_templates
    voices
+   testing
 
 .. toctree::
    :maxdepth: 2

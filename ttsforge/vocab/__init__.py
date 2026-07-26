@@ -7,7 +7,7 @@ functions for backward compatibility with existing ttsforge code.
 from __future__ import annotations
 
 from pathlib import Path
-from typing import TYPE_CHECKING
+from typing import TYPE_CHECKING, cast
 
 import kokorog2p
 from kokorog2p.vocab import (
@@ -84,7 +84,7 @@ def load_vocab(config_path: Path | str | None = None) -> dict[str, int]:
             )
         # Otherwise ignore and use kokorog2p vocab
 
-    return _get_kokoro_vocab()
+    return cast(dict[str, int], _get_kokoro_vocab())
 
 
 def get_vocab_info(config_path: Path | str | None = None) -> dict:

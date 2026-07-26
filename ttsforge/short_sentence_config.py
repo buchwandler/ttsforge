@@ -365,7 +365,7 @@ def _build_short_sentence_config(
         has_natural_phrases=_has_option(data, "natural-phrases"),
         has_end_phrases=_has_option(data, "end-phrases"),
     ):
-        mode = fallback_mode
+        mode = cast(str, fallback_mode)
 
     phrase = PhraseResolveMode(
         phrase_selection=cast(Any, selection),

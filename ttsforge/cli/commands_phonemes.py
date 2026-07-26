@@ -12,7 +12,7 @@ from pathlib import Path
 from typing import Any, cast
 
 import click
-from pykokoro.onnx_backend import DEFAULT_MODEL_QUALITY, ModelQuality
+from pykokoro.config_types import ModelQuality
 from rich.progress import (
     BarColumn,
     Progress,
@@ -38,8 +38,12 @@ from ..utils import (
     format_filename_template,
     load_config,
 )
-from .commands_utility import _resolve_model_source_and_variant
+from .backend_config import (
+    resolve_model_source_and_variant as _resolve_model_source_and_variant,
+)
 from .helpers import console, parse_voice_parameter
+
+DEFAULT_MODEL_QUALITY: ModelQuality = "fp32"
 
 
 def _require_sounddevice() -> Any:
@@ -339,7 +343,13 @@ def phonemes_export(
     help="Output audio format.",
 )
 @click.option("-v", "--voice", type=click.Choice(VOICES), help="Voice to use for TTS.")
-@click.option("-s", "--speed", type=float, default=1.0, help="Speech speed.")
+@click.option(
+    "-s",
+    "--speed",
+    type=click.FloatRange(min=0.5, max=2.0),
+    default=1.0,
+    help="Speech speed.",
+)
 @click.option(
     "--gpu/--no-gpu",
     "use_gpu",
@@ -348,31 +358,31 @@ def phonemes_export(
 )
 @click.option(
     "--silence",
-    type=float,
+    type=click.FloatRange(min=0.0),
     default=2.0,
     help="Silence between chapters in seconds.",
 )
 @click.option(
     "--pause-clause",
-    type=float,
+    type=click.FloatRange(min=0.0),
     default=None,
     help="Pause after clauses in seconds (default: 0.25).",
 )
 @click.option(
     "--pause-sentence",
-    type=float,
+    type=click.FloatRange(min=0.0),
     default=None,
     help="Pause after sentences in seconds (default: 0.2).",
 )
 @click.option(
     "--pause-paragraph",
-    type=float,
+    type=click.FloatRange(min=0.0),
     default=None,
     help="Pause after paragraphs in seconds (default: 0.75).",
 )
 @click.option(
     "--pause-variance",
-    type=float,
+    type=click.FloatRange(min=0.0),
     default=None,
     help="Random variance added to pauses in seconds (default: 0.05).",
 )
@@ -407,7 +417,7 @@ def phonemes_export(
 )
 @click.option(
     "--chapter-pause",
-    type=float,
+    type=click.FloatRange(min=0.0),
     default=None,
     help="Pause duration after chapter title announcement in seconds (default: 2.0).",
 )

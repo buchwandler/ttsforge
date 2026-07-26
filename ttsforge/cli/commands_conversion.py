@@ -18,7 +18,7 @@ from typing import Literal, TypedDict, cast
 
 import click
 import numpy as np
-from pykokoro.onnx_backend import DEFAULT_MODEL_QUALITY, ModelQuality
+from pykokoro.config_types import ModelQuality
 from rich.panel import Panel
 from rich.progress import (
     BarColumn,
@@ -66,8 +66,15 @@ from ..utils import (
     load_config,
     resolve_conversion_defaults,
 )
-from .commands_utility import _resolve_model_source_and_variant, _resolve_voice_names
+from .backend_config import (
+    resolve_model_source_and_variant as _resolve_model_source_and_variant,
+)
+from .backend_config import (
+    resolve_voice_names as _resolve_voice_names,
+)
 from .helpers import DEFAULT_SAMPLE_TEXT, console, parse_voice_parameter
+
+DEFAULT_MODEL_QUALITY: ModelQuality = "fp32"
 
 
 class ContentItem(TypedDict):
@@ -122,7 +129,7 @@ def get_voices() -> list[str]:
 @click.option(
     "-s",
     "--speed",
-    type=float,
+    type=click.FloatRange(min=0.5, max=2.0),
     help="Speech speed (0.5 to 2.0).",
 )
 @click.option(
@@ -143,30 +150,30 @@ def get_voices() -> list[str]:
 )
 @click.option(
     "--silence",
-    type=float,
+    type=click.FloatRange(min=0.0),
     help="Silence duration between chapters in seconds.",
 )
 @click.option(
     "--pause-clause",
-    type=float,
+    type=click.FloatRange(min=0.0),
     default=None,
     help="Pause after clauses in seconds (default: 0.25).",
 )
 @click.option(
     "--pause-sentence",
-    type=float,
+    type=click.FloatRange(min=0.0),
     default=None,
     help="Pause after sentences in seconds (default: 0.2).",
 )
 @click.option(
     "--pause-paragraph",
-    type=float,
+    type=click.FloatRange(min=0.0),
     default=None,
     help="Pause after paragraphs in seconds (default: 0.75).",
 )
 @click.option(
     "--pause-variance",
-    type=float,
+    type=click.FloatRange(min=0.0),
     default=None,
     help="Random variance added to pauses in seconds (default: 0.05).",
 )
@@ -208,7 +215,7 @@ def get_voices() -> list[str]:
 )
 @click.option(
     "--chapter-pause",
-    type=float,
+    type=click.FloatRange(min=0.0),
     default=None,
     help="Pause duration after chapter title announcement in seconds (default: 2.0).",
 )
@@ -290,9 +297,9 @@ def get_voices() -> list[str]:
     help="Path to custom voice database (SQLite).",
 )
 @click.option(
-    "--use-mixed-language",
+    "--use-mixed-language/--no-use-mixed-language",
     "use_mixed_language",
-    is_flag=True,
+    default=None,
     help="Enable mixed-language support (auto-detect multiple languages in text).",
 )
 @click.option(
@@ -310,7 +317,7 @@ def get_voices() -> list[str]:
 @click.option(
     "--mixed-language-confidence",
     "mixed_language_confidence",
-    type=float,
+    type=click.FloatRange(min=0.0, max=1.0),
     help=(
         "Detection confidence threshold for mixed-language mode "
         "(0.0-1.0, default: 0.7)."
@@ -323,9 +330,9 @@ def get_voices() -> list[str]:
     help="Path to custom phoneme dictionary JSON file for pronunciation overrides.",
 )
 @click.option(
-    "--phoneme-dict-case-sensitive",
+    "--phoneme-dict-case-sensitive/--no-phoneme-dict-case-sensitive",
     "phoneme_dict_case_sensitive",
-    is_flag=True,
+    default=None,
     help="Make phoneme dictionary matching case-sensitive (default: case-insensitive).",
 )
 @click.option(
@@ -374,12 +381,12 @@ def convert(  # noqa: C901
     keep_chapter_files: bool,
     voice_blend: str | None,
     voice_database: Path | None,
-    use_mixed_language: bool,
+    use_mixed_language: bool | None,
     mixed_language_primary: str | None,
     mixed_language_allowed: str | None,
     mixed_language_confidence: float | None,
     phoneme_dictionary_path: str | None,
-    phoneme_dict_case_sensitive: bool,
+    phoneme_dict_case_sensitive: bool | None,
     subchapter_markers: tuple[str, ...],
 ) -> None:
     """Convert an EPUB file to an audiobook.
@@ -403,7 +410,18 @@ def convert(  # noqa: C901
         config,
         subchapter_markers=subchapter_markers,
     )
-    effective_language = language or config.get("default_language", "a")
+    resolved_defaults = resolve_conversion_defaults(
+        config,
+        {
+            "voice": voice,
+            "language": language,
+            "speed": speed,
+            "split_mode": split_mode,
+            "use_gpu": use_gpu,
+            "lang": lang,
+        },
+    )
+    effective_language = resolved_defaults["language"]
     effective_enable_short_sentence = (
         enable_short_sentence
         if enable_short_sentence is not None
@@ -418,7 +436,11 @@ def convert(  # noqa: C901
     )
 
     # Get format first (needed for output path construction)
-    fmt = output_format or config.get("default_format", "m4b")
+    fmt = (
+        output_format
+        if output_format is not None
+        else config.get("default_format", "m4b")
+    )
 
     # Load chapters from input file
     console.print(f"[bold]Loading:[/bold] {epub_file}")
@@ -549,7 +571,7 @@ def convert(  # noqa: C901
 
     # Parse mixed_language_allowed from comma-separated string
     parsed_mixed_language_allowed = None
-    if mixed_language_allowed:
+    if mixed_language_allowed is not None:
         parsed_mixed_language_allowed = [
             lang.strip() for lang in mixed_language_allowed.split(",")
         ]
@@ -618,25 +640,39 @@ def convert(  # noqa: C901
 
     # Create conversion options
     options = ConversionOptions(
-        voice=voice or config.get("default_voice", "af_heart"),
+        voice=resolved_defaults["voice"],
         language=effective_language,
-        speed=speed or config.get("default_speed", 1.0),
-        output_format=output_format or config.get("default_format", "m4b"),
+        speed=resolved_defaults["speed"],
+        output_format=(
+            output_format
+            if output_format is not None
+            else config.get("default_format", "m4b")
+        ),
         output_dir=output.parent,
         use_gpu=use_gpu if use_gpu is not None else config.get("use_gpu", False),
         model_quality=model_quality,
         model_source=model_source,
         model_variant=model_variant,
-        silence_between_chapters=silence or config.get("silence_between_chapters", 2.0),
-        lang=lang or config.get("phonemization_lang"),
+        silence_between_chapters=(
+            silence
+            if silence is not None
+            else config.get("silence_between_chapters", 2.0)
+        ),
+        lang=(lang if lang is not None else config.get("phonemization_lang")),
         use_mixed_language=(
-            use_mixed_language or config.get("use_mixed_language", False)
+            use_mixed_language
+            if use_mixed_language is not None
+            else config.get("use_mixed_language", False)
         ),
         mixed_language_primary=(
-            mixed_language_primary or config.get("mixed_language_primary")
+            mixed_language_primary
+            if mixed_language_primary is not None
+            else config.get("mixed_language_primary")
         ),
         mixed_language_allowed=(
-            parsed_mixed_language_allowed or config.get("mixed_language_allowed")
+            parsed_mixed_language_allowed
+            if parsed_mixed_language_allowed is not None
+            else config.get("mixed_language_allowed")
         ),
         mixed_language_confidence=(
             mixed_language_confidence
@@ -644,11 +680,14 @@ def convert(  # noqa: C901
             else config.get("mixed_language_confidence", 0.7)
         ),
         phoneme_dictionary_path=(
-            phoneme_dictionary_path or config.get("phoneme_dictionary_path")
+            phoneme_dictionary_path
+            if phoneme_dictionary_path is not None
+            else config.get("phoneme_dictionary_path")
         ),
         phoneme_dict_case_sensitive=(
             phoneme_dict_case_sensitive
-            or config.get("phoneme_dict_case_sensitive", False)
+            if phoneme_dict_case_sensitive is not None
+            else config.get("phoneme_dict_case_sensitive", False)
         ),
         pause_clause=(
             pause_clause
@@ -686,7 +725,7 @@ def convert(  # noqa: C901
             if chapter_pause is not None
             else config.get("chapter_pause_after_title", 2.0)
         ),
-        split_mode=split_mode or config.get("default_split_mode", "auto"),
+        split_mode=resolved_defaults["split_mode"],
         resume=resume,
         keep_chapter_files=keep_chapter_files,
         title=effective_title,
@@ -947,7 +986,12 @@ def info(epub_file: Path) -> None:
     default=None,
     help="Override language for phonemization (e.g., 'de', 'fr', 'en-us').",
 )
-@click.option("-s", "--speed", type=float, help="Speech speed (default: 1.0).")
+@click.option(
+    "-s",
+    "--speed",
+    type=click.FloatRange(min=0.5, max=2.0),
+    help="Speech speed (default: 1.0).",
+)
 @click.option(
     "--seed",
     "random_seed",
@@ -996,7 +1040,7 @@ def info(epub_file: Path) -> None:
 @click.option(
     "--mixed-language-confidence",
     "mixed_language_confidence",
-    type=float,
+    type=click.FloatRange(min=0.0, max=1.0),
     help=(
         "Detection confidence threshold for mixed-language mode "
         "(0.0-1.0, default: 0.7)."
@@ -1466,7 +1510,7 @@ def _validate_short_sentence_or_abort(
 )
 @click.option(
     "--page-size",
-    type=int,
+    type=click.IntRange(min=1),
     default=None,
     help="Synthetic page size in characters (default: 2000). Only for --mode pages.",
 )
@@ -1490,25 +1534,25 @@ def _validate_short_sentence_or_abort(
 )
 @click.option(
     "--pause-clause",
-    type=float,
+    type=click.FloatRange(min=0.0),
     default=None,
     help="Pause after clauses in seconds.",
 )
 @click.option(
     "--pause-sentence",
-    type=float,
+    type=click.FloatRange(min=0.0),
     default=None,
     help="Pause after sentences in seconds.",
 )
 @click.option(
     "--pause-paragraph",
-    type=float,
+    type=click.FloatRange(min=0.0),
     default=None,
     help="Pause after paragraphs in seconds.",
 )
 @click.option(
     "--pause-variance",
-    type=float,
+    type=click.FloatRange(min=0.0),
     default=None,
     help="Random variance added to pauses in seconds.",
 )
