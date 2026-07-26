@@ -3,9 +3,9 @@
 from pathlib import Path
 
 import pytest
-from click.testing import CliRunner
+from typer.testing import CliRunner
 
-from ttsforge.cli import main
+from ttsforge.cli import app
 from ttsforge.conversion import ConversionOptions
 from ttsforge.phoneme_conversion import PhonemeConversionOptions
 
@@ -30,9 +30,9 @@ def test_cli_rejects_out_of_range_speed_and_confidence(tmp_path: Path) -> None:
     input_file = tmp_path / "book.txt"
     input_file.write_text("Chapter 1\nText", encoding="utf-8")
     runner = CliRunner()
-    speed_result = runner.invoke(main, ["convert", "--speed", "2.1", str(input_file)])
+    speed_result = runner.invoke(app, ["convert", "--speed", "2.1", str(input_file)])
     confidence_result = runner.invoke(
-        main,
+        app,
         [
             "convert",
             "--mixed-language-confidence",

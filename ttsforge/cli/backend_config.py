@@ -26,6 +26,6 @@ def resolve_model_source_and_variant(config: dict[str, Any]) -> tuple[str, str]:
 def resolve_voice_names(
     model_source: str = "huggingface", model_variant: str = "v1.0"
 ) -> list[str]:
-    # The v1.0 catalogue is sufficient to construct Click options without
+    # The v1.0 catalogue is sufficient to construct CLI choices without
     # importing the backend. Runtime commands validate provider-specific names.
     return list(VOICES)

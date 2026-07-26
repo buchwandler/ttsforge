@@ -1,122 +1,101 @@
-"""CLI interface for ttsforge - convert EPUB to audiobooks.
+"""Typer CLI for :mod:`ttsforge`.
 
-This module serves as the main entry point for the ttsforge CLI, organizing
-commands into logical groups:
-
-- Conversion commands: convert, read, sample, list, info
-- Phoneme commands: phonemes export/convert/preview/info
-- Utility commands: voices, demo, download, config, extract-names, list-names
+The command declarations are provider-independent. Command implementation
+modules are imported only after Typer has parsed and validated an invocation.
 """
 
-import importlib
-from pathlib import Path
-from typing import Optional, cast
+from __future__ import annotations
 
-import click
+from pathlib import Path
+from typing import Annotated
+
+import typer
+from typer.main import get_command
 
 from ..constants import PROGRAM_NAME
+from ._registration import register_commands
 from .helpers import console, get_version
 
-# Import all command modules
 
-_COMMANDS = {
-    "convert": ("ttsforge.cli.commands_conversion", "convert"),
-    "list": ("ttsforge.cli.commands_conversion", "list_chapters"),
-    "info": ("ttsforge.cli.commands_conversion", "info"),
-    "sample": ("ttsforge.cli.commands_conversion", "sample"),
-    "read": ("ttsforge.cli.commands_conversion", "read"),
-    "voices": ("ttsforge.cli.commands_utility", "voices"),
-    "demo": ("ttsforge.cli.commands_utility", "demo"),
-    "download": ("ttsforge.cli.commands_utility", "download"),
-    "config": ("ttsforge.cli.commands_utility", "config"),
-    "short-sentence-advanced-config": (
-        "ttsforge.cli.commands_utility",
-        "short_sentence_advanced_config",
-    ),
-    "phonemes": ("ttsforge.cli.commands_phonemes", "phonemes"),
-    "extract-names": ("ttsforge.cli.commands_utility", "extract_names"),
-    "list-names": ("ttsforge.cli.commands_utility", "list_names"),
-}
-
-_COMMAND_HELP = {
-    "config": "Manage ttsforge configuration.",
-    "convert": "Convert an EPUB file to an audiobook.",
-    "demo": "Generate a demo audio file with all voices.",
-    "download": "Download ONNX model and voice files.",
-    "extract-names": "Extract proper names from a book and dictionary.",
-    "info": "Show metadata and information about an input file.",
-    "list": "List chapters in a file.",
-    "list-names": "List all names in a phoneme dictionary.",
-    "phonemes": "Commands for working with phonemes and pre-tokenized content.",
-    "read": "Read an EPUB or text file aloud with streaming playback.",
-    "sample": "Generate a sample audio file to test TTS settings.",
-    "short-sentence-advanced-config": "Create, link, or show advanced configuration.",
-    "voices": "List available TTS voices.",
-}
+def _version_callback(value: bool) -> None:
+    if value:
+        console.print(f"[bold]{PROGRAM_NAME}[/bold] version {get_version()}")
+        raise typer.Exit()
 
 
-class LazyCommandGroup(click.Group):
-    """Click group that imports command implementations only when needed."""
-
-    def parse_args(self, ctx: click.Context, args: list[str]) -> list[str]:
-        command_index = next(
-            (index for index, arg in enumerate(args) if not arg.startswith("-")),
-            None,
-        )
-        root_help = not args or (
-            "--help" in args
-            and (command_index is None or args.index("--help") < command_index)
-        )
-        ctx.meta["lightweight_help"] = root_help
-        return super().parse_args(ctx, args)
-
-    def list_commands(self, ctx: click.Context) -> list[str]:
-        return sorted(_COMMANDS)
-
-    def get_command(self, ctx: click.Context, name: str) -> click.Command | None:
-        target = _COMMANDS.get(name)
-        if target is None:
-            return None
-        if ctx.meta.get("lightweight_help"):
-            return click.Command(name, help=_COMMAND_HELP.get(name, ""))
-        module_name, attr_name = target
-        return cast(
-            click.Command, getattr(importlib.import_module(module_name), attr_name)
-        )
-
-
-@click.group(cls=LazyCommandGroup, invoke_without_command=True)
-@click.option("--version", is_flag=True, help="Show version and exit.")
-@click.option(
-    "--model",
-    type=click.Path(exists=True, path_type=Path),
-    default=None,
-    help="Path to custom kokoro.onnx model file.",
+app = typer.Typer(
+    add_completion=True,
+    invoke_without_command=True,
+    no_args_is_help=False,
+    help="ttsforge - Generate audiobooks from EPUB files with TTS.",
+    rich_markup_mode=None,
 )
-@click.option(
-    "--voices",
-    type=click.Path(exists=True, path_type=Path),
-    default=None,
-    help="Path to custom voices.bin file.",
+phonemes_app = typer.Typer(
+    add_completion=False,
+    help="Commands for working with phonemes and pre-tokenized content.",
+    rich_markup_mode=None,
 )
-@click.pass_context
-def main(
-    ctx: click.Context, version: bool, model: Path | None, voices: Path | None
+app.add_typer(phonemes_app, name="phonemes")
+register_commands(app, phonemes_app)
+
+
+@app.callback()
+def root(
+    ctx: typer.Context,
+    version: Annotated[
+        bool,
+        typer.Option(
+            "--version",
+            callback=_version_callback,
+            is_eager=True,
+            help="Show version and exit.",
+        ),
+    ] = False,
+    model: Annotated[
+        Path | None,
+        typer.Option(
+            "--model",
+            exists=True,
+            file_okay=True,
+            dir_okay=False,
+            readable=True,
+            resolve_path=True,
+            help="Path to custom kokoro.onnx model file.",
+        ),
+    ] = None,
+    voices: Annotated[
+        Path | None,
+        typer.Option(
+            "--voices",
+            exists=True,
+            file_okay=True,
+            dir_okay=False,
+            readable=True,
+            resolve_path=True,
+            help="Path to custom voices.bin file.",
+        ),
+    ] = None,
 ) -> None:
-    """ttsforge - Generate audiobooks from EPUB files with TTS."""
+    """Generate audiobooks from EPUB files with TTS."""
+    del version
     ctx.ensure_object(dict)
     ctx.obj["model_path"] = model
     ctx.obj["voices_path"] = voices
-    if version:
-        console.print(f"[bold]{PROGRAM_NAME}[/bold] version {get_version()}")
-        return
     if ctx.invoked_subcommand is None:
-        click.echo(ctx.get_help())
+        typer.echo(ctx.get_help())
 
 
-# Export main for backward compatibility
-__all__ = ["main"]
+# Compatibility for integrations that pass the command to click.testing.CliRunner.
+main = get_command(app)
+
+
+def cli_main() -> None:
+    """Run the Typer application as the installed console script."""
+    app(prog_name=PROGRAM_NAME)
+
+
+__all__ = ["app", "cli_main", "main", "phonemes_app"]
 
 
 if __name__ == "__main__":
-    main()
+    cli_main()

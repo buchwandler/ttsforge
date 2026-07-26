@@ -8,8 +8,8 @@ import tempfile
 from pathlib import Path
 from typing import Any, Literal, TypeAlias, cast
 
-import click
 import numpy as np
+import typer
 from pykokoro import GenerationConfig, KokoroPipeline, PipelineConfig
 from pykokoro.onnx_backend import (
     DEFAULT_MODEL_QUALITY,
@@ -19,7 +19,6 @@ from pykokoro.onnx_backend import (
     GITHUB_VOICES_FILENAME_V1_1_DE,
     GITHUB_VOICES_FILENAME_V1_1_ZH,
     LANG_CODE_TO_ONNX,
-    MODEL_QUALITY_FILES,
     VOICE_NAMES_BY_VARIANT,
     Kokoro,
     ModelQuality,
@@ -71,40 +70,6 @@ ModelSource: TypeAlias = Literal["huggingface", "github"]
 ModelVariant: TypeAlias = Literal["v1.0", "v1.1-zh", "v1.1-de"]
 
 
-class ShortSentenceAdvancedConfigCommand(click.Command):
-    """Command class that includes the advanced config path in help output."""
-
-    def collect_usage_pieces(self, ctx: click.Context) -> list[str]:
-        pieces = super().collect_usage_pieces(ctx)
-        return [
-            "[show|init|reset]" if piece in {"", "ACTION"} else piece
-            for piece in pieces
-        ]
-
-    def get_usage(self, ctx: click.Context) -> str:
-        usage = super().get_usage(ctx)
-        return usage.replace(
-            f"{ctx.command_path} [OPTIONS] \n",
-            f"{ctx.command_path} [OPTIONS] [show|init|reset]\n",
-            1,
-        )
-
-    def format_usage(
-        self,
-        ctx: click.Context,
-        formatter: click.HelpFormatter,
-    ) -> None:
-        formatter.write_usage(ctx.command_path, "[OPTIONS] [show|init|reset]")
-
-    def format_help(self, ctx: click.Context, formatter: click.HelpFormatter) -> None:
-        super().format_help(ctx, formatter)
-        formatter.write_paragraph()
-        formatter.write_text(
-            f"Advanced short-sentence config path: "
-            f"{get_advanced_short_sentence_config_path()}"
-        )
-
-
 def _require_sounddevice() -> Any:
     try:
         import sounddevice as sd
@@ -122,14 +87,6 @@ def _require_sounddevice() -> Any:
     return sd
 
 
-@click.command()
-@click.option(
-    "-l",
-    "--language",
-    type=click.Choice(list(LANGUAGE_DESCRIPTIONS.keys())),
-    default=None,
-    help="Filter voices by language (default: all languages).",
-)
 def voices(language: str | None) -> None:
     """List available TTS voices."""
     table = Table(title="Available Voices")
@@ -154,80 +111,8 @@ def voices(language: str | None) -> None:
     console.print(table)
 
 
-@click.command()
-@click.option(
-    "-o",
-    "--output",
-    type=click.Path(path_type=Path),
-    default=None,
-    help="Output file path (default: ./voices_demo.wav).",
-)
-@click.option(
-    "-l",
-    "--language",
-    type=click.Choice(list(LANGUAGE_DESCRIPTIONS.keys())),
-    default=None,
-    help="Filter voices by language (default: all languages).",
-)
-@click.option(
-    "-v",
-    "--voice",
-    "voices_filter",
-    type=str,
-    default=None,
-    help="Specific voices to include (comma-separated, e.g., 'af_heart,am_adam').",
-)
-@click.option(
-    "-s",
-    "--speed",
-    type=float,
-    default=1.0,
-    help="Speech speed (default: 1.0).",
-)
-@click.option(
-    "--gpu/--no-gpu",
-    "use_gpu",
-    default=None,
-    help="Enable/disable GPU acceleration.",
-)
-@click.option(
-    "--silence",
-    type=float,
-    default=0.5,
-    help="Silence between voice samples in seconds (default: 0.5).",
-)
-@click.option(
-    "--text",
-    type=str,
-    default=None,
-    help="Custom text to use (use {voice} placeholder for voice name).",
-)
-@click.option(
-    "--separate",
-    is_flag=True,
-    help="Save each voice as a separate file instead of concatenating.",
-)
-@click.option(
-    "--blend",
-    type=str,
-    default=None,
-    help="Voice blend to demo (e.g., 'af_nicole:50,am_michael:50').",
-)
-@click.option(
-    "--blend-presets",
-    is_flag=True,
-    help="Demo a curated set of voice blend combinations.",
-)
-@click.option(
-    "-p",
-    "--play",
-    "play_audio",
-    is_flag=True,
-    help="Play audio directly (also saves to file if -o specified).",
-)
-@click.pass_context
 def demo(  # noqa: C901
-    ctx: click.Context,
+    ctx: typer.Context,
     output: Path | None,
     language: str | None,
     voices_filter: str | None,
@@ -648,17 +533,7 @@ def _copy_to_target(src: Path, dst: Path) -> None:
     shutil.copy2(src, dst)
 
 
-@click.command()
-@click.option("--force", is_flag=True, help="Force re-download even if files exist.")
-@click.option(
-    "--quality",
-    "-q",
-    type=click.Choice(list(MODEL_QUALITY_FILES.keys())),
-    default=None,
-    help="Model quality/quantization level. Default: from config or fp32.",
-)
-@click.pass_context
-def download(ctx: click.Context, force: bool, quality: str | None) -> None:
+def download(ctx: typer.Context, force: bool, quality: str | None) -> None:
     """Download ONNX model and voice files required for TTS.
 
     Downloads from Hugging Face (onnx-community/Kokoro-82M-v1.0-ONNX).
@@ -679,7 +554,7 @@ def download(ctx: click.Context, force: bool, quality: str | None) -> None:
     if quality is None:
         quality = cfg.get("model_quality", DEFAULT_MODEL_QUALITY)
 
-    # Cast to ModelQuality - safe because click.Choice validates input
+    # Cast to ModelQuality - safe because Typer validates input
     # and config uses a valid default
     model_quality = cast(ModelQuality, quality)
 
@@ -693,7 +568,7 @@ def download(ctx: click.Context, force: bool, quality: str | None) -> None:
     cache_config_path = get_config_path(variant=model_variant)
     cache_voices_path = _get_cache_voices_path(model_source, model_variant)
 
-    # Optional CLI overrides (set by your root click group)
+    # Optional CLI overrides (set by your root Typer app)
     model_path_override: Path | None = None
     voices_path_override: Path | None = None
     if ctx.obj:
@@ -836,17 +711,6 @@ def download(ctx: click.Context, force: bool, quality: str | None) -> None:
     console.print("\n[green]All model files downloaded successfully![/green]")
 
 
-@click.command()
-@click.option("--show", is_flag=True, help="Show current configuration.")
-@click.option("--reset", is_flag=True, help="Reset configuration to defaults.")
-@click.option(
-    "--set",
-    "set_option",
-    nargs=2,
-    multiple=True,
-    metavar="KEY VALUE",
-    help="Set a configuration option.",
-)
 def config(show: bool, reset: bool, set_option: tuple[tuple[str, str], ...]) -> None:
     """Manage ttsforge configuration.
 
@@ -940,18 +804,7 @@ def config(show: bool, reset: bool, set_option: tuple[tuple[str, str], ...]) -> 
         console.print("[dim]Run 'ttsforge download' to download models[/dim]")
 
 
-@click.command(
-    name="short-sentence-advanced-config",
-    cls=ShortSentenceAdvancedConfigCommand,
-)
-@click.argument(
-    "action",
-    required=False,
-    type=click.Choice(["show", "init", "reset"], case_sensitive=False),
-    metavar="ACTION",
-)
-@click.pass_context
-def short_sentence_advanced_config(ctx: click.Context, action: str | None) -> None:
+def short_sentence_advanced_config(ctx: typer.Context, action: str | None) -> None:
     """Create, link, or show the advanced short-sentence JSON configuration.
 
     ACTION is 'init', 'show', or 'reset'. Called without ACTION, this help is
@@ -997,59 +850,6 @@ def short_sentence_advanced_config(ctx: click.Context, action: str | None) -> No
         sys.exit(1)
 
 
-@click.command(name="extract-names")
-@click.argument(
-    "input_file",
-    type=click.Path(exists=True, path_type=Path),
-)
-@click.option(
-    "-o",
-    "--output",
-    type=click.Path(path_type=Path),
-    default=None,
-    help="Output JSON file path (default: INPUT_FILE_custom_phonemes.json).",
-)
-@click.option(
-    "--min-count",
-    type=int,
-    default=3,
-    help="Minimum occurrences for a name to be included (default: 3).",
-)
-@click.option(
-    "--max-names",
-    type=int,
-    default=500,
-    help="Maximum number of names to extract (default: 500).",
-)
-@click.option(
-    "-l",
-    "--language",
-    type=click.Choice(list(LANGUAGE_DESCRIPTIONS.keys())),
-    default="a",
-    help="Language for phoneme generation (default: a).",
-)
-@click.option(
-    "--include-all",
-    is_flag=True,
-    help="Include all detected proper nouns (ignore min-count).",
-)
-@click.option(
-    "--preview",
-    is_flag=True,
-    help="Preview extracted names without saving to file.",
-)
-@click.option(
-    "--chunk-size",
-    type=int,
-    default=100000,
-    help="Characters per chunk for processing (default: 100000).",
-)
-@click.option(
-    "--chapters",
-    type=str,
-    default=None,
-    help="Specific chapters to process (e.g., '1,3,5-10' or 'all'). Default: all.",
-)
 def extract_names(
     input_file: Path,
     output: Path | None,
@@ -1246,39 +1046,6 @@ def extract_names(
         )
 
 
-@click.command(name="list-names")
-@click.argument(
-    "phoneme_dict",
-    type=click.Path(exists=True, path_type=Path),
-)
-@click.option(
-    "--sort-by",
-    type=click.Choice(["name", "count", "alpha"]),
-    default="count",
-    help="Sort by: name (same as alpha), count (occurrences), alpha (alphabetical).",
-)
-@click.option(
-    "--play",
-    is_flag=True,
-    help="Play audio preview for each name (interactive mode).",
-)
-@click.option(
-    "-v",
-    "--voice",
-    type=str,
-    default="af_sky",
-    help="Voice to use for audio preview (default: af_sky).",
-)
-@click.option(
-    "-l",
-    "--language",
-    type=str,
-    default="a",
-    help=(
-        "Language code for audio preview "
-        "(e.g., 'de', 'en-us', 'a' for auto, default: a)."
-    ),
-)
 def list_names(  # noqa: C901
     phoneme_dict: Path, sort_by: str, play: bool, voice: str, language: str
 ) -> None:

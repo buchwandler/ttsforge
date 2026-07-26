@@ -16,8 +16,8 @@ from pathlib import Path
 from types import FrameType
 from typing import Literal, TypedDict, cast
 
-import click
 import numpy as np
+import typer
 from pykokoro.config_types import ModelQuality
 from rich.panel import Panel
 from rich.progress import (
@@ -37,7 +37,6 @@ from typing_extensions import NotRequired
 from ..chapter_selection import parse_chapter_selection, resolve_chapter_selection
 from ..constants import (
     LANGUAGE_DESCRIPTIONS,
-    SUPPORTED_OUTPUT_FORMATS,
     VOICE_PREFIX_TO_LANG,
 )
 from ..conversion import (
@@ -92,261 +91,8 @@ def get_voices() -> list[str]:
     return _resolve_voice_names(model_source, model_variant)
 
 
-@click.command()
-@click.argument("epub_file", type=click.Path(exists=True, path_type=Path))
-@click.option(
-    "-o",
-    "--output",
-    type=click.Path(path_type=Path),
-    help="Output file path. Defaults to input filename with new extension.",
-)
-@click.option(
-    "-f",
-    "--format",
-    "output_format",
-    type=click.Choice(SUPPORTED_OUTPUT_FORMATS),
-    help="Output audio format.",
-)
-@click.option(
-    "-v",
-    "--voice",
-    type=click.Choice(get_voices()),
-    help="Voice to use for TTS.",
-)
-@click.option(
-    "-l",
-    "--language",
-    type=click.Choice(list(LANGUAGE_DESCRIPTIONS.keys())),
-    help="Language code (a=American English, b=British English, etc.).",
-)
-@click.option(
-    "--lang",
-    type=str,
-    default=None,
-    help="Override language for phonemization (e.g., 'de', 'fr', 'en-us'). "
-    "By default, language is determined from the voice.",
-)
-@click.option(
-    "-s",
-    "--speed",
-    type=click.FloatRange(min=0.5, max=2.0),
-    help="Speech speed (0.5 to 2.0).",
-)
-@click.option(
-    "--gpu/--no-gpu",
-    "use_gpu",
-    default=None,
-    help="Enable/disable GPU acceleration.",
-)
-@click.option(
-    "--chapters",
-    type=str,
-    help="Chapters to convert (e.g., '1-5', '1,3,5', 'all').",
-)
-@click.option(
-    "--skip-chapters",
-    type=str,
-    help="Chapters to skip (e.g., '5', '2,4,6', '10-12').",
-)
-@click.option(
-    "--silence",
-    type=click.FloatRange(min=0.0),
-    help="Silence duration between chapters in seconds.",
-)
-@click.option(
-    "--pause-clause",
-    type=click.FloatRange(min=0.0),
-    default=None,
-    help="Pause after clauses in seconds (default: 0.25).",
-)
-@click.option(
-    "--pause-sentence",
-    type=click.FloatRange(min=0.0),
-    default=None,
-    help="Pause after sentences in seconds (default: 0.2).",
-)
-@click.option(
-    "--pause-paragraph",
-    type=click.FloatRange(min=0.0),
-    default=None,
-    help="Pause after paragraphs in seconds (default: 0.75).",
-)
-@click.option(
-    "--pause-variance",
-    type=click.FloatRange(min=0.0),
-    default=None,
-    help="Random variance added to pauses in seconds (default: 0.05).",
-)
-@click.option(
-    "--seed",
-    "random_seed",
-    type=int,
-    default=None,
-    help="Random seed for reproducible pause variance and randomized handling.",
-)
-@click.option(
-    "--pause-mode",
-    type=str,
-    default=None,
-    help="Pause mode: 'tts', 'manual', or 'auto' (default: auto).",
-)
-@click.option(
-    "--disable-short-sentence",
-    "enable_short_sentence",
-    flag_value=False,
-    default=None,
-    help="Disable special handling for short sentences.",
-)
-@click.option(
-    "--short-sentence",
-    type=str,
-    default=None,
-    help=(
-        "Short-sentence handling config, e.g. "
-        "'mode=randomized,threshold=30,selection=auto,max-tries=5' "
-        "or 'config=path/to/short_sentence.json'."
-    ),
-)
-@click.option(
-    "--announce-chapters/--no-announce-chapters",
-    "announce_chapters",
-    default=None,
-    help="Read chapter titles aloud before chapter content (default: enabled).",
-)
-@click.option(
-    "--chapter-pause",
-    type=click.FloatRange(min=0.0),
-    default=None,
-    help="Pause duration after chapter title announcement in seconds (default: 2.0).",
-)
-@click.option(
-    "--title",
-    type=str,
-    help="Title metadata for the audiobook.",
-)
-@click.option(
-    "--author",
-    type=str,
-    help="Author metadata for the audiobook.",
-)
-@click.option(
-    "--cover",
-    type=click.Path(exists=True, path_type=Path),
-    help="Cover image for m4b format.",
-)
-@click.option(
-    "-y",
-    "--yes",
-    is_flag=True,
-    help="Skip confirmation prompts.",
-)
-@click.option(
-    "--verbose",
-    is_flag=True,
-    help="Show detailed output.",
-)
-@click.option(
-    "--split-mode",
-    "split_mode",
-    type=click.Choice(["auto", "line", "paragraph", "sentence", "clause"]),
-    default=None,
-    help="Text splitting mode: auto, line, paragraph, sentence, clause.",
-)
-@click.option(
-    "--resume/--no-resume",
-    "resume",
-    default=True,
-    help="Enable/disable resume capability (default: enabled).",
-)
-@click.option(
-    "--generate-ssmd",
-    "generate_ssmd_only",
-    is_flag=True,
-    help="Generate only SSMD files without creating audio (for manual editing).",
-)
-@click.option(
-    "--detect-emphasis/--no-detect-emphasis",
-    "detect_emphasis",
-    default=False,
-    help=(
-        "Detect emphasis (italic/bold) from HTML tags in EPUB files "
-        "(default: disabled)."
-    ),
-)
-@click.option(
-    "--fresh",
-    is_flag=True,
-    help="Discard any previous progress and start conversion from scratch.",
-)
-@click.option(
-    "--keep-chapters",
-    "keep_chapter_files",
-    is_flag=True,
-    help="Keep individual chapter audio files after conversion.",
-)
-@click.option(
-    "--voice-blend",
-    "voice_blend",
-    type=str,
-    help="Blend multiple voices (e.g., 'af_nicole:50,am_michael:50').",
-)
-@click.option(
-    "--voice-db",
-    "voice_database",
-    type=click.Path(exists=True, path_type=Path),
-    help="Path to custom voice database (SQLite).",
-)
-@click.option(
-    "--use-mixed-language/--no-use-mixed-language",
-    "use_mixed_language",
-    default=None,
-    help="Enable mixed-language support (auto-detect multiple languages in text).",
-)
-@click.option(
-    "--mixed-language-primary",
-    "mixed_language_primary",
-    type=str,
-    help="Primary language for mixed-language mode (e.g., 'de', 'en-us').",
-)
-@click.option(
-    "--mixed-language-allowed",
-    "mixed_language_allowed",
-    type=str,
-    help="Comma-separated list of allowed languages (e.g., 'de,en-us').",
-)
-@click.option(
-    "--mixed-language-confidence",
-    "mixed_language_confidence",
-    type=click.FloatRange(min=0.0, max=1.0),
-    help=(
-        "Detection confidence threshold for mixed-language mode "
-        "(0.0-1.0, default: 0.7)."
-    ),
-)
-@click.option(
-    "--phoneme-dict",
-    "phoneme_dictionary_path",
-    type=click.Path(exists=True),
-    help="Path to custom phoneme dictionary JSON file for pronunciation overrides.",
-)
-@click.option(
-    "--phoneme-dict-case-sensitive/--no-phoneme-dict-case-sensitive",
-    "phoneme_dict_case_sensitive",
-    default=None,
-    help="Make phoneme dictionary matching case-sensitive (default: case-insensitive).",
-)
-@click.option(
-    "--subchapter-marker",
-    "subchapter_markers",
-    multiple=True,
-    help=(
-        "Exact line marker to convert into a paragraph pause. "
-        "Repeat for multiple markers."
-    ),
-)
-@click.pass_context
 def convert(  # noqa: C901
-    ctx: click.Context,
+    ctx: typer.Context,
     epub_file: Path,
     output: Path | None,
     output_format: str | None,
@@ -862,8 +608,6 @@ def convert(  # noqa: C901
         sys.exit(1)
 
 
-@click.command("list")
-@click.argument("epub_file", type=click.Path(exists=True, path_type=Path))
 def list_chapters(epub_file: Path) -> None:
     """List chapters in a file.
 
@@ -900,8 +644,6 @@ def list_chapters(epub_file: Path) -> None:
     )
 
 
-@click.command()
-@click.argument("epub_file", type=click.Path(exists=True, path_type=Path))
 def info(epub_file: Path) -> None:
     """Show metadata and information about a file.
 
@@ -949,118 +691,8 @@ def info(epub_file: Path) -> None:
     console.print(table)
 
 
-@click.command()
-@click.argument("text", required=False, default=None)
-@click.option(
-    "-o",
-    "--output",
-    type=click.Path(path_type=Path),
-    help="Output file path (default: ./sample.wav).",
-)
-@click.option(
-    "-f",
-    "--format",
-    "output_format",
-    type=click.Choice(SUPPORTED_OUTPUT_FORMATS),
-    default="wav",
-    help="Output audio format.",
-)
-@click.option(
-    "-v",
-    "--voice",
-    type=str,
-    help=(
-        "TTS voice to use or voice blend "
-        "(e.g., 'af_sky' or 'af_nicole:50,am_michael:50')."
-    ),
-)
-@click.option(
-    "-l",
-    "--language",
-    type=click.Choice(list(LANGUAGE_DESCRIPTIONS.keys())),
-    help="Language for TTS.",
-)
-@click.option(
-    "--lang",
-    type=str,
-    default=None,
-    help="Override language for phonemization (e.g., 'de', 'fr', 'en-us').",
-)
-@click.option(
-    "-s",
-    "--speed",
-    type=click.FloatRange(min=0.5, max=2.0),
-    help="Speech speed (default: 1.0).",
-)
-@click.option(
-    "--seed",
-    "random_seed",
-    type=int,
-    default=None,
-    help="Random seed for reproducible pause variance and randomized handling.",
-)
-@click.option(
-    "--gpu/--no-gpu",
-    "use_gpu",
-    default=None,
-    help="Use GPU acceleration if available.",
-)
-@click.option(
-    "--split-mode",
-    "split_mode",
-    type=click.Choice(["auto", "line", "paragraph", "sentence", "clause"]),
-    help="Text splitting mode for processing.",
-)
-@click.option("--verbose", is_flag=True, help="Show detailed output.")
-@click.option(
-    "-p",
-    "--play",
-    "play_audio",
-    is_flag=True,
-    help="Play audio directly (also saves to file if -o specified).",
-)
-@click.option(
-    "--use-mixed-language",
-    "use_mixed_language",
-    is_flag=True,
-    help="Enable mixed-language support (auto-detect multiple languages in text).",
-)
-@click.option(
-    "--mixed-language-primary",
-    "mixed_language_primary",
-    type=str,
-    help="Primary language for mixed-language mode (e.g., 'de', 'en-us').",
-)
-@click.option(
-    "--mixed-language-allowed",
-    "mixed_language_allowed",
-    type=str,
-    help="Comma-separated list of allowed languages (e.g., 'de,en-us').",
-)
-@click.option(
-    "--mixed-language-confidence",
-    "mixed_language_confidence",
-    type=click.FloatRange(min=0.0, max=1.0),
-    help=(
-        "Detection confidence threshold for mixed-language mode "
-        "(0.0-1.0, default: 0.7)."
-    ),
-)
-@click.option(
-    "--phoneme-dict",
-    "phoneme_dictionary_path",
-    type=click.Path(exists=True),
-    help="Path to custom phoneme dictionary JSON file for pronunciation overrides.",
-)
-@click.option(
-    "--phoneme-dict-case-sensitive",
-    "phoneme_dict_case_sensitive",
-    is_flag=True,
-    help="Make phoneme dictionary matching case-sensitive (default: case-insensitive).",
-)
-@click.pass_context
 def sample(
-    ctx: click.Context,
+    ctx: typer.Context,
     text: str | None,
     output: Path | None,
     output_format: str,
@@ -1443,152 +1075,11 @@ def _validate_short_sentence_or_abort(
         return
     errors = validate_short_sentence_config(short_sentence)
     if errors:
-        raise click.ClickException(
-            "Invalid short-sentence config: " + "; ".join(errors)
-        )
+        raise typer.BadParameter("Invalid short-sentence config: " + "; ".join(errors))
 
 
-@click.command()
-@click.argument(
-    "input_file",
-    type=click.Path(path_type=Path),
-    required=False,
-    default=None,
-)
-@click.option(
-    "-v",
-    "--voice",
-    type=click.Choice(get_voices()),
-    help="TTS voice to use.",
-)
-@click.option(
-    "-l",
-    "--language",
-    type=click.Choice(list(LANGUAGE_DESCRIPTIONS.keys())),
-    help="Language for TTS.",
-)
-@click.option(
-    "-s",
-    "--speed",
-    type=float,
-    help="Speech speed (default: 1.0).",
-)
-@click.option(
-    "--gpu/--no-gpu",
-    "use_gpu",
-    default=None,
-    help="Use GPU acceleration if available.",
-)
-@click.option(
-    "--mode",
-    "content_mode",
-    type=click.Choice(["chapters", "pages"]),
-    default=None,
-    help="Split content by chapters or pages (default: chapters).",
-)
-@click.option(
-    "-c",
-    "--chapters",
-    type=str,
-    help="Chapter selection (e.g., '1-5', '1,3,5', '3-'). Use with --mode chapters.",
-)
-@click.option(
-    "-p",
-    "--pages",
-    type=str,
-    help="Page selection (e.g., '1-50', '10,20,30'). Use with --mode pages.",
-)
-@click.option(
-    "--start-chapter",
-    type=int,
-    help="Start from specific chapter number (1-indexed).",
-)
-@click.option(
-    "--start-page",
-    type=int,
-    help="Start from specific page number (1-indexed).",
-)
-@click.option(
-    "--page-size",
-    type=click.IntRange(min=1),
-    default=None,
-    help="Synthetic page size in characters (default: 2000). Only for --mode pages.",
-)
-@click.option(
-    "--resume",
-    is_flag=True,
-    help="Resume from last saved position.",
-)
-@click.option(
-    "--list",
-    "list_content",
-    is_flag=True,
-    help="List chapters/pages and exit without reading.",
-)
-@click.option(
-    "--split",
-    "split_mode",
-    type=click.Choice(["sentence", "paragraph"]),
-    default=None,
-    help="Text splitting mode: sentence (shorter) or paragraph (grouped).",
-)
-@click.option(
-    "--pause-clause",
-    type=click.FloatRange(min=0.0),
-    default=None,
-    help="Pause after clauses in seconds.",
-)
-@click.option(
-    "--pause-sentence",
-    type=click.FloatRange(min=0.0),
-    default=None,
-    help="Pause after sentences in seconds.",
-)
-@click.option(
-    "--pause-paragraph",
-    type=click.FloatRange(min=0.0),
-    default=None,
-    help="Pause after paragraphs in seconds.",
-)
-@click.option(
-    "--pause-variance",
-    type=click.FloatRange(min=0.0),
-    default=None,
-    help="Random variance added to pauses in seconds.",
-)
-@click.option(
-    "--seed",
-    "random_seed",
-    type=int,
-    default=None,
-    help="Random seed for reproducible pause variance and randomized handling.",
-)
-@click.option(
-    "--pause-mode",
-    type=str,
-    default=None,
-    help="Trim leading/trailing silence from audio.",
-)
-@click.option(
-    "--disable-short-sentence",
-    "enable_short_sentence",
-    flag_value=False,
-    default=None,
-    help="Disable special handling for short sentences.",
-)
-@click.option(
-    "--short-sentence",
-    type=str,
-    default=None,
-    help=(
-        "Short-sentence handling config, e.g. "
-        "'mode=randomized,threshold=30,selection=auto,max-tries=5' "
-        "or 'config=path/to/short_sentence.json'."
-    ),
-)
-@click.pass_context
 def read(  # noqa: C901
-    ctx: click.Context,
+    ctx: typer.Context,
     input_file: Path | None,
     voice: str | None,
     language: str | None,
@@ -1764,7 +1255,7 @@ def read(  # noqa: C901
         file_identifier = "stdin"
         content_label = "section"  # Generic label for stdin
     else:
-        # Validate file exists (removed exists=True from click.Path for stdin)
+        # Validate file exists; stdin skips Typer's exists=True path validation.
         if not input_file.exists():
             console.print(f"[red]Error:[/red] File not found: {input_file}")
             sys.exit(1)

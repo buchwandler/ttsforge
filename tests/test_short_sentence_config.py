@@ -1,10 +1,10 @@
 import json
 from pathlib import Path
 
-from click.testing import CliRunner
 from pykokoro.short_sentence_handler import RandomizedPhraseResolveMode
+from typer.testing import CliRunner
 
-from ttsforge.cli import main
+from ttsforge.cli import app
 from ttsforge.short_sentence_config import (
     default_advanced_short_sentence_data,
     resolve_short_sentence_config,
@@ -207,7 +207,7 @@ def test_short_sentence_advanced_config_command_writes_and_links(
     )
     monkeypatch.setattr("ttsforge.utils.get_user_config_path", lambda: config_path)
 
-    result = CliRunner().invoke(main, ["short-sentence-advanced-config", "init"])
+    result = CliRunner().invoke(app, ["short-sentence-advanced-config", "init"])
 
     assert result.exit_code == 0
     advanced_path = tmp_path / "short_sentence_advanced.json"
@@ -233,7 +233,7 @@ def test_short_sentence_advanced_config_command_shows_config(
     )
     monkeypatch.setattr("ttsforge.utils.get_user_config_path", lambda: config_path)
 
-    result = CliRunner().invoke(main, ["short-sentence-advanced-config", "show"])
+    result = CliRunner().invoke(app, ["short-sentence-advanced-config", "show"])
 
     assert result.exit_code == 0
     assert "short_sentence_advanced.json" in result.output
@@ -257,7 +257,7 @@ def test_short_sentence_advanced_config_command_reset_restores_defaults(
     )
     monkeypatch.setattr("ttsforge.utils.get_user_config_path", lambda: config_path)
 
-    result = CliRunner().invoke(main, ["short-sentence-advanced-config", "reset"])
+    result = CliRunner().invoke(app, ["short-sentence-advanced-config", "reset"])
 
     assert result.exit_code == 0
     assert "Reset advanced short-sentence config to defaults" in result.output
@@ -278,7 +278,7 @@ def test_short_sentence_advanced_config_command_without_action_shows_help(
     )
     monkeypatch.setattr("ttsforge.utils.get_user_config_path", lambda: config_path)
 
-    result = CliRunner().invoke(main, ["short-sentence-advanced-config"])
+    result = CliRunner().invoke(app, ["short-sentence-advanced-config"])
 
     assert result.exit_code == 0
     assert "Usage:" in result.output
@@ -298,7 +298,7 @@ def test_short_sentence_advanced_config_help_shows_location(
     )
     monkeypatch.setattr("ttsforge.utils.get_user_config_path", lambda: config_path)
 
-    result = CliRunner().invoke(main, ["short-sentence-advanced-config", "--help"])
+    result = CliRunner().invoke(app, ["short-sentence-advanced-config", "--help"])
 
     assert result.exit_code == 0
     assert tmp_path.name in result.output

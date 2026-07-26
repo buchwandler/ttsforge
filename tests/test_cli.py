@@ -7,10 +7,10 @@ from pathlib import Path
 from unittest.mock import patch
 
 import pytest
-from click.testing import CliRunner
+from typer.testing import CliRunner
 
 from ttsforge import DEFAULT_SAMPLE_TEXT
-from ttsforge.cli import main
+from ttsforge.cli import app
 from ttsforge.cli.commands_conversion import (
     _format_short_sentence_hint,
     _format_short_sentence_note,
@@ -29,13 +29,13 @@ class TestMainCommand:
 
     def test_main_help(self, runner):
         """Should show help text."""
-        result = runner.invoke(main, ["--help"])
+        result = runner.invoke(app, ["--help"])
         assert result.exit_code == 0
         assert "ttsforge" in result.output.lower() or "epub" in result.output.lower()
 
     def test_main_version(self, runner):
         """Should show version."""
-        result = runner.invoke(main, ["--version"])
+        result = runner.invoke(app, ["--version"])
         assert result.exit_code == 0
 
 
@@ -44,13 +44,13 @@ class TestVoicesCommand:
 
     def test_voices_list(self, runner):
         """Should list available voices."""
-        result = runner.invoke(main, ["voices"])
+        result = runner.invoke(app, ["voices"])
         assert result.exit_code == 0
         assert "af_bella" in result.output or "Voice" in result.output
 
     def test_voices_filter_by_language(self, runner):
         """Should filter voices by language."""
-        result = runner.invoke(main, ["voices", "--language", "a"])
+        result = runner.invoke(app, ["voices", "--language", "a"])
         assert result.exit_code == 0
         # American English voices should be shown
         assert "af_" in result.output or "am_" in result.output
@@ -61,7 +61,7 @@ class TestConfigCommand:
 
     def test_config_show(self, runner):
         """Should show current configuration."""
-        result = runner.invoke(main, ["config", "--show"])
+        result = runner.invoke(app, ["config", "--show"])
         assert result.exit_code == 0
         assert "short_sentence" in result.output
 
@@ -70,7 +70,7 @@ class TestConfigCommand:
         with tempfile.TemporaryDirectory() as tmpdir:
             config_path = Path(tmpdir) / "config.json"
             with patch("ttsforge.utils.get_user_config_path", return_value=config_path):
-                result = runner.invoke(main, ["config", "--reset"])
+                result = runner.invoke(app, ["config", "--reset"])
                 assert result.exit_code == 0
                 assert "reset" in result.output.lower()
 
@@ -84,7 +84,7 @@ class TestConfigCommand:
 
         with patch("ttsforge.utils.get_user_config_path", return_value=config_path):
             result = runner.invoke(
-                main,
+                app,
                 ["config", "--set", "short_sentence", "mode=bogus,threshold=30"],
             )
 
@@ -100,7 +100,7 @@ class TestSampleCommand:
 
     def test_sample_help(self, runner):
         """Should show sample command help."""
-        result = runner.invoke(main, ["sample", "--help"])
+        result = runner.invoke(app, ["sample", "--help"])
         assert result.exit_code == 0
         assert "sample" in result.output.lower()
         assert "--voice" in result.output
@@ -112,17 +112,15 @@ class TestSampleCommand:
         assert isinstance(DEFAULT_SAMPLE_TEXT, str)
         assert len(DEFAULT_SAMPLE_TEXT) > 0
 
-    def test_sample_displays_settings(self, runner):
+    def test_sample_displays_settings(self, runner, tmp_path, monkeypatch):
         """Sample should display current settings (before TTS init fails)."""
         # This test doesn't mock TTSConverter, so it will fail during conversion
-        # but we can verify that settings are displayed first
-        with tempfile.TemporaryDirectory() as tmpdir:
-            with runner.isolated_filesystem(temp_dir=tmpdir):
-                result = runner.invoke(main, ["sample"])
-                # Settings should be displayed even if conversion fails
-                assert "Voice:" in result.output
-                assert "Language:" in result.output
-                assert "Speed:" in result.output
+        # but we can verify that settings are displayed first.
+        monkeypatch.chdir(tmp_path)
+        result = runner.invoke(app, ["sample"])
+        assert "Voice:" in result.output
+        assert "Language:" in result.output
+        assert "Speed:" in result.output
 
 
 class TestConvertCommand:
@@ -130,7 +128,7 @@ class TestConvertCommand:
 
     def test_convert_help(self, runner):
         """Should show convert command help."""
-        result = runner.invoke(main, ["convert", "--help"])
+        result = runner.invoke(app, ["convert", "--help"])
         assert result.exit_code == 0
         assert "convert" in result.output.lower()
         assert "--voice" in result.output
@@ -143,7 +141,7 @@ class TestConvertCommand:
 
     def test_read_help_has_disable_short_sentence_only(self, runner):
         """Read command should only expose the disable short-sentence flag."""
-        result = runner.invoke(main, ["read", "--help"])
+        result = runner.invoke(app, ["read", "--help"])
         assert result.exit_code == 0
         assert "--disable-short-sentence" in result.output
         assert "--enable-short-sentence" not in result.output
@@ -151,12 +149,12 @@ class TestConvertCommand:
 
     def test_convert_requires_input(self, runner):
         """Should require input file."""
-        result = runner.invoke(main, ["convert"])
+        result = runner.invoke(app, ["convert"])
         assert result.exit_code != 0
 
     def test_convert_invalid_file(self, runner):
         """Should handle invalid file gracefully."""
-        result = runner.invoke(main, ["convert", "nonexistent.epub"])
+        result = runner.invoke(app, ["convert", "nonexistent.epub"])
         assert result.exit_code != 0
 
     def test_convert_verbose_configures_debug_logging(
@@ -179,7 +177,7 @@ class TestConvertCommand:
         )
 
         result = runner.invoke(
-            main,
+            app,
             [
                 "convert",
                 str(input_file),
@@ -207,7 +205,7 @@ class TestConvertCommand:
         input_file.write_text("not an epub", encoding="utf-8")
 
         result = runner.invoke(
-            main,
+            app,
             [
                 "convert",
                 str(input_file),
@@ -308,12 +306,12 @@ class TestListCommand:
 
     def test_list_help(self, runner):
         """Should show list command help."""
-        result = runner.invoke(main, ["list", "--help"])
+        result = runner.invoke(app, ["list", "--help"])
         assert result.exit_code == 0
 
     def test_list_requires_input(self, runner):
         """Should require input file."""
-        result = runner.invoke(main, ["list"])
+        result = runner.invoke(app, ["list"])
         assert result.exit_code != 0
 
 
@@ -322,12 +320,12 @@ class TestInfoCommand:
 
     def test_info_help(self, runner):
         """Should show info command help."""
-        result = runner.invoke(main, ["info", "--help"])
+        result = runner.invoke(app, ["info", "--help"])
         assert result.exit_code == 0
 
     def test_info_requires_input(self, runner):
         """Should require input file."""
-        result = runner.invoke(main, ["info"])
+        result = runner.invoke(app, ["info"])
         assert result.exit_code != 0
 
 
@@ -336,21 +334,21 @@ class TestCliOptions:
 
     def test_invalid_voice_rejected(self, runner):
         """Invalid voice should be rejected."""
-        result = runner.invoke(main, ["sample", "--voice", "invalid_voice"])
+        result = runner.invoke(app, ["sample", "--voice", "invalid_voice"])
         assert result.exit_code != 0
         assert "invalid" in result.output.lower() or "choice" in result.output.lower()
 
     def test_invalid_language_rejected(self, runner):
         """Invalid language should be rejected."""
-        result = runner.invoke(main, ["sample", "--language", "x"])
+        result = runner.invoke(app, ["sample", "--language", "x"])
         assert result.exit_code != 0
 
     def test_invalid_format_rejected(self, runner):
         """Invalid format should be rejected."""
-        result = runner.invoke(main, ["sample", "--format", "invalid"])
+        result = runner.invoke(app, ["sample", "--format", "invalid"])
         assert result.exit_code != 0
 
     def test_invalid_split_mode_rejected(self, runner):
         """Invalid split mode should be rejected."""
-        result = runner.invoke(main, ["sample", "--split-mode", "invalid"])
+        result = runner.invoke(app, ["sample", "--split-mode", "invalid"])
         assert result.exit_code != 0

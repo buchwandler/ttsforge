@@ -2,9 +2,9 @@
 
 import re
 
-from click.testing import CliRunner
+from typer.testing import CliRunner
 
-from ttsforge.cli import main
+from ttsforge.cli import app
 
 
 def _semantic_output(output: str) -> str:
@@ -18,7 +18,7 @@ def test_root_help_is_semantic_and_color_free(monkeypatch) -> None:
     monkeypatch.setenv("NO_COLOR", "1")
     monkeypatch.setenv("COLUMNS", "160")
 
-    result = CliRunner().invoke(main, ["--help"])
+    result = CliRunner().invoke(app, ["--help"])
 
     assert result.exit_code == 0
     assert "\x1b[" not in result.output
@@ -33,7 +33,7 @@ def test_convert_help_uses_semantic_fragments(monkeypatch) -> None:
     monkeypatch.setenv("NO_COLOR", "1")
     monkeypatch.setenv("COLUMNS", "160")
 
-    result = CliRunner().invoke(main, ["convert", "--help"])
+    result = CliRunner().invoke(app, ["convert", "--help"])
 
     assert result.exit_code == 0
     semantic = _semantic_output(result.output)

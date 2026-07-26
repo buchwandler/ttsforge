@@ -6,7 +6,8 @@ DEFAULT_MODEL_SOURCE = "huggingface"
 SAMPLE_RATE = 24000
 
 # pykokoro's v1.0 voice catalogue is data, not backend functionality. Keeping
-# the catalogue here makes Click option construction and lightweight help safe.
+# the catalogue here keeps CLI option construction and lightweight help
+# provider-independent.
 VOICES = [
     "af",
     "af_alloy",

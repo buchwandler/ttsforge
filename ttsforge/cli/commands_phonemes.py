@@ -11,7 +11,7 @@ import sys
 from pathlib import Path
 from typing import Any, cast
 
-import click
+import typer
 from pykokoro.config_types import ModelQuality
 from rich.progress import (
     BarColumn,
@@ -29,8 +29,6 @@ from rich.table import Table
 from ..chapter_selection import parse_chapter_selection
 from ..constants import (
     LANGUAGE_DESCRIPTIONS,
-    SUPPORTED_OUTPUT_FORMATS,
-    VOICES,
 )
 from ..text_postprocessing import resolve_text_postprocess_options
 from ..utils import (
@@ -63,7 +61,6 @@ def _require_sounddevice() -> Any:
     return sd
 
 
-@click.group()
 def phonemes() -> None:
     """Commands for working with phonemes and pre-tokenized content.
 
@@ -81,59 +78,6 @@ def phonemes() -> None:
     pass
 
 
-@phonemes.command("export")
-@click.argument("epub_file", type=click.Path(exists=True, path_type=Path))
-@click.option(
-    "-o",
-    "--output",
-    type=click.Path(path_type=Path),
-    help="Output file path. Defaults to input filename with .phonemes.json extension.",
-)
-@click.option(
-    "--readable",
-    is_flag=True,
-    help="Export as human-readable text format instead of JSON.",
-)
-@click.option(
-    "-l",
-    "--language",
-    type=click.Choice(list(LANGUAGE_DESCRIPTIONS.keys())),
-    default="a",
-    help="Language code for phonemization.",
-)
-@click.option(
-    "--chapters",
-    type=str,
-    help="Chapters to export (e.g., '1-5', '1,3,5', 'all').",
-)
-@click.option(
-    "--vocab-version",
-    type=str,
-    default="v1.0",
-    help="Vocabulary version to use for tokenization.",
-)
-@click.option(
-    "--split-mode",
-    "split_mode",
-    type=click.Choice(["paragraph", "sentence", "clause"]),
-    default="sentence",
-    help="Split mode: paragraph (newlines), sentence (spaCy), clause (+ commas).",
-)
-@click.option(
-    "--max-chars",
-    type=int,
-    default=300,
-    help="Maximum characters per segment (for additional splitting of long segments).",
-)
-@click.option(
-    "--subchapter-marker",
-    "subchapter_markers",
-    multiple=True,
-    help=(
-        "Exact line marker to convert into a paragraph pause. "
-        "Repeat for multiple markers."
-    ),
-)
 def phonemes_export(
     epub_file: Path,
     output: Path | None,
@@ -327,156 +271,8 @@ def phonemes_export(
     )
 
 
-@phonemes.command("convert")
-@click.argument("phoneme_file", type=click.Path(exists=True, path_type=Path))
-@click.option(
-    "-o",
-    "--output",
-    type=click.Path(path_type=Path),
-    help="Output file path. Defaults to input filename with audio extension.",
-)
-@click.option(
-    "-f",
-    "--format",
-    "output_format",
-    type=click.Choice(SUPPORTED_OUTPUT_FORMATS),
-    help="Output audio format.",
-)
-@click.option("-v", "--voice", type=click.Choice(VOICES), help="Voice to use for TTS.")
-@click.option(
-    "-s",
-    "--speed",
-    type=click.FloatRange(min=0.5, max=2.0),
-    default=1.0,
-    help="Speech speed.",
-)
-@click.option(
-    "--gpu/--no-gpu",
-    "use_gpu",
-    default=None,
-    help="Enable/disable GPU acceleration.",
-)
-@click.option(
-    "--silence",
-    type=click.FloatRange(min=0.0),
-    default=2.0,
-    help="Silence between chapters in seconds.",
-)
-@click.option(
-    "--pause-clause",
-    type=click.FloatRange(min=0.0),
-    default=None,
-    help="Pause after clauses in seconds (default: 0.25).",
-)
-@click.option(
-    "--pause-sentence",
-    type=click.FloatRange(min=0.0),
-    default=None,
-    help="Pause after sentences in seconds (default: 0.2).",
-)
-@click.option(
-    "--pause-paragraph",
-    type=click.FloatRange(min=0.0),
-    default=None,
-    help="Pause after paragraphs in seconds (default: 0.75).",
-)
-@click.option(
-    "--pause-variance",
-    type=click.FloatRange(min=0.0),
-    default=None,
-    help="Random variance added to pauses in seconds (default: 0.05).",
-)
-@click.option(
-    "--seed",
-    "random_seed",
-    type=int,
-    default=None,
-    help="Random seed for reproducible pause variance and randomized handling.",
-)
-@click.option(
-    "--pause-mode",
-    type=str,
-    default=None,
-    help="auto, manual or tts (default: auto).",
-)
-@click.option(
-    "--short-sentence",
-    type=str,
-    default=None,
-    help=(
-        "Short-sentence handling config, e.g. "
-        "'mode=randomized,threshold=30,selection=auto,max-tries=5' "
-        "or 'config=path/to/short_sentence.json'."
-    ),
-)
-@click.option(
-    "--announce-chapters/--no-announce-chapters",
-    "announce_chapters",
-    default=None,
-    help="Read chapter titles aloud before chapter content (default: enabled).",
-)
-@click.option(
-    "--chapter-pause",
-    type=click.FloatRange(min=0.0),
-    default=None,
-    help="Pause duration after chapter title announcement in seconds (default: 2.0).",
-)
-@click.option(
-    "--chapters",
-    type=str,
-    default=None,
-    help="Select chapters to convert (1-based). E.g., '1-5', '3,5,7', or '1-3,7'.",
-)
-@click.option(
-    "--title",
-    type=str,
-    default=None,
-    help="Audiobook title (for m4b metadata).",
-)
-@click.option(
-    "--author",
-    type=str,
-    default=None,
-    help="Audiobook author (for m4b metadata).",
-)
-@click.option(
-    "--cover",
-    type=click.Path(exists=True, path_type=Path),
-    default=None,
-    help="Cover image path (for m4b format).",
-)
-@click.option(
-    "--voice-blend",
-    type=str,
-    default=None,
-    help="Blend multiple voices. E.g., 'af_nicole:50,am_michael:50'.",
-)
-@click.option(
-    "--voice-database",
-    type=click.Path(exists=True, path_type=Path),
-    default=None,
-    help="Path to custom voice database (SQLite).",
-)
-@click.option(
-    "--streaming/--no-streaming",
-    "streaming",
-    default=False,
-    help="Use streaming mode (faster, no resume). Default: resumable.",
-)
-@click.option(
-    "--keep-chapters",
-    is_flag=True,
-    help="Keep intermediate chapter files after merging.",
-)
-@click.option(
-    "-y",
-    "--yes",
-    is_flag=True,
-    help="Skip confirmation prompts.",
-)
-@click.pass_context
 def phonemes_convert(
-    ctx: click.Context,
+    ctx: typer.Context,
     phoneme_file: Path,
     output: Path | None,
     output_format: str | None,
@@ -778,48 +574,6 @@ def phonemes_convert(
         sys.exit(1)
 
 
-@phonemes.command("preview")
-@click.argument("text")
-@click.option(
-    "-l",
-    "--language",
-    type=str,
-    default="a",
-    help="Language code for phonemization (e.g., 'de', 'en-us', 'a' for auto).",
-)
-@click.option(
-    "--tokens",
-    is_flag=True,
-    help="Show token IDs in addition to phonemes.",
-)
-@click.option(
-    "--vocab-version",
-    type=str,
-    default="v1.0",
-    help="Vocabulary version to use.",
-)
-@click.option(
-    "-p",
-    "--play",
-    is_flag=True,
-    help="Play audio preview of the text.",
-)
-@click.option(
-    "-v",
-    "--voice",
-    type=str,
-    default="af_sky",
-    help=(
-        "Voice to use for audio preview, or voice blend "
-        "(e.g., 'af_nicole:50,am_michael:50')."
-    ),
-)
-@click.option(
-    "--phoneme-dict",
-    type=click.Path(exists=True, path_type=Path),
-    default=None,
-    help="Path to custom phoneme dictionary file.",
-)
 def phonemes_preview(
     text: str,
     language: str,
@@ -943,13 +697,6 @@ def phonemes_preview(
             sys.exit(1)
 
 
-@phonemes.command("info")
-@click.argument("phoneme_file", type=click.Path(exists=True, path_type=Path))
-@click.option(
-    "--stats",
-    is_flag=True,
-    help="Show detailed token statistics.",
-)
 def phonemes_info(phoneme_file: Path, stats: bool) -> None:
     """Show information about a phoneme file.
 

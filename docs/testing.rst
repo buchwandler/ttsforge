@@ -24,4 +24,3 @@ The final changed-line check compares ``coverage.xml`` with
 ``origin/main`` using ``diff-cover``. A local checkout without that remote can
 run the first three coverage commands directly and use an appropriate local
 base branch for the final comparison.
-

@@ -13,7 +13,7 @@ Core Modules
 ^^^^^^^^^^^^
 
 **ttsforge.cli**
-   Command-line interface implementation using Click.
+   Command-line interface implementation using Typer (with Click as the runtime substrate).
 
 **ttsforge.conversion**
    Main conversion logic for EPUB to audiobook conversion.

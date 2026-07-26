@@ -1,8 +1,8 @@
 from pathlib import Path
 
-from click.testing import CliRunner
+from typer.testing import CliRunner
 
-from ttsforge.cli import main
+from ttsforge.cli import app
 
 
 def test_info_and_list_smoke(tmp_path: Path) -> None:
@@ -20,8 +20,8 @@ This is the second chapter.
     input_file.write_text(text, encoding="utf-8")
 
     runner = CliRunner()
-    info_result = runner.invoke(main, ["info", str(input_file)])
+    info_result = runner.invoke(app, ["info", str(input_file)])
     assert info_result.exit_code == 0
 
-    list_result = runner.invoke(main, ["list", str(input_file)])
+    list_result = runner.invoke(app, ["list", str(input_file)])
     assert list_result.exit_code == 0
