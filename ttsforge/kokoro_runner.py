@@ -20,9 +20,12 @@ from pykokoro.onnx_backend import (
     download_all_models_github,
 )
 from pykokoro.pipeline import build_pipeline
+from pykokoro.short_sentence_handler import ShortSentenceConfig
 from pykokoro.stages.audio_generation.onnx import OnnxAudioGenerationAdapter
 from pykokoro.stages.audio_postprocessing.onnx import OnnxAudioPostprocessingAdapter
 from pykokoro.stages.phoneme_processing.onnx import OnnxPhonemeProcessorAdapter
+
+from .short_sentence_stats import ShortSentenceStats
 
 
 @dataclass(slots=True)
@@ -34,6 +37,8 @@ class KokoroRunOptions:
     pause_sentence: float
     pause_paragraph: float
     pause_variance: float
+    random_seed: int | None = None
+    enable_short_sentence: bool | None = None
     model_quality: ModelQuality | None = DEFAULT_MODEL_QUALITY
     model_source: ModelSource = DEFAULT_MODEL_SOURCE
     model_variant: ModelVariant = DEFAULT_MODEL_VARIANT
@@ -42,6 +47,7 @@ class KokoroRunOptions:
     voice_blend: str | None = None
     voice_database: Any | None = None
     tokenizer_config: Any | None = None  # pykokoro.tokenizer.TokenizerConfig
+    short_sentence_config: ShortSentenceConfig | None = None
 
 
 class KokoroRunner:
@@ -54,6 +60,7 @@ class KokoroRunner:
         self._kokoro: Kokoro | None = None
         self._pipeline: KokoroPipeline | None = None
         self._voice_style: str | VoiceBlend | None = None
+        self.short_sentence_stats = ShortSentenceStats()
 
     def ensure_ready(self) -> None:
         if self._pipeline is not None:
@@ -82,6 +89,7 @@ class KokoroRunner:
             voices_path=self.opts.voices_path,
             use_gpu=self.opts.use_gpu,
             tokenizer_config=self.opts.tokenizer_config,
+            short_sentence_config=self.opts.short_sentence_config,
             model_quality=self.opts.model_quality,
             model_source=self.opts.model_source,
             model_variant=self.opts.model_variant,
@@ -111,17 +119,22 @@ class KokoroRunner:
             else:
                 self._voice_style = self.opts.voice
 
-        # GenerationConfig will be supplied per call
-        # because lang / is_phonemes can vary
+        # GenerationConfig will be supplied per call because lang / is_phonemes
+        # can vary.
         pipeline_cfg = PipelineConfig(
             voice=self._voice_style,
-            generation=GenerationConfig(speed=self.opts.speed, lang="en-us"),
+            generation=GenerationConfig(
+                speed=self.opts.speed,
+                lang="en-us",
+                random_seed=self.opts.random_seed,
+            ),
             model_quality=self.opts.model_quality,
             model_source=self.opts.model_source,
             model_variant=self.opts.model_variant,
             model_path=self.opts.model_path,
             voices_path=self.opts.voices_path,
             tokenizer_config=self.opts.tokenizer_config,
+            short_sentence_config=self.opts.short_sentence_config,
         )
 
         # Use the same adapters everywhere (text + phonemes)
@@ -153,6 +166,11 @@ class KokoroRunner:
             pause_sentence=self.opts.pause_sentence,
             pause_paragraph=self.opts.pause_paragraph,
             pause_variance=self.opts.pause_variance,
+            random_seed=self.opts.random_seed,
         )
-        audio = self._pipeline.run(text_or_ssmd, generation=gen).audio
-        return cast(np.ndarray, audio)
+        result = self._pipeline.run(text_or_ssmd, generation=gen)
+        self.short_sentence_stats.add_audio_result(result)
+        return cast(np.ndarray, result.audio)
+
+    def get_short_sentence_stats(self) -> ShortSentenceStats:
+        return self.short_sentence_stats.copy()

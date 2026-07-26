@@ -73,3 +73,23 @@ def parse_chapter_selection(selection: str, total_chapters: int) -> list[int]:
             indices.add(chapter_num - 1)
 
     return sorted(indices)
+
+
+def resolve_chapter_selection(
+    chapters: str | None,
+    skip_chapters: str | None,
+    total_chapters: int,
+) -> list[int] | None:
+    """Resolve included chapters after applying an optional skip selection."""
+    if chapters is None and skip_chapters is None:
+        return None
+
+    if chapters is None:
+        selected = set(range(total_chapters))
+    else:
+        selected = set(parse_chapter_selection(chapters, total_chapters))
+
+    if skip_chapters is not None:
+        selected -= set(parse_chapter_selection(skip_chapters, total_chapters))
+
+    return sorted(selected)

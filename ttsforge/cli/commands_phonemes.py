@@ -7,7 +7,6 @@ This module contains commands for working with phonemes and pre-tokenized conten
 - info: Show information about a phoneme file
 """
 
-import re
 import sys
 from pathlib import Path
 from typing import Any, cast
@@ -281,13 +280,7 @@ def phonemes_export(
 
             chapter = book.create_chapter(ch.title)
 
-            # Remove <<CHAPTER: ...>> markers that epub2text adds
-            # at the start of content since we now announce chapter titles
-            # separately
             content = ch.text
-            content = re.sub(
-                r"^\s*<<CHAPTER:[^>]*>>\s*\n*", "", content, count=1, flags=re.MULTILINE
-            )
 
             # Pass entire chapter text - add_text handles splitting based on split_mode
             if content.strip():
@@ -384,10 +377,27 @@ def phonemes_export(
     help="Random variance added to pauses in seconds (default: 0.05).",
 )
 @click.option(
+    "--seed",
+    "random_seed",
+    type=int,
+    default=None,
+    help="Random seed for reproducible pause variance and randomized handling.",
+)
+@click.option(
     "--pause-mode",
     type=str,
     default=None,
     help="auto, manual or tts (default: auto).",
+)
+@click.option(
+    "--short-sentence",
+    type=str,
+    default=None,
+    help=(
+        "Short-sentence handling config, e.g. "
+        "'mode=randomized,threshold=30,selection=auto,max-tries=5' "
+        "or 'config=path/to/short_sentence.json'."
+    ),
 )
 @click.option(
     "--announce-chapters/--no-announce-chapters",
@@ -468,7 +478,9 @@ def phonemes_convert(
     pause_sentence: float | None,
     pause_paragraph: float | None,
     pause_variance: float | None,
+    random_seed: int | None,
     pause_mode: str | None,
+    short_sentence: str | None,
     announce_chapters: bool | None,
     chapter_pause: float | None,
     chapters: str | None,
@@ -647,8 +659,15 @@ def phonemes_convert(
             if pause_variance is not None
             else config.get("pause_variance", 0.05)
         ),
+        random_seed=random_seed,
         pause_mode=(
             pause_mode if pause_mode is not None else config.get("pause_mode", "auto")
+        ),
+        enable_short_sentence=config.get("enable_short_sentence", None),
+        short_sentence=(
+            short_sentence
+            if short_sentence is not None
+            else config.get("short_sentence")
         ),
         announce_chapters=(
             announce_chapters

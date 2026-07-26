@@ -91,6 +91,18 @@ Or install directly:
 
    pip install sounddevice
 
+spaCy Models (Optional)
+^^^^^^^^^^^^^^^^^^^^^^^
+
+spaCy is used for sentence splitting, name extraction, and spaCy-aware
+phonemization workflows:
+
+.. code-block:: bash
+
+   pip install spacy
+   python -m spacy download en_core_web_sm
+   python -m spacy download en_core_web_md
+
 
 Installing ttsforge
 -------------------

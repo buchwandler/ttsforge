@@ -137,6 +137,7 @@ DEFAULT_CONFIG = {
     "pause_mode": "auto",  # "tts", "manual", or "auto
     "enable_short_sentence": None,
     "subchapter_markers": [],
+    "short_sentence": "mode=randomized,threshold=30,selection=auto,max-tries=5",
     # Language override for phonemization (e.g., 'de', 'fr', 'en-us')
     # If None, language is determined from voice prefix
     "phonemization_lang": None,

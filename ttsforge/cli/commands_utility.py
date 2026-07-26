@@ -1,5 +1,6 @@
 """Utility commands for ttsforge CLI."""
 
+import json
 import re
 import shutil
 import sys
@@ -56,11 +57,52 @@ from ..constants import (
     VOICE_PREFIX_TO_LANG,
     VOICES,
 )
+from ..short_sentence_config import (
+    get_advanced_short_sentence_config_path,
+    load_short_sentence_json_config,
+    validate_short_sentence_config,
+    write_advanced_short_sentence_config,
+)
+from ..short_sentence_stats import ShortSentenceStats, format_short_sentence_stats
 from ..utils import format_size, load_config, reset_config, save_config
 from .helpers import DEMO_TEXT, VOICE_BLEND_PRESETS, console, parse_voice_parameter
 
 ModelSource: TypeAlias = Literal["huggingface", "github"]
 ModelVariant: TypeAlias = Literal["v1.0", "v1.1-zh", "v1.1-de"]
+
+
+class ShortSentenceAdvancedConfigCommand(click.Command):
+    """Command class that includes the advanced config path in help output."""
+
+    def collect_usage_pieces(self, ctx: click.Context) -> list[str]:
+        pieces = super().collect_usage_pieces(ctx)
+        return [
+            "[show|init|reset]" if piece in {"", "ACTION"} else piece
+            for piece in pieces
+        ]
+
+    def get_usage(self, ctx: click.Context) -> str:
+        usage = super().get_usage(ctx)
+        return usage.replace(
+            f"{ctx.command_path} [OPTIONS] \n",
+            f"{ctx.command_path} [OPTIONS] [show|init|reset]\n",
+            1,
+        )
+
+    def format_usage(
+        self,
+        ctx: click.Context,
+        formatter: click.HelpFormatter,
+    ) -> None:
+        formatter.write_usage(ctx.command_path, "[OPTIONS] [show|init|reset]")
+
+    def format_help(self, ctx: click.Context, formatter: click.HelpFormatter) -> None:
+        super().format_help(ctx, formatter)
+        formatter.write_paragraph()
+        formatter.write_text(
+            f"Advanced short-sentence config path: "
+            f"{get_advanced_short_sentence_config_path()}"
+        )
 
 
 def _require_sounddevice() -> Any:
@@ -229,6 +271,7 @@ def demo(  # noqa: C901
     gpu = use_gpu if use_gpu is not None else config.get("use_gpu", False)
     model_path = ctx.obj.get("model_path") if ctx.obj else None
     voices_path = ctx.obj.get("voices_path") if ctx.obj else None
+    short_sentence_stats = ShortSentenceStats()
 
     # Playback is not compatible with --separate or --blend-presets (multiple files)
     if play_audio and separate:
@@ -342,6 +385,7 @@ def demo(  # noqa: C901
                     blend_lang = VOICE_PREFIX_TO_LANG.get(voice_names[0][:2], "a")
                     onnx_lang = LANG_CODE_TO_ONNX.get(blend_lang, "en-us")
                     result = pipeline.run(demo_text, voice=voice_blend, lang=onnx_lang)
+                    short_sentence_stats.add_audio_result(result)
                     samples = result.audio
                     sr = result.sample_rate
 
@@ -380,6 +424,10 @@ def demo(  # noqa: C901
             )
         elif play_audio:
             console.print("\n[green]Playback complete.[/green]")
+        console.print(
+            "[dim]Short sentence handling: "
+            f"{format_short_sentence_stats(short_sentence_stats)}[/dim]"
+        )
         return
 
     # Regular voice demo mode (no blending)
@@ -482,6 +530,7 @@ def demo(  # noqa: C901
             try:
                 onnx_lang = LANG_CODE_TO_ONNX.get(lang_code, "en-us")
                 result = pipeline.run(demo_text, voice=voice, lang=onnx_lang)
+                short_sentence_stats.add_audio_result(result)
                 samples = result.audio
                 sr = result.sample_rate
 
@@ -526,9 +575,17 @@ def demo(  # noqa: C901
         duration_secs = len(combined) / sample_rate
         mins, secs = divmod(int(duration_secs), 60)
         console.print(f"[dim]Duration: {mins}m {secs}s[/dim]")
+        console.print(
+            "[dim]Short sentence handling: "
+            f"{format_short_sentence_stats(short_sentence_stats)}[/dim]"
+        )
     elif separate:
         console.print(
             f"\n[green]Saved {len(selected_voices)} voice demos to:[/green] {output}"
+        )
+        console.print(
+            "[dim]Short sentence handling: "
+            f"{format_short_sentence_stats(short_sentence_stats)}[/dim]"
         )
 
 
@@ -817,8 +874,21 @@ def config(show: bool, reset: bool, set_option: tuple[tuple[str, str], ...]) -> 
                     typed_value = float(value)
                 elif default_type is int:
                     typed_value = int(value)
+                elif default_type is list:
+                    typed_value = json.loads(value)
+                    if not isinstance(typed_value, list):
+                        raise ValueError
                 else:
                     typed_value = value
+
+                if key == "short_sentence":
+                    errors = validate_short_sentence_config(str(typed_value))
+                    if errors:
+                        console.print(
+                            "[red]Invalid value for short_sentence:[/red] "
+                            + "; ".join(errors)
+                        )
+                        continue
 
                 current_config[key] = typed_value
                 console.print(f"[green]Set {key} = {typed_value}[/green]")
@@ -868,6 +938,65 @@ def config(show: bool, reset: bool, set_option: tuple[tuple[str, str], ...]) -> 
     else:
         console.print("\n[bold]ONNX Models:[/bold] [yellow]Not downloaded[/yellow]")
         console.print("[dim]Run 'ttsforge download' to download models[/dim]")
+
+
+@click.command(
+    name="short-sentence-advanced-config",
+    cls=ShortSentenceAdvancedConfigCommand,
+)
+@click.argument(
+    "action",
+    required=False,
+    type=click.Choice(["show", "init", "reset"], case_sensitive=False),
+    metavar="ACTION",
+)
+@click.pass_context
+def short_sentence_advanced_config(ctx: click.Context, action: str | None) -> None:
+    """Create, link, or show the advanced short-sentence JSON configuration.
+
+    ACTION is 'init', 'show', or 'reset'. Called without ACTION, this help is
+    shown.
+    """
+    if action is None:
+        help_lines = ctx.get_help().splitlines()
+        if help_lines and help_lines[0].startswith("Usage:"):
+            command_usage = help_lines[0].split(" [OPTIONS]", 1)[0]
+            help_lines[0] = (
+                f"{command_usage} [OPTIONS] [show|init|reset]"
+            )
+        console.print("\n".join(help_lines), markup=False)
+        return
+
+    path = get_advanced_short_sentence_config_path()
+    console.print(f"[bold]Advanced short-sentence config:[/bold] {path}")
+    action = action.lower()
+
+    if action == "show":
+        if not path.exists():
+            console.print("[yellow]Config file does not exist yet.[/yellow]")
+            return
+        try:
+            data = load_short_sentence_json_config(path)
+        except Exception as exc:
+            console.print(f"[red]Error loading config:[/red] {exc}")
+            sys.exit(1)
+        console.print_json(json.dumps(data, ensure_ascii=False))
+        return
+
+    written_path = write_advanced_short_sentence_config(path)
+    current_config = load_config()
+    current_config["short_sentence"] = f"config={written_path}"
+    if save_config(current_config):
+        if action == "reset":
+            console.print(
+                "[green]Reset advanced short-sentence config to defaults.[/green]"
+            )
+        else:
+            console.print("[green]Wrote advanced short-sentence config.[/green]")
+        console.print("[green]Updated ttsforge config to use it.[/green]")
+    else:
+        console.print("[red]Failed to update ttsforge config.[/red]")
+        sys.exit(1)
 
 
 @click.command(name="extract-names")

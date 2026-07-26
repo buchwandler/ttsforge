@@ -26,7 +26,7 @@ dependencies = [
     "charset-normalizer",
     "platformdirs>=3.0.0",
     # TTS engine (includes onnxruntime and kokorog2p)
-    "pykokoro>=0.6.4",
+    "pykokoro>=0.6.5",
 ]
 classifiers=[
     'Intended Audience :: End Users/Desktop',

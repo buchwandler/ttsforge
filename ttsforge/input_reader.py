@@ -10,7 +10,10 @@ import re
 from dataclasses import dataclass, field
 from pathlib import Path
 
-from .text_postprocessing import TextPostprocessOptions, postprocess_extracted_text
+from .text_postprocessing import (
+    TextPostprocessOptions,
+    postprocess_extracted_text,
+)
 from .utils import detect_encoding
 
 
@@ -197,7 +200,10 @@ class InputReader:
         # Convert to our Chapter format
         chapters = []
         for i, ch in enumerate(epub_chapters):
-            content = postprocess_extracted_text(ch.text, self.postprocess_options)
+            content = postprocess_extracted_text(
+                ch.text,
+                self.postprocess_options,
+            )
             chapters.append(Chapter(title=ch.title, text=content, index=i))
 
         return chapters
@@ -218,7 +224,10 @@ class InputReader:
         # Convert to our Chapter format with HTML
         chapters_with_html = []
         for i, ch in enumerate(epub_chapters):
-            content = postprocess_extracted_text(ch.text, self.postprocess_options)
+            content = postprocess_extracted_text(
+                ch.text,
+                self.postprocess_options,
+            )
             chapter = Chapter(title=ch.title, text=content, index=i)
 
             # Try to get HTML content
@@ -393,7 +402,10 @@ class InputReader:
             return [
                 Chapter(
                     title=title,
-                    text=postprocess_extracted_text(content, self.postprocess_options),
+                    text=postprocess_extracted_text(
+                        content,
+                        self.postprocess_options,
+                    ),
                     index=0,
                 )
             ]

@@ -19,7 +19,15 @@ from .helpers import console, get_version
 # Import all command modules
 from .commands_conversion import convert, info, list_chapters, read, sample
 from .commands_phonemes import phonemes
-from .commands_utility import config, demo, download, extract_names, list_names, voices
+from .commands_utility import (
+    config,
+    demo,
+    download,
+    extract_names,
+    list_names,
+    short_sentence_advanced_config,
+    voices,
+)
 
 
 @click.group(invoke_without_command=True)
@@ -61,6 +69,7 @@ main.add_command(voices)
 main.add_command(demo)
 main.add_command(download)
 main.add_command(config)
+main.add_command(short_sentence_advanced_config)
 main.add_command(phonemes)
 main.add_command(extract_names)
 main.add_command(list_names)
