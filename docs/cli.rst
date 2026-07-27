@@ -3,6 +3,11 @@ CLI Reference
 
 Complete command-line interface reference for ttsforge.
 
+The command tree is declared with explicit typed Typer wrappers. CLI startup,
+help, and version output remain independent of the ONNX provider. The legacy
+``--set KEY VALUE`` configuration grammar accepts repeated pairs, including
+values that begin with ``-``.
+
 
 Global Options
 --------------

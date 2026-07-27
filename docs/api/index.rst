@@ -13,7 +13,13 @@ Core Modules
 ^^^^^^^^^^^^
 
 **ttsforge.cli**
-   Command-line interface implementation using Typer (with Click as the runtime substrate).
+   Command-line interface implementation using explicit typed Typer wrappers
+   (with Click as the runtime substrate). App construction and help paths are
+   provider-independent; implementation modules are imported lazily.
+
+**ttsforge.paths**
+   Provider-independent user configuration and advanced short-sentence path
+   calculations.
 
 **ttsforge.conversion**
    Main conversion logic for EPUB to audiobook conversion.

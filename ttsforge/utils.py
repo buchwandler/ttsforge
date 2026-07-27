@@ -15,9 +15,10 @@ from pathlib import Path
 from threading import Thread
 from typing import Any, Literal, overload
 
-from platformdirs import user_cache_dir, user_config_dir
+from platformdirs import user_cache_dir
 
 from .constants import DEFAULT_CONFIG, PROGRAM_NAME
+from .paths import get_user_config_path as _get_user_config_path
 
 _LEGACY_GPU_KEY_WARNED = False
 _PHONEME_DICT_WARNED_PATHS: set[str] = set()
@@ -28,25 +29,8 @@ DEFAULT_ENCODING = sys.getfilesystemencoding()
 
 
 def get_user_config_path() -> Path:
-    """Get path to user configuration file."""
-    if platform.system() != "Windows":
-        # On non-Windows, prefer ~/.config/ttsforge if it already exists
-        custom_dir = Path.home() / ".config" / "ttsforge"
-        if custom_dir.exists():
-            config_dir = custom_dir
-        else:
-            config_dir = Path(
-                user_config_dir(
-                    "ttsforge", appauthor=False, roaming=True, ensure_exists=True
-                )
-            )
-    else:
-        config_dir = Path(
-            user_config_dir(
-                "ttsforge", appauthor=False, roaming=True, ensure_exists=True
-            )
-        )
-    return config_dir / "config.json"
+    """Return the user config path through the lightweight path module."""
+    return _get_user_config_path()
 
 
 def get_user_cache_path(folder: str | None = None) -> Path:

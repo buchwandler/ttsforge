@@ -192,6 +192,14 @@ ttsforge config --set use_gpu true
 ttsforge config --reset
 ```
 
+The legacy two-token configuration option remains available and may be
+repeated. Values beginning with a dash are accepted as values rather than
+being interpreted as options:
+
+```bash
+ttsforge config --set default_speed 1.1 --set pause_variance -0.1
+```
+
 Advanced short-sentence handling can be managed with a JSON config:
 
 ```bash
@@ -531,6 +539,10 @@ To find the correct IPA phonemes for a word:
 (e.g., "test" won't match "testing").
 
 ## Commands
+
+The CLI is built from explicit typed Typer command wrappers. Help and version
+paths do not initialize the ONNX provider; only executing a backend-dependent
+command imports its implementation module.
 
 | Command            | Description                          |
 | ------------------ | ------------------------------------ |

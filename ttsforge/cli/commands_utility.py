@@ -1,6 +1,5 @@
 """Utility commands for ttsforge CLI."""
 
-import json
 import re
 import shutil
 import sys
@@ -46,24 +45,15 @@ from rich.progress import (
     TextColumn,
     TimeElapsedColumn,
 )
-from rich.table import Table
 
 from ..chapter_selection import parse_chapter_selection
 from ..constants import (
     DEFAULT_CONFIG,
-    DEFAULT_VOICE_FOR_LANG,
-    LANGUAGE_DESCRIPTIONS,
     VOICE_PREFIX_TO_LANG,
     VOICES,
 )
-from ..short_sentence_config import (
-    get_advanced_short_sentence_config_path,
-    load_short_sentence_json_config,
-    validate_short_sentence_config,
-    write_advanced_short_sentence_config,
-)
 from ..short_sentence_stats import ShortSentenceStats, format_short_sentence_stats
-from ..utils import format_size, load_config, reset_config, save_config
+from ..utils import format_size, load_config
 from .helpers import DEMO_TEXT, VOICE_BLEND_PRESETS, console, parse_voice_parameter
 
 ModelSource: TypeAlias = Literal["huggingface", "github"]
@@ -85,30 +75,6 @@ def _require_sounddevice() -> Any:
         )
         raise SystemExit(1) from None
     return sd
-
-
-def voices(language: str | None) -> None:
-    """List available TTS voices."""
-    table = Table(title="Available Voices")
-    table.add_column("Voice", style="bold")
-    table.add_column("Language")
-    table.add_column("Gender")
-    table.add_column("Default", style="dim")
-
-    for voice in VOICES:
-        prefix = voice[:2]
-        lang_code = VOICE_PREFIX_TO_LANG.get(prefix, "?")
-
-        if language and lang_code != language:
-            continue
-
-        lang_name = LANGUAGE_DESCRIPTIONS.get(lang_code, "Unknown")
-        gender = "Female" if prefix[1] == "f" else "Male"
-        is_default = "Yes" if DEFAULT_VOICE_FOR_LANG.get(lang_code) == voice else ""
-
-        table.add_row(voice, lang_name, gender, is_default)
-
-    console.print(table)
 
 
 def demo(  # noqa: C901
@@ -709,145 +675,6 @@ def download(ctx: typer.Context, force: bool, quality: str | None) -> None:
         console.print(f"[red]Error copying files to custom paths:[/red] {e}")
         sys.exit(1)
     console.print("\n[green]All model files downloaded successfully![/green]")
-
-
-def config(show: bool, reset: bool, set_option: tuple[tuple[str, str], ...]) -> None:
-    """Manage ttsforge configuration.
-
-    Configuration is stored in ~/.config/ttsforge/config.json
-    """
-    if reset:
-        reset_config()
-        console.print("[green]Configuration reset to defaults.[/green]")
-        return
-
-    if set_option:
-        current_config = load_config()
-        for key, value in set_option:
-            if key not in DEFAULT_CONFIG:
-                console.print(f"[yellow]Warning:[/yellow] Unknown option '{key}'")
-                continue
-
-            # Type conversion
-            default_type = type(DEFAULT_CONFIG[key])
-            typed_value: Any
-            try:
-                if default_type is bool:
-                    typed_value = value.lower() in ("true", "1", "yes")
-                elif default_type is float:
-                    typed_value = float(value)
-                elif default_type is int:
-                    typed_value = int(value)
-                elif default_type is list:
-                    typed_value = json.loads(value)
-                    if not isinstance(typed_value, list):
-                        raise ValueError
-                else:
-                    typed_value = value
-
-                if key == "short_sentence":
-                    errors = validate_short_sentence_config(str(typed_value))
-                    if errors:
-                        console.print(
-                            "[red]Invalid value for short_sentence:[/red] "
-                            + "; ".join(errors)
-                        )
-                        continue
-
-                current_config[key] = typed_value
-                console.print(f"[green]Set {key} = {typed_value}[/green]")
-            except ValueError:
-                console.print(f"[red]Invalid value for {key}: {value}[/red]")
-
-        save_config(current_config)
-        return
-
-    # Show configuration
-    current_config = load_config()
-
-    table = Table(title="Current Configuration")
-    table.add_column("Option", style="bold")
-    table.add_column("Value")
-    table.add_column("Default", style="dim")
-
-    for key, default_value in DEFAULT_CONFIG.items():
-        current_value = current_config.get(key, default_value)
-        is_default = current_value == default_value
-        table.add_row(
-            key,
-            str(current_value),
-            str(default_value) if not is_default else "",
-        )
-
-    console.print(table)
-
-    # Show model status
-    cfg2 = load_config()
-    q = cast(ModelQuality, cfg2.get("model_quality", DEFAULT_MODEL_QUALITY))
-    src, var = _resolve_model_source_and_variant(cfg2)
-    cfg_path = get_config_path(variant=var)
-    mdl_path = get_model_path(quality=q, source=src, variant=var)
-    v_path = _get_cache_voices_path(src, var)
-
-    if (
-        _exists_nonempty(cfg_path)
-        and _exists_nonempty(mdl_path)
-        and _exists_nonempty(v_path)
-    ):
-        model_dir = get_model_dir(source=src, variant=var)
-        console.print(f"\n[bold]ONNX Models:[/bold] Downloaded ({model_dir})")
-        console.print(f"  config.json: {cfg_path}")
-        console.print(f"  model: {mdl_path}")
-        console.print(f"  voices: {v_path}")
-    else:
-        console.print("\n[bold]ONNX Models:[/bold] [yellow]Not downloaded[/yellow]")
-        console.print("[dim]Run 'ttsforge download' to download models[/dim]")
-
-
-def short_sentence_advanced_config(ctx: typer.Context, action: str | None) -> None:
-    """Create, link, or show the advanced short-sentence JSON configuration.
-
-    ACTION is 'init', 'show', or 'reset'. Called without ACTION, this help is
-    shown.
-    """
-    if action is None:
-        help_lines = ctx.get_help().splitlines()
-        if help_lines and help_lines[0].startswith("Usage:"):
-            command_usage = help_lines[0].split(" [OPTIONS]", 1)[0]
-            help_lines[0] = f"{command_usage} [OPTIONS] [show|init|reset]"
-        console.print("\n".join(help_lines), markup=False)
-        return
-
-    path = get_advanced_short_sentence_config_path()
-    console.print(f"[bold]Advanced short-sentence config:[/bold] {path}")
-    action = action.lower()
-
-    if action == "show":
-        if not path.exists():
-            console.print("[yellow]Config file does not exist yet.[/yellow]")
-            return
-        try:
-            data = load_short_sentence_json_config(path)
-        except Exception as exc:
-            console.print(f"[red]Error loading config:[/red] {exc}")
-            sys.exit(1)
-        console.print_json(json.dumps(data, ensure_ascii=False))
-        return
-
-    written_path = write_advanced_short_sentence_config(path)
-    current_config = load_config()
-    current_config["short_sentence"] = f"config={written_path}"
-    if save_config(current_config):
-        if action == "reset":
-            console.print(
-                "[green]Reset advanced short-sentence config to defaults.[/green]"
-            )
-        else:
-            console.print("[green]Wrote advanced short-sentence config.[/green]")
-        console.print("[green]Updated ttsforge config to use it.[/green]")
-    else:
-        console.print("[red]Failed to update ttsforge config.[/red]")
-        sys.exit(1)
 
 
 def extract_names(

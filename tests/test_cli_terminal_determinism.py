@@ -39,3 +39,14 @@ def test_convert_help_uses_semantic_fragments(monkeypatch) -> None:
     semantic = _semantic_output(result.output)
     for fragment in ("--voice", "--speed", "--resume", "--seed"):
         assert fragment in semantic
+
+
+def test_version_is_plain_under_forced_color(monkeypatch) -> None:
+    """Version output is stable even when a terminal requests color."""
+    monkeypatch.setenv("FORCE_COLOR", "1")
+
+    result = CliRunner().invoke(app, ["--version"])
+
+    assert result.exit_code == 0
+    assert "\x1b[" not in result.output
+    assert result.output.startswith("ttsforge version ")
