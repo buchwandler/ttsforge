@@ -204,14 +204,17 @@ Advanced short-sentence handling can be managed with a JSON config:
 
 ```bash
 # Create and link the advanced short-sentence config
-ttsforge short-sentence-advanced-config init
+ttsforge config short-sentence init
 
 # Show the advanced short-sentence config
-ttsforge short-sentence-advanced-config show
+ttsforge config short-sentence show
 
 # Reset the advanced short-sentence config to defaults
-ttsforge short-sentence-advanced-config reset
+ttsforge config short-sentence reset
 ```
+
+The former `short-sentence-advanced-config` root command remains available as
+a deprecated compatibility alias.
 
 ### Filename Templates
 

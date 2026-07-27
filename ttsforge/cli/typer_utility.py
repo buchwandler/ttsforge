@@ -9,10 +9,10 @@ from pathlib import Path
 from typing import Annotated, Any, Literal, cast
 
 import typer
-from typer.core import TyperCommand
+from typer.core import TyperCommand, TyperGroup
 
 
-class RepeatedPairCommand(TyperCommand):
+class RepeatedPairGroup(TyperGroup):
     """Make the compatibility ``--set KEY VALUE`` option repeatable."""
 
     def __init__(self, *args: Any, **kwargs: Any) -> None:
@@ -189,6 +189,7 @@ def download_command(
 
 
 def config_command(
+    ctx: typer.Context,
     show: Annotated[
         bool, typer.Option("--show", help="Show current configuration.")
     ] = False,
@@ -201,6 +202,17 @@ def config_command(
     ] = None,
 ) -> None:
     "Manage ttsforge configuration.\n\nConfiguration is stored in ~/.config/ttsforge/config.json"
+    has_legacy_action = show or reset or bool(set_option)
+
+    if ctx.invoked_subcommand is not None:
+        if has_legacy_action:
+            typer.echo(
+                "Error: config options cannot be combined with a config subcommand",
+                err=True,
+            )
+            raise typer.Exit(code=2)
+        return
+
     from .utility_light import config
 
     config(
@@ -210,14 +222,32 @@ def config_command(
     )
 
 
-def short_sentence_advanced_config_command(
+def short_sentence_config_command(
     ctx: typer.Context,
-    action: Annotated[str | None, typer.Argument(metavar="ACTION")] = None,
+    action: Annotated[
+        str | None,
+        typer.Argument(metavar="ACTION", callback=_action_callback),
+    ] = None,
 ) -> None:
     "Create, link, or show the advanced short-sentence JSON configuration.\n\nACTION is 'init', 'show', or 'reset'. Called without ACTION, this help is\nshown."
     from .utility_light import short_sentence_advanced_config
 
     short_sentence_advanced_config(ctx=ctx, action=action)
+
+
+def legacy_short_sentence_advanced_config_command(
+    ctx: typer.Context,
+    action: Annotated[
+        str | None,
+        typer.Argument(metavar="ACTION", callback=_action_callback),
+    ] = None,
+) -> None:
+    """Compatibility alias for ``config short-sentence``."""
+    typer.echo(
+        "Deprecated: use 'ttsforge config short-sentence ACTION'.",
+        err=True,
+    )
+    short_sentence_config_command(ctx=ctx, action=action)
 
 
 def extract_names_command(
@@ -366,9 +396,25 @@ def register(app: typer.Typer) -> None:
     app.command(name="voices")(voices_command)
     app.command(name="demo")(demo_command)
     app.command(name="download")(download_command)
-    app.command(name="config", cls=RepeatedPairCommand)(config_command)
-    app.command(name="short-sentence-advanced-config", cls=ShortSentenceConfigCommand)(
-        short_sentence_advanced_config_command
+    config_app = typer.Typer(
+        cls=RepeatedPairGroup,
+        add_completion=False,
+        invoke_without_command=True,
+        no_args_is_help=False,
+        help="Manage ttsforge configuration.",
+        rich_markup_mode="rich",
     )
+    config_app.callback()(config_command)
+    config_app.command(
+        name="short-sentence",
+        cls=ShortSentenceConfigCommand,
+    )(short_sentence_config_command)
+    app.add_typer(config_app, name="config")
+
+    app.command(
+        name="short-sentence-advanced-config",
+        cls=ShortSentenceConfigCommand,
+        hidden=True,
+    )(legacy_short_sentence_advanced_config_command)
     app.command(name="extract-names")(extract_names_command)
     app.command(name="list-names")(list_names_command)

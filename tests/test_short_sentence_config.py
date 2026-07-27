@@ -207,7 +207,7 @@ def test_short_sentence_advanced_config_command_writes_and_links(
     )
     monkeypatch.setattr("ttsforge.utils.get_user_config_path", lambda: config_path)
 
-    result = CliRunner().invoke(app, ["short-sentence-advanced-config", "init"])
+    result = CliRunner().invoke(app, ["config", "short-sentence", "init"])
 
     assert result.exit_code == 0
     advanced_path = tmp_path / "short_sentence_advanced.json"
@@ -233,7 +233,7 @@ def test_short_sentence_advanced_config_command_shows_config(
     )
     monkeypatch.setattr("ttsforge.utils.get_user_config_path", lambda: config_path)
 
-    result = CliRunner().invoke(app, ["short-sentence-advanced-config", "show"])
+    result = CliRunner().invoke(app, ["config", "short-sentence", "show"])
 
     assert result.exit_code == 0
     assert "short_sentence_advanced.json" in result.output
@@ -257,7 +257,7 @@ def test_short_sentence_advanced_config_command_reset_restores_defaults(
     )
     monkeypatch.setattr("ttsforge.utils.get_user_config_path", lambda: config_path)
 
-    result = CliRunner().invoke(app, ["short-sentence-advanced-config", "reset"])
+    result = CliRunner().invoke(app, ["config", "short-sentence", "reset"])
 
     assert result.exit_code == 0
     assert "Reset advanced short-sentence config to defaults" in result.output
@@ -283,7 +283,7 @@ def test_short_sentence_advanced_config_command_without_action_shows_help(
     monkeypatch.setenv("NO_COLOR", "1")
     monkeypatch.setenv("COLUMNS", "160")
 
-    result = CliRunner().invoke(app, ["short-sentence-advanced-config"])
+    result = CliRunner().invoke(app, ["config", "short-sentence"])
 
     assert result.exit_code == 0
     assert "Usage:" in result.output
@@ -303,8 +303,64 @@ def test_short_sentence_advanced_config_help_shows_location(
     )
     monkeypatch.setattr("ttsforge.utils.get_user_config_path", lambda: config_path)
 
-    result = CliRunner().invoke(app, ["short-sentence-advanced-config", "--help"])
+    result = CliRunner().invoke(app, ["config", "short-sentence", "--help"])
 
     assert result.exit_code == 0
     assert tmp_path.name in result.output
     assert "short_sentence_advanced.json" in result.output
+
+
+def test_legacy_short_sentence_config_alias_warns_and_delegates(
+    tmp_path: Path,
+    monkeypatch,
+) -> None:
+    config_path = tmp_path / "config.json"
+    monkeypatch.setattr(
+        "ttsforge.short_sentence_config.get_user_config_path",
+        lambda: config_path,
+    )
+    monkeypatch.setattr("ttsforge.utils.get_user_config_path", lambda: config_path)
+
+    result = CliRunner().invoke(app, ["short-sentence-advanced-config", "init"])
+
+    assert result.exit_code == 0, result.output
+    assert "Deprecated: use 'ttsforge config short-sentence ACTION'." in result.output
+    assert (tmp_path / "short_sentence_advanced.json").exists()
+
+
+def test_invalid_short_sentence_action_does_not_mutate_config(
+    tmp_path: Path,
+    monkeypatch,
+) -> None:
+    config_path = tmp_path / "config.json"
+    monkeypatch.setattr(
+        "ttsforge.short_sentence_config.get_user_config_path",
+        lambda: config_path,
+    )
+    monkeypatch.setattr("ttsforge.utils.get_user_config_path", lambda: config_path)
+
+    result = CliRunner().invoke(app, ["config", "short-sentence", "bogus"])
+
+    assert result.exit_code == 2
+    assert "must be one of: show, init, reset" in result.output
+    assert not (tmp_path / "short_sentence_advanced.json").exists()
+    assert not config_path.exists()
+
+
+def test_invalid_legacy_short_sentence_action_does_not_mutate_config(
+    tmp_path: Path,
+    monkeypatch,
+) -> None:
+    config_path = tmp_path / "config.json"
+    monkeypatch.setattr(
+        "ttsforge.short_sentence_config.get_user_config_path",
+        lambda: config_path,
+    )
+    monkeypatch.setattr("ttsforge.utils.get_user_config_path", lambda: config_path)
+
+    result = CliRunner().invoke(app, ["short-sentence-advanced-config", "bogus"])
+
+    assert result.exit_code == 2
+    assert "must be one of: show, init, reset" in result.output
+    assert not (tmp_path / "short_sentence_advanced.json").exists()
+    assert not config_path.exists()

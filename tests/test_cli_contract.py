@@ -20,6 +20,9 @@ def _option_names(parameter: object) -> set[str]:
 
 def test_public_command_tree_is_complete() -> None:
     root = get_command(app)
+    visible_root_commands = {
+        name for name, command in root.commands.items() if not command.hidden
+    }
     assert {
         "convert",
         "list",
@@ -30,11 +33,12 @@ def test_public_command_tree_is_complete() -> None:
         "demo",
         "download",
         "config",
-        "short-sentence-advanced-config",
         "extract-names",
         "list-names",
         "phonemes",
-    } == set(root.commands)
+    } == visible_root_commands
+    assert root.commands["short-sentence-advanced-config"].hidden
+    assert {"short-sentence"} == set(root.commands["config"].commands)
     assert {"export", "convert", "preview", "info"} == set(
         root.commands["phonemes"].commands
     )
@@ -42,6 +46,11 @@ def test_public_command_tree_is_complete() -> None:
 
 def test_compatibility_sensitive_options_are_declared() -> None:
     root = get_command(app)
+    config = root.commands["config"]
+    set_option = _option(config, "set_option")
+    assert set_option.multiple is True
+    assert set_option.nargs == 2
+
     convert = root.commands["convert"]
     assert {"--gpu", "--no-gpu"}.issubset(_option_names(_option(convert, "use_gpu")))
     assert {"--resume", "--no-resume"}.issubset(

@@ -96,7 +96,7 @@ Options
 ``--short-sentence TEXT``
    Short-sentence handling config. Example:
    ``mode=randomized,threshold=30,selection=auto,max-tries=3``.
-   Can also reference a JSON config with ``config=path/to/short_sentence.json``. See ``ttsforge short-sentence-advanced-config init``.
+   Can also reference a JSON config with ``config=path/to/short_sentence.json``. See ``ttsforge config short-sentence init``.
 
 ``--announce-chapters / --no-announce-chapters``
    Read chapter titles aloud before chapter content. Default: enabled.
@@ -428,7 +428,7 @@ Options
 ``--short-sentence TEXT``
    Short-sentence handling config. Example:
    ``mode=randomized,threshold=30,selection=auto,max-tries=3``.
-   Can also reference a JSON config with ``config=path/to/short_sentence.json``. See ``ttsforge short-sentence-advanced-config init``.
+   Can also reference a JSON config with ``config=path/to/short_sentence.json``. See ``ttsforge config short-sentence init``.
 
 **Note:** Playback requires the optional ``ttsforge[audio]`` extra.
 
@@ -619,14 +619,14 @@ Examples
 See :doc:`configuration` for all available options.
 
 
-short-sentence-advanced-config
-------------------------------
+config short-sentence
+---------------------
 
 Create, link, or inspect the advanced short-sentence JSON configuration.
 
 .. code-block:: bash
 
-   ttsforge short-sentence-advanced-config [show|init|reset]
+   ttsforge config short-sentence [show|init|reset]
 
 Called without an action, this command prints its help.
 
@@ -649,13 +649,16 @@ Examples
 .. code-block:: bash
 
    # Create and link the advanced short-sentence config
-   ttsforge short-sentence-advanced-config init
+   ttsforge config short-sentence init
 
    # Show the advanced short-sentence config
-   ttsforge short-sentence-advanced-config show
+   ttsforge config short-sentence show
 
    # Reset the advanced short-sentence config to defaults
-   ttsforge short-sentence-advanced-config reset
+   ttsforge config short-sentence reset
+
+The former ``short-sentence-advanced-config`` root command remains available
+as a deprecated compatibility alias.
 
 
 phonemes
@@ -773,7 +776,7 @@ Options
 ``--short-sentence TEXT``
    Short-sentence handling config. Example:
    ``mode=randomized,threshold=30,selection=auto,max-tries=3``.
-   Can also reference a JSON config with ``config=path/to/short_sentence.json``. See ``ttsforge short-sentence-advanced-config init``.
+   Can also reference a JSON config with ``config=path/to/short_sentence.json``. See ``ttsforge config short-sentence init``.
 
 ``--announce-chapters / --no-announce-chapters``
    Read chapter titles aloud before chapter content. Default: enabled.

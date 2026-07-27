@@ -43,3 +43,13 @@ def test_config_rejects_unknown_options() -> None:
     result = CliRunner().invoke(app, ["config", "--not-an-option"])
     assert result.exit_code != 0
     assert "No such option" in result.output
+
+
+def test_config_options_cannot_be_combined_with_subcommand() -> None:
+    result = CliRunner().invoke(
+        app,
+        ["config", "--show", "short-sentence", "show"],
+    )
+
+    assert result.exit_code != 0
+    assert "cannot be combined" in result.output

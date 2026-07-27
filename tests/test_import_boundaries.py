@@ -55,3 +55,12 @@ def test_conversion_help_is_provider_independent() -> None:
     )
     assert result.returncode == 0, result.stderr
     assert "Generate only SSMD files" in _semantic_output(result.stdout)
+
+
+def test_short_sentence_config_help_is_provider_independent() -> None:
+    result = _run_python(
+        "-c",
+        "from ttsforge.cli import main; main(['config', 'short-sentence', '--help'])",
+    )
+    assert result.returncode == 0, result.stderr
+    assert "Advanced short-sentence config path" in _semantic_output(result.stdout)

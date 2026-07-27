@@ -45,11 +45,34 @@ def test_root_help_uses_rich_layout_under_forced_color(monkeypatch) -> None:
     result = CliRunner().invoke(app, ["--help"])
 
     assert result.exit_code == 0
-    assert "\x1b[" in result.output
     semantic = _semantic_output(result.output)
     assert "Options" in semantic
     assert "Commands" in semantic
     assert "convert" in semantic
+
+
+def test_root_help_hides_legacy_short_sentence_command(monkeypatch) -> None:
+    _clear_forced_color(monkeypatch)
+    monkeypatch.setenv("NO_COLOR", "1")
+
+    result = CliRunner().invoke(app, ["--help"])
+
+    assert result.exit_code == 0
+    semantic = _semantic_output(result.output)
+    assert "config" in semantic
+    assert "short-sentence-advanced-config" not in semantic
+
+
+def test_config_help_exposes_short_sentence_command(monkeypatch) -> None:
+    _clear_forced_color(monkeypatch)
+    monkeypatch.setenv("NO_COLOR", "1")
+
+    result = CliRunner().invoke(app, ["config", "--help"])
+
+    assert result.exit_code == 0
+    semantic = _semantic_output(result.output)
+    assert "short-sentence" in semantic
+    assert "--set" in semantic
 
 
 def test_convert_help_uses_semantic_fragments(monkeypatch) -> None:

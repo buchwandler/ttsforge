@@ -42,6 +42,17 @@ Reset to defaults:
 
    ttsforge config --reset
 
+Advanced short-sentence JSON configuration:
+
+.. code-block:: bash
+
+   ttsforge config short-sentence init
+   ttsforge config short-sentence show
+   ttsforge config short-sentence reset
+
+The former ``short-sentence-advanced-config`` root command remains available
+as a deprecated compatibility alias.
+
 
 Configuration Options
 ---------------------
