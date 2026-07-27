@@ -13,8 +13,14 @@ def _semantic_output(output: str) -> str:
     return " ".join(without_ansi.split())
 
 
-def test_root_help_is_semantic_and_color_free(monkeypatch) -> None:
-    """Root help remains inspectable under the review terminal settings."""
+def _clear_forced_color(monkeypatch) -> None:
+    for name in ("FORCE_COLOR", "CLICOLOR_FORCE", "CLICOLOR"):
+        monkeypatch.delenv(name, raising=False)
+
+
+def test_root_help_honors_no_color(monkeypatch) -> None:
+    """Rich layout remains readable while NO_COLOR removes ANSI styling."""
+    _clear_forced_color(monkeypatch)
     monkeypatch.setenv("NO_COLOR", "1")
     monkeypatch.setenv("COLUMNS", "160")
 
@@ -24,18 +30,38 @@ def test_root_help_is_semantic_and_color_free(monkeypatch) -> None:
     assert "\x1b[" not in result.output
     semantic = _semantic_output(result.output)
     assert "ttsforge" in semantic.lower()
+    assert "Options" in semantic
+    assert "Commands" in semantic
     assert "convert" in semantic
     assert "phonemes" in semantic
 
 
+def test_root_help_uses_rich_layout_under_forced_color(monkeypatch) -> None:
+    """The public help path uses Typer's Rich formatter."""
+    monkeypatch.delenv("NO_COLOR", raising=False)
+    monkeypatch.setenv("FORCE_COLOR", "1")
+    monkeypatch.setenv("COLUMNS", "160")
+
+    result = CliRunner().invoke(app, ["--help"])
+
+    assert result.exit_code == 0
+    assert "\x1b[" in result.output
+    semantic = _semantic_output(result.output)
+    assert "Options" in semantic
+    assert "Commands" in semantic
+    assert "convert" in semantic
+
+
 def test_convert_help_uses_semantic_fragments(monkeypatch) -> None:
     """Command help does not depend on Rich's exact line wrapping."""
+    _clear_forced_color(monkeypatch)
     monkeypatch.setenv("NO_COLOR", "1")
     monkeypatch.setenv("COLUMNS", "160")
 
     result = CliRunner().invoke(app, ["convert", "--help"])
 
     assert result.exit_code == 0
+    assert "\x1b[" not in result.output
     semantic = _semantic_output(result.output)
     for fragment in ("--voice", "--speed", "--resume", "--seed"):
         assert fragment in semantic

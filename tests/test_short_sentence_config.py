@@ -277,12 +277,17 @@ def test_short_sentence_advanced_config_command_without_action_shows_help(
         lambda: config_path,
     )
     monkeypatch.setattr("ttsforge.utils.get_user_config_path", lambda: config_path)
+    monkeypatch.delenv("FORCE_COLOR", raising=False)
+    monkeypatch.delenv("CLICOLOR_FORCE", raising=False)
+    monkeypatch.delenv("CLICOLOR", raising=False)
+    monkeypatch.setenv("NO_COLOR", "1")
+    monkeypatch.setenv("COLUMNS", "160")
 
     result = CliRunner().invoke(app, ["short-sentence-advanced-config"])
 
     assert result.exit_code == 0
     assert "Usage:" in result.output
-    assert "[show|init|reset]" in result.output
+    assert "[ACTION]" in result.output
     assert "ACTION is 'init', 'show', or 'reset'" in result.output
     assert not (tmp_path / "short_sentence_advanced.json").exists()
 

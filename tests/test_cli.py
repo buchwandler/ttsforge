@@ -19,8 +19,13 @@ from ttsforge.cli.commands_conversion import (
 
 
 @pytest.fixture
-def runner():
-    """Create a CLI runner."""
+def runner(monkeypatch):
+    """Create a CLI runner with deterministic terminal settings."""
+    monkeypatch.delenv("FORCE_COLOR", raising=False)
+    monkeypatch.delenv("CLICOLOR_FORCE", raising=False)
+    monkeypatch.delenv("CLICOLOR", raising=False)
+    monkeypatch.setenv("NO_COLOR", "1")
+    monkeypatch.setenv("COLUMNS", "160")
     return CliRunner()
 
 

@@ -24,12 +24,12 @@ app = typer.Typer(
     invoke_without_command=True,
     no_args_is_help=False,
     help="ttsforge - Generate audiobooks from EPUB files with TTS.",
-    rich_markup_mode=None,
+    rich_markup_mode="rich",
 )
 phonemes_app = typer.Typer(
     add_completion=False,
     help="Commands for working with phonemes and pre-tokenized content.",
-    rich_markup_mode=None,
+    rich_markup_mode="rich",
 )
 app.add_typer(phonemes_app, name="phonemes")
 
