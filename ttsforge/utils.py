@@ -3,6 +3,7 @@
 import importlib
 import json
 import logging
+import math
 import os
 import platform
 import shlex
@@ -23,6 +24,41 @@ from .paths import get_user_config_path as _get_user_config_path
 _LEGACY_GPU_KEY_WARNED = False
 _PHONEME_DICT_WARNED_PATHS: set[str] = set()
 _LOGGER = logging.getLogger(__name__)
+
+_NUMERIC_CONFIG_RANGES: dict[str, tuple[float | None, float | None]] = {
+    "default_speed": (0.5, 2.0),
+    "mixed_language_confidence": (0.0, 1.0),
+    "silence_between_chapters": (0.0, None),
+    "pause_clause": (0.0, None),
+    "pause_sentence": (0.0, None),
+    "pause_paragraph": (0.0, None),
+    "pause_variance": (0.0, None),
+    "chapter_pause_after_title": (0.0, None),
+}
+
+
+def validate_config_value(key: str, value: Any) -> None:
+    """Validate configuration values that have numeric runtime constraints."""
+    bounds = _NUMERIC_CONFIG_RANGES.get(key)
+    if bounds is None:
+        return
+    if isinstance(value, bool) or not isinstance(value, (int, float)):
+        raise ValueError("must be a number")
+
+    number = float(value)
+    if not math.isfinite(number):
+        raise ValueError("must be finite")
+
+    minimum, maximum = bounds
+    if minimum is not None and number < minimum:
+        if minimum == 0.0 and maximum is None:
+            raise ValueError("must be non-negative")
+        raise ValueError(f"must be at least {minimum}")
+    if maximum is not None and number > maximum:
+        if minimum is not None:
+            raise ValueError(f"must be between {minimum} and {maximum}")
+        raise ValueError(f"must be at most {maximum}")
+
 
 # Default encoding for subprocess
 DEFAULT_ENCODING = sys.getfilesystemencoding()
@@ -65,8 +101,21 @@ def load_config() -> dict[str, Any]:
                         "use 'use_gpu' instead.",
                         file=sys.stderr,
                     )
-            # Merge with defaults to ensure all keys exist
-            return {**DEFAULT_CONFIG, **user_config}
+            if isinstance(user_config, dict):
+                sanitized = dict(user_config)
+                for key, value in tuple(sanitized.items()):
+                    try:
+                        validate_config_value(key, value)
+                    except ValueError as exc:
+                        sanitized.pop(key, None)
+                        default = DEFAULT_CONFIG.get(key)
+                        print(
+                            "Warning: ignoring invalid config value "
+                            f"{key}={value!r}: {exc}; using default {default!r}.",
+                            file=sys.stderr,
+                        )
+                # Merge with defaults to ensure all keys exist.
+                return {**DEFAULT_CONFIG, **sanitized}
     except (OSError, json.JSONDecodeError, ValueError) as exc:
         _LOGGER.warning("Failed to load config from %s: %s", config_path, exc)
     return DEFAULT_CONFIG.copy()

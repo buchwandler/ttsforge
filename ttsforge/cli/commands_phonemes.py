@@ -407,6 +407,79 @@ def phonemes_convert(
         selected_chapter_count = len(book.chapters)
         total_segments = book.total_segments
 
+    # Validate config-derived values before displaying details or asking for
+    # confirmation. These values bypass Typer's direct-option validation.
+    try:
+        options = PhonemeConversionOptions(
+            voice=voice or config.get("default_voice", "af_heart"),
+            speed=speed,
+            output_format=fmt,
+            use_gpu=gpu,
+            model_quality=model_quality,
+            model_source=model_source,
+            model_variant=model_variant,
+            silence_between_chapters=silence,
+            pause_clause=(
+                pause_clause
+                if pause_clause is not None
+                else config.get("pause_clause", 0.3)
+            ),
+            pause_sentence=(
+                pause_sentence
+                if pause_sentence is not None
+                else config.get("pause_sentence", 0.5)
+            ),
+            pause_paragraph=(
+                pause_paragraph
+                if pause_paragraph is not None
+                else config.get("pause_paragraph", 0.9)
+            ),
+            pause_variance=(
+                pause_variance
+                if pause_variance is not None
+                else config.get("pause_variance", 0.05)
+            ),
+            random_seed=random_seed,
+            pause_mode=(
+                pause_mode
+                if pause_mode is not None
+                else config.get("pause_mode", "auto")
+            ),
+            enable_short_sentence=config.get("enable_short_sentence", None),
+            short_sentence=(
+                short_sentence
+                if short_sentence is not None
+                else config.get("short_sentence")
+            ),
+            announce_chapters=(
+                announce_chapters
+                if announce_chapters is not None
+                else config.get("announce_chapters", True)
+            ),
+            chapter_pause_after_title=(
+                chapter_pause
+                if chapter_pause is not None
+                else config.get("chapter_pause_after_title", 2.0)
+            ),
+            title=effective_title,
+            author=effective_author,
+            cover_image=cover,
+            voice_blend=voice_blend,
+            voice_database=voice_database,
+            chapters=chapters,
+            resume=not streaming,
+            keep_chapter_files=keep_chapters,
+            chapter_filename_template=config.get(
+                "chapter_filename_template",
+                "{chapter_num:03d}_{book_title}_{chapter_title}",
+            ),
+            model_path=model_path,
+            voices_path=voices_path,
+        )
+    except ValueError as exc:
+        console.print(f"[red]Invalid conversion configuration:[/red] {exc}.")
+        raise typer.Exit(code=2) from exc
+
     # Show info
     console.print(f"[dim]Title: {effective_title}[/dim]")
     if selected_indices:
@@ -424,7 +497,7 @@ def phonemes_convert(
     if voice_blend:
         console.print(f"[dim]Voice blend: {voice_blend}[/dim]")
     else:
-        console.print(f"[dim]Voice: {voice}, Speed: {speed}x[/dim]")
+        console.print(f"[dim]Voice: {options.voice}, Speed: {options.speed}x[/dim]")
 
     console.print(f"[dim]Output: {output} (format: {fmt})[/dim]")
     mode_str = "streaming" if streaming else "resumable (chapter-at-a-time)"
@@ -434,72 +507,6 @@ def phonemes_convert(
         if not Confirm.ask("Proceed with conversion?"):
             console.print("[yellow]Cancelled.[/yellow]")
             return
-
-    # Create conversion options
-    options = PhonemeConversionOptions(
-        voice=voice or config.get("default_voice", "af_heart"),
-        speed=speed,
-        output_format=fmt,
-        use_gpu=gpu,
-        model_quality=model_quality,
-        model_source=model_source,
-        model_variant=model_variant,
-        silence_between_chapters=silence,
-        pause_clause=(
-            pause_clause
-            if pause_clause is not None
-            else config.get("pause_clause", 0.3)
-        ),
-        pause_sentence=(
-            pause_sentence
-            if pause_sentence is not None
-            else config.get("pause_sentence", 0.5)
-        ),
-        pause_paragraph=(
-            pause_paragraph
-            if pause_paragraph is not None
-            else config.get("pause_paragraph", 0.9)
-        ),
-        pause_variance=(
-            pause_variance
-            if pause_variance is not None
-            else config.get("pause_variance", 0.05)
-        ),
-        random_seed=random_seed,
-        pause_mode=(
-            pause_mode if pause_mode is not None else config.get("pause_mode", "auto")
-        ),
-        enable_short_sentence=config.get("enable_short_sentence", None),
-        short_sentence=(
-            short_sentence
-            if short_sentence is not None
-            else config.get("short_sentence")
-        ),
-        announce_chapters=(
-            announce_chapters
-            if announce_chapters is not None
-            else config.get("announce_chapters", True)
-        ),
-        chapter_pause_after_title=(
-            chapter_pause
-            if chapter_pause is not None
-            else config.get("chapter_pause_after_title", 2.0)
-        ),
-        title=effective_title,
-        author=effective_author,
-        cover_image=cover,
-        voice_blend=voice_blend,
-        voice_database=voice_database,
-        chapters=chapters,
-        resume=not streaming,  # Resume only in chapter-at-a-time mode
-        keep_chapter_files=keep_chapters,
-        chapter_filename_template=config.get(
-            "chapter_filename_template",
-            "{chapter_num:03d}_{book_title}_{chapter_title}",
-        ),
-        model_path=model_path,
-        voices_path=voices_path,
-    )
 
     # Progress tracking with Rich
     progress_bar: Progress | None = None

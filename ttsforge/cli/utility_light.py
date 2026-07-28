@@ -15,7 +15,7 @@ from ..constants import (
     VOICE_PREFIX_TO_LANG,
     VOICES,
 )
-from ..utils import load_config, reset_config, save_config
+from ..utils import load_config, reset_config, save_config, validate_config_value
 from .helpers import console
 
 
@@ -91,11 +91,13 @@ def config(
 
     if set_option:
         current = load_config()
+        pending: dict[str, Any] = {}
+        errors: list[str] = []
         from ..short_sentence_config import validate_short_sentence_config
 
         for key, value in set_option:
             if key not in DEFAULT_CONFIG:
-                console.print(f"[yellow]Warning:[/yellow] Unknown option '{key}'")
+                errors.append(f"Unknown option '{key}'")
                 continue
             try:
                 default = DEFAULT_CONFIG[key]
@@ -108,22 +110,31 @@ def config(
                 elif isinstance(default, list):
                     typed = json.loads(value)
                     if not isinstance(typed, list):
-                        raise ValueError
+                        raise ValueError("must be a JSON list")
                 else:
                     typed = value
+                validate_config_value(key, typed)
                 if key == "short_sentence":
-                    errors = validate_short_sentence_config(str(typed))
-                    if errors:
-                        console.print(
-                            "[red]Invalid value for short_sentence:[/red] "
-                            + "; ".join(errors)
-                        )
-                        continue
-                current[key] = typed
-                console.print(f"[green]Set {key} = {typed}[/green]")
-            except (TypeError, ValueError, json.JSONDecodeError):
-                console.print(f"[red]Invalid value for {key}: {value}[/red]")
-        save_config(current)
+                    short_sentence_errors = validate_short_sentence_config(str(typed))
+                    if short_sentence_errors:
+                        raise ValueError("; ".join(short_sentence_errors))
+                pending[key] = typed
+            except (TypeError, ValueError, json.JSONDecodeError) as exc:
+                detail = str(exc)
+                suffix = f" ({detail})" if detail else ""
+                errors.append(f"Invalid value for {key}: {value}{suffix}")
+
+        if errors:
+            for error in errors:
+                console.print(f"[red]{error}[/red]")
+            raise typer.Exit(code=2)
+
+        current.update(pending)
+        if not save_config(current):
+            console.print("[red]Failed to save configuration.[/red]")
+            raise typer.Exit(code=1)
+        for key, typed in pending.items():
+            console.print(f"[green]Set {key} = {typed}[/green]")
         return
 
     current = load_config()

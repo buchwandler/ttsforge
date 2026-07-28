@@ -1,6 +1,5 @@
 """Tests for ttsforge.cli module."""
 
-import json
 import logging
 import tempfile
 from pathlib import Path
@@ -93,11 +92,10 @@ class TestConfigCommand:
                 ["config", "--set", "short_sentence", "mode=bogus,threshold=30"],
             )
 
-        assert result.exit_code == 0
+        assert result.exit_code == 2
         assert "Invalid value for short_sentence" in result.output
         assert "Unknown short-sentence mode 'bogus'" in result.output
-        saved_config = json.loads(config_path.read_text(encoding="utf-8"))
-        assert saved_config["short_sentence"] != "mode=bogus,threshold=30"
+        assert not config_path.exists()
 
 
 class TestSampleCommand:
@@ -223,6 +221,30 @@ class TestConvertCommand:
         assert "Invalid short-sentence config" in result.output
         assert "Unknown short-sentence mode 'bogus'" in result.output
         assert "Conversion Summary" not in result.output
+
+    def test_convert_rejects_invalid_persisted_pause_variance_before_prompt(
+        self,
+        runner,
+        tmp_path,
+        monkeypatch,
+    ):
+        """Config-derived numeric errors must precede summary and confirmation."""
+        input_file = tmp_path / "book.txt"
+        input_file.write_text("Chapter 1\nText", encoding="utf-8")
+        monkeypatch.setattr(
+            "ttsforge.cli.commands_conversion.load_config",
+            lambda: {"pause_variance": -0.1},
+        )
+
+        result = runner.invoke(
+            app,
+            ["convert", str(input_file), "--chapters", "1"],
+        )
+
+        assert result.exit_code == 2
+        assert "pause_variance" in result.output
+        assert "Proceed with conversion?" not in result.output
+        assert "Traceback" not in result.output
 
     def test_short_sentence_summary_formats_resolved_default(self):
         """Summary should show the resolved config, not only the raw default."""

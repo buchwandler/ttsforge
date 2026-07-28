@@ -11,7 +11,9 @@ from typer.testing import CliRunner
 from ttsforge.cli import app
 
 
-def test_config_set_accepts_repeated_pairs_and_negative_values(tmp_path: Path) -> None:
+def test_config_set_accepts_repeated_pairs_and_dash_prefixed_values(
+    tmp_path: Path,
+) -> None:
     config_path = tmp_path / "config.json"
     with patch("ttsforge.utils.get_user_config_path", return_value=config_path):
         result = CliRunner().invoke(
@@ -19,8 +21,8 @@ def test_config_set_accepts_repeated_pairs_and_negative_values(tmp_path: Path) -
             [
                 "config",
                 "--set",
-                "pause_variance",
-                "-0.1",
+                "default_title",
+                "-draft",
                 "--set",
                 "default_language",
                 "b",
@@ -29,8 +31,45 @@ def test_config_set_accepts_repeated_pairs_and_negative_values(tmp_path: Path) -
 
     assert result.exit_code == 0, result.output
     saved = json.loads(config_path.read_text(encoding="utf-8"))
-    assert saved["pause_variance"] == -0.1
+    assert saved["default_title"] == "-draft"
     assert saved["default_language"] == "b"
+
+
+def test_config_set_rejects_negative_pause_variance(tmp_path: Path) -> None:
+    config_path = tmp_path / "config.json"
+    with patch("ttsforge.utils.get_user_config_path", return_value=config_path):
+        result = CliRunner().invoke(
+            app,
+            ["config", "--set", "pause_variance", "-0.1"],
+        )
+
+    assert result.exit_code == 2
+    assert "pause_variance" in result.output
+    assert "must be non-negative" in result.output
+    assert not config_path.exists()
+
+
+def test_config_set_is_atomic_when_one_repeated_pair_is_invalid(tmp_path: Path) -> None:
+    config_path = tmp_path / "config.json"
+    original = {"default_language": "a"}
+    config_path.write_text(json.dumps(original), encoding="utf-8")
+
+    with patch("ttsforge.utils.get_user_config_path", return_value=config_path):
+        result = CliRunner().invoke(
+            app,
+            [
+                "config",
+                "--set",
+                "default_language",
+                "b",
+                "--set",
+                "pause_variance",
+                "-0.1",
+            ],
+        )
+
+    assert result.exit_code == 2
+    assert json.loads(config_path.read_text(encoding="utf-8")) == original
 
 
 def test_config_set_requires_exactly_two_values() -> None:

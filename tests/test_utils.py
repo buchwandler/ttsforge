@@ -1,9 +1,11 @@
 import importlib
+import json
 import os
 import shutil
 import sys
 import types
 from pathlib import Path
+from unittest.mock import patch
 
 import pytest
 
@@ -12,6 +14,7 @@ from ttsforge.utils import (
     create_process,
     ensure_ffmpeg,
     format_filename_template,
+    load_config,
     resolve_conversion_defaults,
     run_process,
     sanitize_filename,
@@ -168,3 +171,21 @@ def test_ensure_ffmpeg_missing(monkeypatch: pytest.MonkeyPatch) -> None:
     monkeypatch.setattr(importlib, "import_module", raise_import)
     with pytest.raises(RuntimeError):
         ensure_ffmpeg()
+
+
+def test_load_config_ignores_invalid_pause_variance(
+    tmp_path: Path, capsys: pytest.CaptureFixture[str]
+) -> None:
+    config_path = tmp_path / "config.json"
+    original = {"pause_variance": -0.1, "default_language": "b"}
+    config_path.write_text(json.dumps(original), encoding="utf-8")
+
+    with patch("ttsforge.utils.get_user_config_path", return_value=config_path):
+        config = load_config()
+
+    captured = capsys.readouterr()
+    assert config["pause_variance"] == 0.05
+    assert config["default_language"] == "b"
+    assert "ignoring invalid config value" in captured.err
+    assert "pause_variance" in captured.err
+    assert config_path.read_text(encoding="utf-8") == json.dumps(original)

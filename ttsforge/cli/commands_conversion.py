@@ -321,6 +321,120 @@ def convert(  # noqa: C901
         parsed_mixed_language_allowed = [
             lang.strip() for lang in mixed_language_allowed.split(",")
         ]
+
+    # Validate all effective settings before showing a summary or asking for
+    # confirmation. Config-derived values do not pass through Typer's bounds.
+    try:
+        options = ConversionOptions(
+            voice=resolved_defaults["voice"],
+            language=effective_language,
+            speed=resolved_defaults["speed"],
+            output_format=(
+                output_format
+                if output_format is not None
+                else config.get("default_format", "m4b")
+            ),
+            output_dir=output.parent,
+            use_gpu=use_gpu if use_gpu is not None else config.get("use_gpu", False),
+            model_quality=model_quality,
+            model_source=model_source,
+            model_variant=model_variant,
+            silence_between_chapters=(
+                silence
+                if silence is not None
+                else config.get("silence_between_chapters", 2.0)
+            ),
+            lang=(lang if lang is not None else config.get("phonemization_lang")),
+            use_mixed_language=(
+                use_mixed_language
+                if use_mixed_language is not None
+                else config.get("use_mixed_language", False)
+            ),
+            mixed_language_primary=(
+                mixed_language_primary
+                if mixed_language_primary is not None
+                else config.get("mixed_language_primary")
+            ),
+            mixed_language_allowed=(
+                parsed_mixed_language_allowed
+                if parsed_mixed_language_allowed is not None
+                else config.get("mixed_language_allowed")
+            ),
+            mixed_language_confidence=(
+                mixed_language_confidence
+                if mixed_language_confidence is not None
+                else config.get("mixed_language_confidence", 0.7)
+            ),
+            phoneme_dictionary_path=(
+                phoneme_dictionary_path
+                if phoneme_dictionary_path is not None
+                else config.get("phoneme_dictionary_path")
+            ),
+            phoneme_dict_case_sensitive=(
+                phoneme_dict_case_sensitive
+                if phoneme_dict_case_sensitive is not None
+                else config.get("phoneme_dict_case_sensitive", False)
+            ),
+            pause_clause=(
+                pause_clause
+                if pause_clause is not None
+                else config.get("pause_clause", 0.3)
+            ),
+            pause_sentence=(
+                pause_sentence
+                if pause_sentence is not None
+                else config.get("pause_sentence", 0.5)
+            ),
+            pause_paragraph=(
+                pause_paragraph
+                if pause_paragraph is not None
+                else config.get("pause_paragraph", 0.9)
+            ),
+            pause_variance=(
+                pause_variance
+                if pause_variance is not None
+                else config.get("pause_variance", 0.05)
+            ),
+            random_seed=random_seed,
+            pause_mode=(
+                pause_mode
+                if pause_mode is not None
+                else config.get("pause_mode", "auto")
+            ),
+            enable_short_sentence=effective_enable_short_sentence,
+            short_sentence=effective_short_sentence,
+            announce_chapters=(
+                announce_chapters
+                if announce_chapters is not None
+                else config.get("announce_chapters", True)
+            ),
+            chapter_pause_after_title=(
+                chapter_pause
+                if chapter_pause is not None
+                else config.get("chapter_pause_after_title", 2.0)
+            ),
+            split_mode=resolved_defaults["split_mode"],
+            resume=False if fresh else resume,
+            keep_chapter_files=keep_chapter_files,
+            title=effective_title,
+            author=effective_author,
+            cover_image=cover,
+            voice_blend=voice_blend,
+            voice_database=voice_database,
+            chapter_filename_template=config.get(
+                "chapter_filename_template",
+                "{chapter_num:03d}_{book_title}_{chapter_title}",
+            ),
+            model_path=model_path,
+            voices_path=voices_path,
+            generate_ssmd_only=generate_ssmd_only,
+            detect_emphasis=detect_emphasis,
+            text_postprocess_options=text_postprocess_options,
+        )
+    except ValueError as exc:
+        console.print(f"[red]Invalid conversion configuration:[/red] {exc}.")
+        raise typer.Exit(code=2) from exc
+
     # Show conversion summary
     _show_conversion_summary(
         epub_file=epub_file,
@@ -328,24 +442,19 @@ def convert(  # noqa: C901
         output_format=output_format or config.get("default_format", "m4b"),
         voice=voice or "af_bella",
         language=effective_language,
-        speed=speed or config.get("default_speed", 1.0),
-        use_gpu=use_gpu if use_gpu is not None else config.get("use_gpu", False),
+        speed=options.speed,
+        use_gpu=options.use_gpu,
         model_source=model_source,
         model_variant=model_variant,
         model_quality=model_quality,
         num_chapters=len(selected_indices) if selected_indices else len(epub_chapters),
         title=effective_title,
         author=effective_author,
-        lang=lang,
-        use_mixed_language=use_mixed_language
-        or config.get("use_mixed_language", False),
-        mixed_language_primary=mixed_language_primary
-        or config.get("mixed_language_primary"),
-        mixed_language_allowed=parsed_mixed_language_allowed
-        or config.get("mixed_language_allowed"),
-        mixed_language_confidence=mixed_language_confidence
-        if mixed_language_confidence is not None
-        else config.get("mixed_language_confidence", 0.7),
+        lang=options.lang,
+        use_mixed_language=options.use_mixed_language,
+        mixed_language_primary=options.mixed_language_primary,
+        mixed_language_allowed=options.mixed_language_allowed,
+        mixed_language_confidence=options.mixed_language_confidence,
         random_seed=random_seed,
         short_sentence=_format_short_sentence_summary(
             effective_short_sentence,
@@ -383,112 +492,6 @@ def convert(  # noqa: C901
             shutil.rmtree(work_dir)
         # Fresh start means we don't try to resume
         resume = False
-
-    # Create conversion options
-    options = ConversionOptions(
-        voice=resolved_defaults["voice"],
-        language=effective_language,
-        speed=resolved_defaults["speed"],
-        output_format=(
-            output_format
-            if output_format is not None
-            else config.get("default_format", "m4b")
-        ),
-        output_dir=output.parent,
-        use_gpu=use_gpu if use_gpu is not None else config.get("use_gpu", False),
-        model_quality=model_quality,
-        model_source=model_source,
-        model_variant=model_variant,
-        silence_between_chapters=(
-            silence
-            if silence is not None
-            else config.get("silence_between_chapters", 2.0)
-        ),
-        lang=(lang if lang is not None else config.get("phonemization_lang")),
-        use_mixed_language=(
-            use_mixed_language
-            if use_mixed_language is not None
-            else config.get("use_mixed_language", False)
-        ),
-        mixed_language_primary=(
-            mixed_language_primary
-            if mixed_language_primary is not None
-            else config.get("mixed_language_primary")
-        ),
-        mixed_language_allowed=(
-            parsed_mixed_language_allowed
-            if parsed_mixed_language_allowed is not None
-            else config.get("mixed_language_allowed")
-        ),
-        mixed_language_confidence=(
-            mixed_language_confidence
-            if mixed_language_confidence is not None
-            else config.get("mixed_language_confidence", 0.7)
-        ),
-        phoneme_dictionary_path=(
-            phoneme_dictionary_path
-            if phoneme_dictionary_path is not None
-            else config.get("phoneme_dictionary_path")
-        ),
-        phoneme_dict_case_sensitive=(
-            phoneme_dict_case_sensitive
-            if phoneme_dict_case_sensitive is not None
-            else config.get("phoneme_dict_case_sensitive", False)
-        ),
-        pause_clause=(
-            pause_clause
-            if pause_clause is not None
-            else config.get("pause_clause", 0.3)
-        ),
-        pause_sentence=(
-            pause_sentence
-            if pause_sentence is not None
-            else config.get("pause_sentence", 0.5)
-        ),
-        pause_paragraph=(
-            pause_paragraph
-            if pause_paragraph is not None
-            else config.get("pause_paragraph", 0.9)
-        ),
-        pause_variance=(
-            pause_variance
-            if pause_variance is not None
-            else config.get("pause_variance", 0.05)
-        ),
-        random_seed=random_seed,
-        pause_mode=(
-            pause_mode if pause_mode is not None else config.get("pause_mode", "auto")
-        ),
-        enable_short_sentence=effective_enable_short_sentence,
-        short_sentence=effective_short_sentence,
-        announce_chapters=(
-            announce_chapters
-            if announce_chapters is not None
-            else config.get("announce_chapters", True)
-        ),
-        chapter_pause_after_title=(
-            chapter_pause
-            if chapter_pause is not None
-            else config.get("chapter_pause_after_title", 2.0)
-        ),
-        split_mode=resolved_defaults["split_mode"],
-        resume=resume,
-        keep_chapter_files=keep_chapter_files,
-        title=effective_title,
-        author=effective_author,
-        cover_image=cover,
-        voice_blend=voice_blend,
-        voice_database=voice_database,
-        chapter_filename_template=config.get(
-            "chapter_filename_template",
-            "{chapter_num:03d}_{book_title}_{chapter_title}",
-        ),
-        model_path=model_path,
-        voices_path=voices_path,
-        generate_ssmd_only=generate_ssmd_only,
-        detect_emphasis=detect_emphasis,
-        text_postprocess_options=text_postprocess_options,
-    )
 
     # Set up progress display
     progress = Progress(

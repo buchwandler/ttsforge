@@ -192,12 +192,11 @@ ttsforge config --set use_gpu true
 ttsforge config --reset
 ```
 
-The legacy two-token configuration option remains available and may be
-repeated. Values beginning with a dash are accepted as values rather than
-being interpreted as options:
+The legacy two-token configuration option remains available and may be repeated. Values
+beginning with a dash are accepted as values rather than being interpreted as options:
 
 ```bash
-ttsforge config --set default_speed 1.1 --set pause_variance -0.1
+ttsforge config --set default_speed 1.1 --set default_title -draft
 ```
 
 Advanced short-sentence handling can be managed with a JSON config:
@@ -213,8 +212,8 @@ ttsforge config short-sentence show
 ttsforge config short-sentence reset
 ```
 
-The former `short-sentence-advanced-config` root command remains available as
-a deprecated compatibility alias.
+The former `short-sentence-advanced-config` root command remains available as a
+deprecated compatibility alias.
 
 ### Filename Templates
 
@@ -543,9 +542,9 @@ To find the correct IPA phonemes for a word:
 
 ## Commands
 
-The CLI is built from explicit typed Typer command wrappers. Help and version
-paths do not initialize the ONNX provider; only executing a backend-dependent
-command imports its implementation module.
+The CLI is built from explicit typed Typer command wrappers. Help and version paths do
+not initialize the ONNX provider; only executing a backend-dependent command imports its
+implementation module.
 
 | Command            | Description                          |
 | ------------------ | ------------------------------------ |
