@@ -332,11 +332,15 @@ Set default options:
    # Set default format
    ttsforge config --set default_format mp3
 
-   # Enable GPU acceleration
-   ttsforge config --set use_gpu true
+   # Select an ONNX Runtime provider (Termux example)
+   ttsforge config --set model_source github --set onnx_provider nnapi
 
    # View all settings
    ttsforge config --show
+
+Provider aliases include ``auto``, ``cpu``, ``nnapi``, and ``xnnpack``; full
+``*ExecutionProvider`` names are also accepted. The legacy ``--gpu`` and
+``--no-gpu`` flags map to ``auto`` and ``cpu`` respectively.
 
 
 Complete Example

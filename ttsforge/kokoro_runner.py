@@ -48,6 +48,13 @@ class KokoroRunOptions:
     voice_database: Any | None = None
     tokenizer_config: Any | None = None  # pykokoro.tokenizer.TokenizerConfig
     short_sentence_config: ShortSentenceConfig | None = None
+    onnx_provider: str | None = None
+
+    def effective_onnx_provider(self) -> str:
+        """Return the provider requested by this runner option set."""
+        if self.onnx_provider is not None:
+            return self.onnx_provider
+        return "auto" if self.use_gpu else "cpu"
 
 
 class KokoroRunner:
@@ -69,16 +76,19 @@ class KokoroRunner:
         if self.opts.model_path is None or self.opts.voices_path is None:
             model_quality = self.opts.model_quality or DEFAULT_MODEL_QUALITY
             model_source = self.opts.model_source or DEFAULT_MODEL_SOURCE
-            if model_source == "github":
-                if not are_models_downloaded(quality=model_quality):
-                    self.log("Downloading ONNX model files from GitHub...")
+            models_ready = are_models_downloaded(
+                quality=model_quality,
+                source=model_source,
+                variant=self.opts.model_variant,
+            )
+            if not models_ready and model_source == "github":
+                self.log("Downloading ONNX model files from GitHub...")
                 download_all_models_github(
                     variant=self.opts.model_variant,
                     quality=model_quality,
                 )
-            else:
-                if not are_models_downloaded(quality=model_quality):
-                    self.log("Downloading ONNX model files...")
+            elif not models_ready:
+                self.log("Downloading ONNX model files...")
                 download_all_models(
                     variant=self.opts.model_variant,
                     quality=model_quality,
@@ -87,7 +97,7 @@ class KokoroRunner:
         self._kokoro = Kokoro(
             model_path=self.opts.model_path,
             voices_path=self.opts.voices_path,
-            use_gpu=self.opts.use_gpu,
+            provider=self.opts.effective_onnx_provider(),
             tokenizer_config=self.opts.tokenizer_config,
             short_sentence_config=self.opts.short_sentence_config,
             model_quality=self.opts.model_quality,

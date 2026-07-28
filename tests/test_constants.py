@@ -172,10 +172,14 @@ class TestDefaultConfig:
             "default_language",
             "default_speed",
             "default_format",
+            "onnx_provider",
             "use_gpu",
             "silence_between_chapters",
         }
         assert required_keys.issubset(set(DEFAULT_CONFIG.keys()))
+
+    def test_default_onnx_provider_is_cpu(self):
+        assert DEFAULT_CONFIG["onnx_provider"] == "cpu"
 
     def test_default_voice_is_valid(self):
         """Default voice should be in VOICES list."""

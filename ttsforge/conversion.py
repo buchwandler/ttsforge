@@ -147,6 +147,7 @@ class ConversionState:
     model_quality: ModelQuality | None = DEFAULT_MODEL_QUALITY
     model_source: ModelSource = DEFAULT_MODEL_SOURCE
     model_variant: ModelVariant = DEFAULT_MODEL_VARIANT
+    onnx_provider: str | None = None
     silence_between_chapters: float = 2.0
     pause_clause: float = 0.3
     pause_sentence: float = 0.5
@@ -228,6 +229,7 @@ class ConversionState:
                 data["model_source"] = DEFAULT_MODEL_SOURCE
             if "model_variant" not in data:
                 data["model_variant"] = DEFAULT_MODEL_VARIANT
+            data.setdefault("onnx_provider", None)
 
             return cls(**data)
         except (json.JSONDecodeError, TypeError, KeyError):
@@ -250,6 +252,7 @@ class ConversionState:
             "model_quality": self.model_quality,
             "model_source": self.model_source,
             "model_variant": self.model_variant,
+            "onnx_provider": self.onnx_provider,
             "silence_between_chapters": self.silence_between_chapters,
             "pause_clause": self.pause_clause,
             "pause_sentence": self.pause_sentence,
@@ -372,7 +375,8 @@ class ConversionOptions:
     speed: float = 1.0
     output_format: str = "m4b"
     output_dir: Path | None = None
-    use_gpu: bool = False  # GPU requires onnxruntime-gpu
+    use_gpu: bool = False  # Legacy compatibility; use onnx_provider instead.
+    onnx_provider: str | None = None
     silence_between_chapters: float = 2.0
     # Language override for phonemization (e.g., 'de', 'en-us', 'fr')
     # If None, language is determined from voice prefix
@@ -427,6 +431,12 @@ class ConversionOptions:
     text_postprocess_options: TextPostprocessOptions = field(
         default_factory=TextPostprocessOptions
     )
+
+    def effective_onnx_provider(self) -> str:
+        """Return the provider requested by this option set."""
+        if self.onnx_provider is not None:
+            return self.onnx_provider
+        return "auto" if self.use_gpu else "cpu"
 
     def __post_init__(self) -> None:
         validate_generation_ranges(
@@ -536,6 +546,7 @@ class TTSConverter:
             voice=self.options.voice,
             speed=self.options.speed,
             use_gpu=self.options.use_gpu,
+            onnx_provider=self.options.effective_onnx_provider(),
             pause_clause=self.options.pause_clause,
             pause_sentence=self.options.pause_sentence,
             pause_paragraph=self.options.pause_paragraph,
@@ -675,6 +686,7 @@ class TTSConverter:
             "speed": options.speed,
             "output_format": options.output_format,
             "use_gpu": options.use_gpu,
+            "onnx_provider": options.effective_onnx_provider(),
             "model_quality": str(options.model_quality),
             "model_source": str(options.model_source),
             "model_variant": str(options.model_variant),
@@ -723,6 +735,16 @@ class TTSConverter:
                 "Source file or chapter inputs changed, starting fresh conversion",
                 "warning",
             )
+            return False
+        if state.onnx_provider is None:
+            self.log(
+                "Resume state predates provider-aware fingerprints; "
+                "starting fresh conversion",
+                "warning",
+            )
+            return False
+        if state.onnx_provider != self.options.effective_onnx_provider():
+            self.log("ONNX provider changed, starting fresh conversion", "warning")
             return False
         if state.source_selection != [chapter.index for chapter in chapters]:
             self.log("Chapter selection changed, starting fresh conversion", "warning")
@@ -857,6 +879,7 @@ class TTSConverter:
                     model_quality=self.options.model_quality,
                     model_source=self.options.model_source,
                     model_variant=self.options.model_variant,
+                    onnx_provider=self.options.effective_onnx_provider(),
                     silence_between_chapters=self.options.silence_between_chapters,
                     pause_clause=self.options.pause_clause,
                     pause_sentence=self.options.pause_sentence,

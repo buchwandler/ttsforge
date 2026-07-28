@@ -26,3 +26,13 @@ def test_built_wheels_do_not_report_zero_version() -> None:
             )
             metadata = archive.read(metadata_path).decode("utf-8")
         assert "Version: 0.0.0" not in metadata
+
+
+def test_pykokoro_dependency_floor_is_released_handoff() -> None:
+    tomllib = pytest.importorskip("tomllib")
+    project = tomllib.loads(
+        (Path(__file__).parents[1] / "pyproject.toml").read_text(encoding="utf-8")
+    )
+    dependencies = project["project"]["dependencies"]
+    assert "pykokoro[cpu]>=0.7.1" in dependencies
+    assert not any("pykokoro[cpu]>=0.6.6" in dependency for dependency in dependencies)

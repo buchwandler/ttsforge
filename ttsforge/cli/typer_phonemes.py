@@ -195,7 +195,17 @@ def phonemes_convert_command(
     ] = 1.0,
     use_gpu: Annotated[
         bool | None,
-        typer.Option("--gpu/--no-gpu", help="Enable/disable GPU acceleration."),
+        typer.Option(
+            "--gpu/--no-gpu",
+            help="Compatibility shortcut: --gpu maps to provider=auto and --no-gpu maps to provider=cpu.",
+        ),
+    ] = None,
+    provider: Annotated[
+        str | None,
+        typer.Option(
+            "--provider",
+            help="ONNX Runtime execution provider or alias (auto, cpu, nnapi, xnnpack, or a full *ExecutionProvider name).",
+        ),
     ] = None,
     silence: Annotated[
         float,
@@ -341,6 +351,7 @@ def phonemes_convert_command(
         voice=voice,
         speed=speed,
         use_gpu=use_gpu,
+        provider=provider,
         silence=silence,
         pause_clause=pause_clause,
         pause_sentence=pause_sentence,

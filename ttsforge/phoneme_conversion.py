@@ -115,6 +115,7 @@ class PhonemeConversionState:
     model_quality: ModelQuality | None = DEFAULT_MODEL_QUALITY
     model_source: ModelSource = DEFAULT_MODEL_SOURCE
     model_variant: ModelVariant = DEFAULT_MODEL_VARIANT
+    onnx_provider: str | None = None
     silence_between_chapters: float = 2.0
     pause_clause: float = 0.3
     pause_sentence: float = 0.5
@@ -150,6 +151,7 @@ class PhonemeConversionState:
             data["chapters"] = chapters
             data.setdefault("source_hash", "")
             data.setdefault("generation_fingerprint", "")
+            data.setdefault("onnx_provider", None)
 
             # Handle missing fields for backward compatibility
             if "silence_between_chapters" not in data:
@@ -215,6 +217,7 @@ class PhonemeConversionState:
             "model_quality": self.model_quality,
             "model_source": self.model_source,
             "model_variant": self.model_variant,
+            "onnx_provider": self.onnx_provider,
             "silence_between_chapters": self.silence_between_chapters,
             "pause_clause": self.pause_clause,
             "pause_sentence": self.pause_sentence,
@@ -254,6 +257,7 @@ class PhonemeConversionOptions:
     speed: float = 1.0
     output_format: str = "m4b"
     use_gpu: bool = False
+    onnx_provider: str | None = None
     silence_between_chapters: float = 2.0
     # Language override for phonemization (e.g., 'de', 'en-us', 'fr')
     # If None, language from PhonemeSegments is used
@@ -293,6 +297,12 @@ class PhonemeConversionOptions:
     model_path: Path | None = None
     # Custom voices.bin path (None = use default downloaded voices)
     voices_path: Path | None = None
+
+    def effective_onnx_provider(self) -> str:
+        """Return the provider requested by this option set."""
+        if self.onnx_provider is not None:
+            return self.onnx_provider
+        return "auto" if self.use_gpu else "cpu"
 
     def __post_init__(self) -> None:
         validate_generation_ranges(
@@ -615,6 +625,7 @@ class PhonemeConverter:
                 "speed": options.speed,
                 "output_format": options.output_format,
                 "use_gpu": options.use_gpu,
+                "onnx_provider": options.effective_onnx_provider(),
                 "model_quality": str(options.model_quality),
                 "model_source": str(options.model_source),
                 "model_variant": str(options.model_variant),
@@ -654,6 +665,18 @@ class PhonemeConverter:
             return False
         if state.source_hash != source_hash:
             self.log("Phoneme book contents changed, starting fresh", "warning")
+            return False
+        if state.onnx_provider is None:
+            self.log(
+                "Phoneme resume state predates provider-aware "
+                "fingerprints; starting fresh",
+                "warning",
+            )
+            return False
+        if state.onnx_provider != self.options.effective_onnx_provider():
+            self.log(
+                "ONNX provider changed, starting fresh phoneme conversion", "warning"
+            )
             return False
         if state.selected_chapters != selected_indices:
             self.log("Chapter selection changed, starting fresh conversion", "warning")
@@ -766,6 +789,7 @@ class PhonemeConverter:
                     model_quality=self.options.model_quality,
                     model_source=self.options.model_source,
                     model_variant=self.options.model_variant,
+                    onnx_provider=self.options.effective_onnx_provider(),
                     silence_between_chapters=self.options.silence_between_chapters,
                     pause_clause=self.options.pause_clause,
                     pause_sentence=self.options.pause_sentence,
@@ -819,6 +843,7 @@ class PhonemeConverter:
                 voice=self.options.voice,
                 speed=self.options.speed,
                 use_gpu=self.options.use_gpu,
+                onnx_provider=self.options.effective_onnx_provider(),
                 pause_clause=self.options.pause_clause,
                 pause_sentence=self.options.pause_sentence,
                 pause_paragraph=self.options.pause_paragraph,
@@ -1038,6 +1063,7 @@ class PhonemeConverter:
                 voice=self.options.voice,
                 speed=self.options.speed,
                 use_gpu=self.options.use_gpu,
+                onnx_provider=self.options.effective_onnx_provider(),
                 pause_clause=self.options.pause_clause,
                 pause_sentence=self.options.pause_sentence,
                 pause_paragraph=self.options.pause_paragraph,

@@ -153,27 +153,38 @@ For development with testing and linting tools:
    pip install -e ".[dev]"
 
 
-GPU Acceleration (Optional)
----------------------------
+ONNX Runtime Providers
+----------------------
 
-For GPU-accelerated inference, install the GPU extra in a fresh environment so
-the CPU and GPU ONNX Runtime distributions are not installed together:
+Select a provider with an alias or full runtime provider name. The legacy Boolean
+interface remains available for compatibility, but NNAPI and XNNPACK are execution
+providers rather than GPU modes:
+
+.. code-block:: bash
+
+   ttsforge config --set onnx_provider cpu
+   ttsforge sample "Provider test" --provider xnnpack
+
+For CUDA, install the GPU extra in a fresh environment so CPU and GPU ONNX Runtime
+distributions are not installed together:
 
 .. code-block:: bash
 
    pip install "ttsforge[gpu]"
+   ttsforge config --set onnx_provider cuda
 
-Then enable GPU in your configuration:
-
-.. code-block:: bash
-
-   ttsforge config --set use_gpu true
-
-Or use the ``--gpu`` flag with commands:
+For Termux/Android with PyKokoro v0.7.1 and an ONNX Runtime build exposing NNAPI or
+XNNPACK:
 
 .. code-block:: bash
 
-   ttsforge convert book.epub --gpu
+   ttsforge config --set model_source github --set onnx_provider nnapi
+   ttsforge config --show
+   ttsforge sample "Termux provider test" --provider nnapi
+
+Use ``--gpu`` as a compatibility shortcut for ``--provider auto`` or ``--no-gpu``
+for ``--provider cpu``. Provider availability and the documented ``ONNX_PROVIDER``
+environment override are handled by PyKokoro.
 
 
 Mixed-Language Support (Optional)

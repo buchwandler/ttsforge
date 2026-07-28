@@ -130,7 +130,17 @@ def convert_command(
     ] = None,
     use_gpu: Annotated[
         bool | None,
-        typer.Option("--gpu/--no-gpu", help="Enable/disable GPU acceleration."),
+        typer.Option(
+            "--gpu/--no-gpu",
+            help="Compatibility shortcut: --gpu maps to provider=auto and --no-gpu maps to provider=cpu.",
+        ),
+    ] = None,
+    provider: Annotated[
+        str | None,
+        typer.Option(
+            "--provider",
+            help="ONNX Runtime execution provider or alias (auto, cpu, nnapi, xnnpack, or a full *ExecutionProvider name).",
+        ),
     ] = None,
     chapters: Annotated[
         str | None,
@@ -384,6 +394,7 @@ def convert_command(
         lang=lang,
         speed=speed,
         use_gpu=use_gpu,
+        provider=provider,
         chapters=chapters,
         skip_chapters=skip_chapters,
         silence=silence,
@@ -511,7 +522,17 @@ def sample_command(
     ] = None,
     use_gpu: Annotated[
         bool | None,
-        typer.Option("--gpu/--no-gpu", help="Use GPU acceleration if available."),
+        typer.Option(
+            "--gpu/--no-gpu",
+            help="Compatibility shortcut: --gpu maps to provider=auto and --no-gpu maps to provider=cpu.",
+        ),
+    ] = None,
+    provider: Annotated[
+        str | None,
+        typer.Option(
+            "--provider",
+            help="ONNX Runtime execution provider or alias (auto, cpu, nnapi, xnnpack, or a full *ExecutionProvider name).",
+        ),
     ] = None,
     split_mode: Annotated[
         ConversionSplitMode | None,
@@ -593,6 +614,7 @@ def sample_command(
         speed=speed,
         random_seed=random_seed,
         use_gpu=use_gpu,
+        provider=provider,
         split_mode=split_mode,
         play_audio=play_audio,
         verbose=verbose,
@@ -686,7 +708,17 @@ def read_command(
     ] = None,
     use_gpu: Annotated[
         bool | None,
-        typer.Option("--gpu/--no-gpu", help="Use GPU acceleration if available."),
+        typer.Option(
+            "--gpu/--no-gpu",
+            help="Compatibility shortcut: --gpu maps to provider=auto and --no-gpu maps to provider=cpu.",
+        ),
+    ] = None,
+    provider: Annotated[
+        str | None,
+        typer.Option(
+            "--provider",
+            help="ONNX Runtime execution provider or alias (auto, cpu, nnapi, xnnpack, or a full *ExecutionProvider name).",
+        ),
     ] = None,
     content_mode: Annotated[
         Literal["chapters", "pages"] | None,
@@ -805,6 +837,7 @@ def read_command(
         language=language,
         speed=speed,
         use_gpu=use_gpu,
+        provider=provider,
         content_mode=content_mode,
         chapters=chapters,
         pages=pages,

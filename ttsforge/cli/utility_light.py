@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import json
+import warnings
 from typing import Any
 
 import typer
@@ -41,14 +42,9 @@ def voices(language: str | None) -> None:
 
 
 def _show_model_status(config: dict[str, Any]) -> None:
-    """Render model status when the optional provider API is available."""
+    """Render source-aware model status using PyKokoro's asset API."""
     try:
-        from pykokoro.onnx_backend import (
-            get_config_path,
-            get_model_dir,
-            get_model_path,
-            get_voices_dir,
-        )
+        from pykokoro.model_assets import get_model_asset_paths
     except ImportError:
         console.print(
             "\n[bold]ONNX Models:[/bold] [yellow]Status unavailable "
@@ -60,22 +56,79 @@ def _show_model_status(config: dict[str, Any]) -> None:
 
     source, variant = resolve_model_source_and_variant(config)
     quality = str(config.get("model_quality", "fp32"))
-    config_path = get_config_path(variant=variant)
-    model_path = get_model_path(quality=quality, source=source, variant=variant)
-    voices_dir = get_voices_dir(variant=variant)
-    voices_path = voices_dir / "voices.bin"
-    if all(
-        path.exists() and path.stat().st_size > 0
-        for path in (config_path, model_path, voices_path)
-    ):
-        model_dir = get_model_dir(source=source, variant=variant)
-        console.print(f"\n[bold]ONNX Models:[/bold] Downloaded ({model_dir})")
-        console.print(f"  config.json: {config_path}")
-        console.print(f"  model: {model_path}")
-        console.print(f"  voices: {voices_path}")
+    try:
+        assets = get_model_asset_paths(
+            quality=quality,
+            source=source,
+            variant=variant,
+        )
+    except ValueError as exc:
+        console.print(
+            f"\n[bold]ONNX Models:[/bold] [yellow]Status unavailable[/yellow] ({exc})"
+        )
+        return
+
+    console.print(f"\n[bold]Source:[/bold] {source}")
+    console.print(f"[bold]Variant:[/bold] {variant}")
+    console.print(f"[bold]Quality:[/bold] {quality}")
+    console.print(
+        f"[bold]Configured model set:[/bold] {source} / {variant} / {quality}"
+    )
+    if assets.complete:
+        console.print("[bold]ONNX Models:[/bold] Downloaded")
+        console.print(f"  config.json: {assets.config}")
+        console.print(f"  model: {assets.model}")
+        console.print(f"  voices: {assets.voices}")
     else:
-        console.print("\n[bold]ONNX Models:[/bold] [yellow]Not downloaded[/yellow]")
+        console.print("[bold]ONNX Models:[/bold] [yellow]Incomplete[/yellow]")
+        console.print(f"  Missing: {', '.join(assets.missing)}")
         console.print("[dim]Run 'ttsforge download' to download models[/dim]")
+
+        alternate_source = "github" if source == "huggingface" else "huggingface"
+        try:
+            alternate = get_model_asset_paths(
+                quality=quality,
+                source=alternate_source,
+                variant=variant,
+            )
+        except ValueError:
+            alternate = None
+        if alternate is not None and alternate.complete:
+            console.print("[yellow]Found a complete alternate model set:[/yellow]")
+            console.print(f"  {alternate_source} / {variant} / {quality}")
+            console.print(
+                f"[dim]Activate it with: ttsforge config "
+                f"--set model_source {alternate_source}[/dim]"
+            )
+
+
+def _show_provider_status(config: dict[str, Any]) -> None:
+    """Render provider availability without making it a model-status gate."""
+    try:
+        from pykokoro.onnx_session import (
+            get_available_execution_providers,
+            resolve_execution_provider,
+        )
+
+        from ..cli.backend_config import resolve_onnx_provider
+
+        configured = resolve_onnx_provider(
+            config, provider_override=None, use_gpu_override=None
+        )
+        with warnings.catch_warnings(record=True) as caught:
+            warnings.simplefilter("always")
+            available = get_available_execution_providers()
+            resolved = resolve_execution_provider(configured)
+        console.print("[bold]ONNX Runtime Providers:[/bold]")
+        console.print(f"  Available: {', '.join(available) or 'none'}")
+        console.print(f"  Configured: {configured}")
+        console.print(f"  Resolved: {resolved}")
+        if caught:
+            console.print(f"  [yellow]Runtime warning: {caught[0].message}[/yellow]")
+    except Exception:
+        console.print(
+            "[bold]ONNX Runtime Providers:[/bold] [yellow]Status unavailable[/yellow]"
+        )
 
 
 def config(
@@ -147,6 +200,7 @@ def config(
         table.add_row(key, str(value), "" if value == default else str(default))
     console.print(table)
     _show_model_status(current)
+    _show_provider_status(current)
 
 
 def short_sentence_advanced_config(

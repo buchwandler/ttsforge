@@ -209,9 +209,14 @@ class TestPhonemeConversionOptions:
         assert options.speed == 1.0
         assert options.output_format == "m4b"
         assert options.use_gpu is False
+        assert options.effective_onnx_provider() == "cpu"
         assert options.silence_between_chapters == 2.0
         assert options.resume is True
         assert options.keep_chapter_files is False
+
+    def test_explicit_provider_is_preserved(self):
+        options = PhonemeConversionOptions(onnx_provider="xnnpack")
+        assert options.effective_onnx_provider() == "xnnpack"
 
     def test_custom_values(self):
         """Test custom values."""

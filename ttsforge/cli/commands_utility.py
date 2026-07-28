@@ -54,6 +54,7 @@ from ..constants import (
 )
 from ..short_sentence_stats import ShortSentenceStats, format_short_sentence_stats
 from ..utils import format_size, load_config
+from .backend_config import resolve_onnx_provider
 from .helpers import DEMO_TEXT, VOICE_BLEND_PRESETS, console, parse_voice_parameter
 
 ModelSource: TypeAlias = Literal["huggingface", "github"]
@@ -84,6 +85,7 @@ def demo(  # noqa: C901
     voices_filter: str | None,
     speed: float,
     use_gpu: bool | None,
+    provider: str | None,
     silence: float,
     text: str | None,
     separate: bool,
@@ -119,7 +121,13 @@ def demo(  # noqa: C901
         ttsforge demo -v af_heart --play  # Play a single voice demo
     """
     config = load_config()
-    gpu = use_gpu if use_gpu is not None else config.get("use_gpu", False)
+    try:
+        resolved_provider = resolve_onnx_provider(
+            config, provider_override=provider, use_gpu_override=use_gpu
+        )
+    except ValueError as exc:
+        console.print(f"[red]{exc}[/red]")
+        raise typer.Exit(code=2) from exc
     model_path = ctx.obj.get("model_path") if ctx.obj else None
     voices_path = ctx.obj.get("voices_path") if ctx.obj else None
     short_sentence_stats = ShortSentenceStats()
@@ -177,14 +185,14 @@ def demo(  # noqa: C901
 
         console.print(f"[dim]Voice blends: {len(blends_to_process)}[/dim]")
         console.print(f"[dim]Speed: {speed}x[/dim]")
-        console.print(f"[dim]GPU: {'enabled' if gpu else 'disabled'}[/dim]")
+        console.print(f"[dim]ONNX Provider: {resolved_provider}[/dim]")
 
         # Initialize TTS pipeline
         try:
             kokoro = Kokoro(
                 model_path=model_path,
                 voices_path=voices_path,
-                use_gpu=gpu,
+                provider=resolved_provider,
             )
             generation = GenerationConfig(speed=speed, lang="en-us")
             pipeline_config = PipelineConfig(
@@ -323,14 +331,14 @@ def demo(  # noqa: C901
 
     console.print(f"[dim]Voices: {len(selected_voices)}[/dim]")
     console.print(f"[dim]Speed: {speed}x[/dim]")
-    console.print(f"[dim]GPU: {'enabled' if gpu else 'disabled'}[/dim]")
+    console.print(f"[dim]ONNX Provider: {resolved_provider}[/dim]")
 
     # Initialize TTS pipeline
     try:
         kokoro = Kokoro(
             model_path=model_path,
             voices_path=voices_path,
-            use_gpu=gpu,
+            provider=resolved_provider,
         )
         generation = GenerationConfig(speed=speed, lang="en-us")
         pipeline_config = PipelineConfig(

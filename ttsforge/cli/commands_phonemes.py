@@ -39,6 +39,9 @@ from ..utils import (
 from .backend_config import (
     resolve_model_source_and_variant as _resolve_model_source_and_variant,
 )
+from .backend_config import (
+    resolve_onnx_provider,
+)
 from .helpers import console, parse_voice_parameter
 
 DEFAULT_MODEL_QUALITY: ModelQuality = "fp32"
@@ -279,6 +282,7 @@ def phonemes_convert(
     voice: str | None,
     speed: float,
     use_gpu: bool | None,
+    provider: str | None,
     silence: float,
     pause_clause: float | None,
     pause_sentence: float | None,
@@ -336,6 +340,13 @@ def phonemes_convert(
 
     # Load config for defaults
     config = load_config()
+    try:
+        resolved_provider = resolve_onnx_provider(
+            config, provider_override=provider, use_gpu_override=use_gpu
+        )
+    except ValueError as exc:
+        console.print(f"[red]{exc}[/red]")
+        raise typer.Exit(code=2) from exc
     model_path = ctx.obj.get("model_path") if ctx.obj else None
     voices_path = ctx.obj.get("voices_path") if ctx.obj else None
     model_source, model_variant = _resolve_model_source_and_variant(config)
@@ -396,9 +407,6 @@ def phonemes_convert(
     if voice is None:
         voice = config.get("default_voice", "af_heart")
 
-    # Get GPU setting
-    gpu = use_gpu if use_gpu is not None else config.get("use_gpu", False)
-
     # Calculate total segments for selected chapters
     if selected_indices:
         selected_chapter_count = len(selected_indices)
@@ -414,7 +422,8 @@ def phonemes_convert(
             voice=voice or config.get("default_voice", "af_heart"),
             speed=speed,
             output_format=fmt,
-            use_gpu=gpu,
+            use_gpu=use_gpu if use_gpu is not None else config.get("use_gpu", False),
+            onnx_provider=resolved_provider,
             model_quality=model_quality,
             model_source=model_source,
             model_variant=model_variant,

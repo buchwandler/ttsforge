@@ -39,6 +39,7 @@ def _text_state(
     return ConversionState(
         version=2,
         source_hash="source",
+        onnx_provider=converter.options.effective_onnx_provider(),
         source_selection=[chapter.index],
         generation_fingerprint=generation,
         work_dir=str(work_dir),
@@ -119,6 +120,7 @@ def test_phoneme_resume_rejects_changed_book_content(tmp_path: Path) -> None:
     state = PhonemeConversionState(
         version=2,
         source_hash=_canonical_fingerprint(book.to_dict()),
+        onnx_provider=options.effective_onnx_provider(),
         selected_chapters=[0],
         generation_fingerprint=generation,
         chapters=[
@@ -149,4 +151,23 @@ def test_phoneme_resume_rejects_changed_book_content(tmp_path: Path) -> None:
         _canonical_fingerprint(changed_book.to_dict()),
         changed_converter._generation_fingerprint(),
         tmp_path,
+    )
+
+
+def test_provider_changes_invalidate_resume_fingerprints() -> None:
+    cpu = TTSConverter(ConversionOptions(onnx_provider="cpu"))
+    nnapi = TTSConverter(ConversionOptions(onnx_provider="nnapi"))
+    assert cpu._generation_fingerprint() != nnapi._generation_fingerprint()
+
+    cpu_phonemes = PhonemeConverter(
+        PhonemeBook(title="Book", chapters=[]),
+        PhonemeConversionOptions(onnx_provider="cpu"),
+    )
+    nnapi_phonemes = PhonemeConverter(
+        PhonemeBook(title="Book", chapters=[]),
+        PhonemeConversionOptions(onnx_provider="nnapi"),
+    )
+    assert (
+        cpu_phonemes._generation_fingerprint()
+        != nnapi_phonemes._generation_fingerprint()
     )

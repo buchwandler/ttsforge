@@ -82,6 +82,7 @@ Basic Text-to-Speech
        voice="af_heart",
        speed=1.0,
        use_gpu=False,
+       onnx_provider="cpu",
        pause_clause=0.3,
        pause_sentence=0.5,
        pause_paragraph=0.9,
@@ -117,6 +118,7 @@ Converting an EPUB
        speed=1.0,
        output_format="m4b",
        use_gpu=False,
+       onnx_provider="nnapi",
    )
 
    # Create converter

@@ -106,7 +106,17 @@ def demo_command(
     ] = 1.0,
     use_gpu: Annotated[
         bool | None,
-        typer.Option("--gpu/--no-gpu", help="Enable/disable GPU acceleration."),
+        typer.Option(
+            "--gpu/--no-gpu",
+            help="Compatibility shortcut: --gpu maps to provider=auto and --no-gpu maps to provider=cpu.",
+        ),
+    ] = None,
+    provider: Annotated[
+        str | None,
+        typer.Option(
+            "--provider",
+            help="ONNX Runtime execution provider or alias (auto, cpu, nnapi, xnnpack, or a full *ExecutionProvider name).",
+        ),
     ] = None,
     silence: Annotated[
         float,
@@ -159,6 +169,7 @@ def demo_command(
         voices_filter=voices_filter,
         speed=speed,
         use_gpu=use_gpu,
+        provider=provider,
         silence=silence,
         text=text,
         separate=separate,

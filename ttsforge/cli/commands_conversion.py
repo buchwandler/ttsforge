@@ -69,6 +69,9 @@ from .backend_config import (
     resolve_model_source_and_variant as _resolve_model_source_and_variant,
 )
 from .backend_config import (
+    resolve_onnx_provider,
+)
+from .backend_config import (
     resolve_voice_names as _resolve_voice_names,
 )
 from .helpers import DEFAULT_SAMPLE_TEXT, console, parse_voice_parameter
@@ -101,6 +104,7 @@ def convert(  # noqa: C901
     lang: str | None,
     speed: float | None,
     use_gpu: bool | None,
+    provider: str | None,
     chapters: str | None,
     skip_chapters: str | None,
     silence: float | None,
@@ -146,6 +150,13 @@ def convert(  # noqa: C901
         )
 
     config = load_config()
+    try:
+        resolved_provider = resolve_onnx_provider(
+            config, provider_override=provider, use_gpu_override=use_gpu
+        )
+    except ValueError as exc:
+        console.print(f"[red]{exc}[/red]")
+        raise typer.Exit(code=2) from exc
     model_path = ctx.obj.get("model_path") if ctx.obj else None
     voices_path = ctx.obj.get("voices_path") if ctx.obj else None
     model_source, model_variant = _resolve_model_source_and_variant(config)
@@ -164,6 +175,7 @@ def convert(  # noqa: C901
             "speed": speed,
             "split_mode": split_mode,
             "use_gpu": use_gpu,
+            "onnx_provider": resolved_provider,
             "lang": lang,
         },
     )
@@ -336,6 +348,7 @@ def convert(  # noqa: C901
             ),
             output_dir=output.parent,
             use_gpu=use_gpu if use_gpu is not None else config.get("use_gpu", False),
+            onnx_provider=resolved_provider,
             model_quality=model_quality,
             model_source=model_source,
             model_variant=model_variant,
@@ -443,7 +456,7 @@ def convert(  # noqa: C901
         voice=voice or "af_bella",
         language=effective_language,
         speed=options.speed,
-        use_gpu=options.use_gpu,
+        onnx_provider=options.effective_onnx_provider(),
         model_source=model_source,
         model_variant=model_variant,
         model_quality=model_quality,
@@ -705,6 +718,7 @@ def sample(
     speed: float | None,
     random_seed: int | None,
     use_gpu: bool | None,
+    provider: str | None,
     split_mode: str | None,
     play_audio: bool,
     verbose: bool,
@@ -758,6 +772,13 @@ def sample(
 
     # Load config for defaults
     user_config = load_config()
+    try:
+        resolved_provider = resolve_onnx_provider(
+            user_config, provider_override=provider, use_gpu_override=use_gpu
+        )
+    except ValueError as exc:
+        console.print(f"[red]{exc}[/red]")
+        raise typer.Exit(code=2) from exc
     model_source, model_variant = _resolve_model_source_and_variant(user_config)
     model_quality = cast(
         ModelQuality, user_config.get("model_quality", DEFAULT_MODEL_QUALITY)
@@ -770,6 +791,7 @@ def sample(
             "speed": speed,
             "split_mode": split_mode,
             "use_gpu": use_gpu,
+            "onnx_provider": resolved_provider,
             "lang": lang,
         },
     )
@@ -794,6 +816,7 @@ def sample(
         random_seed=random_seed,
         output_format=output_format,
         use_gpu=resolved_defaults["use_gpu"],
+        onnx_provider=resolved_provider,
         split_mode=resolved_defaults["split_mode"],
         lang=resolved_defaults["lang"],
         model_quality=model_quality,
@@ -836,7 +859,7 @@ def sample(
     console.print(f"[dim]Speed:[/dim] {options.speed}")
     console.print(f"[dim]Format:[/dim] {options.output_format}")
     console.print(f"[dim]Split mode:[/dim] {options.split_mode}")
-    console.print(f"[dim]GPU:[/dim] {'enabled' if options.use_gpu else 'disabled'}")
+    console.print(f"[dim]ONNX Provider:[/dim] {options.effective_onnx_provider()}")
 
     if verbose:
         text_preview = sample_text[:100]
@@ -935,7 +958,7 @@ def _show_conversion_summary(
     voice: str,
     language: str,
     speed: float,
-    use_gpu: bool,
+    onnx_provider: str,
     model_source: str,
     model_variant: str,
     model_quality: str | None,
@@ -983,7 +1006,7 @@ def _show_conversion_summary(
     table.add_row("Short Sentence", short_sentence)
     if short_sentence_note:
         table.add_row("Short Sentence Note", short_sentence_note)
-    table.add_row("GPU", "Enabled" if use_gpu else "Disabled")
+    table.add_row("ONNX Provider", onnx_provider)
     table.add_row("Title", title)
     table.add_row("Author", author)
 
@@ -1088,6 +1111,7 @@ def read(  # noqa: C901
     language: str | None,
     speed: float | None,
     use_gpu: bool | None,
+    provider: str | None,
     content_mode: str | None,
     chapters: str | None,
     pages: str | None,
@@ -1152,6 +1176,13 @@ def read(  # noqa: C901
 
     # Load config for defaults
     config = load_config()
+    try:
+        resolved_provider = resolve_onnx_provider(
+            config, provider_override=provider, use_gpu_override=use_gpu
+        )
+    except ValueError as exc:
+        console.print(f"[red]{exc}[/red]")
+        raise typer.Exit(code=2) from exc
     model_source, model_variant = _resolve_model_source_and_variant(config)
     model_quality = cast(
         ModelQuality, config.get("model_quality", DEFAULT_MODEL_QUALITY)
@@ -1165,13 +1196,14 @@ def read(  # noqa: C901
             "speed": speed,
             "split_mode": split_mode,
             "use_gpu": use_gpu,
+            "onnx_provider": resolved_provider,
             "lang": None,
         },
     )
     effective_voice = resolved_defaults["voice"]
     effective_language = resolved_defaults["language"]
     effective_speed = resolved_defaults["speed"]
-    effective_use_gpu = resolved_defaults["use_gpu"]
+    effective_onnx_provider = resolved_provider
     # Content mode: chapters or pages
     effective_content_mode = content_mode or config.get(
         "default_content_mode", "chapters"
@@ -1472,7 +1504,8 @@ def read(  # noqa: C901
         kokoro = Kokoro(
             model_path=model_path,
             voices_path=voices_path,
-            use_gpu=effective_use_gpu,
+            provider=effective_onnx_provider,
+            use_gpu=False,
             short_sentence_config=effective_short_sentence_config,
             model_quality=model_quality,
             model_source=model_source,

@@ -213,6 +213,7 @@ class TestConversionOptions:
         assert options.speed == 1.0
         assert options.output_format == "m4b"
         assert options.use_gpu is False  # ONNX default is CPU
+        assert options.effective_onnx_provider() == "cpu"
 
     def test_custom_values(self):
         """Should accept custom values."""
@@ -228,6 +229,11 @@ class TestConversionOptions:
         assert options.speed == 1.5
         assert options.output_format == "wav"
         assert options.use_gpu is True
+        assert options.effective_onnx_provider() == "auto"
+
+    def test_explicit_provider_is_preserved(self):
+        options = ConversionOptions(onnx_provider="nnapi")
+        assert options.effective_onnx_provider() == "nnapi"
 
     def test_split_mode_default(self):
         """split_mode should default to 'auto'."""

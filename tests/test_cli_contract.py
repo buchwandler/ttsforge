@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 from typer.main import get_command
+from typer.testing import CliRunner
 
 from ttsforge.cli import app
 
@@ -53,6 +54,7 @@ def test_compatibility_sensitive_options_are_declared() -> None:
 
     convert = root.commands["convert"]
     assert {"--gpu", "--no-gpu"}.issubset(_option_names(_option(convert, "use_gpu")))
+    assert "--provider" in _option_names(_option(convert, "provider"))
     assert {"--resume", "--no-resume"}.issubset(
         _option_names(_option(convert, "resume"))
     )
@@ -66,9 +68,24 @@ def test_compatibility_sensitive_options_are_declared() -> None:
     )
 
     phonemes_convert = root.commands["phonemes"].commands["convert"]
+    assert "--provider" in _option_names(_option(phonemes_convert, "provider"))
     assert {"--streaming", "--no-streaming"}.issubset(
         _option_names(_option(phonemes_convert, "streaming"))
     )
+
+
+def test_provider_exists_on_all_synthesis_commands() -> None:
+    root = get_command(app)
+    for command_name in ("convert", "sample", "read", "demo"):
+        assert "--provider" in _option_names(
+            _option(root.commands[command_name], "provider")
+        )
+
+
+def test_provider_and_gpu_conflict_exits_before_synthesis() -> None:
+    result = CliRunner().invoke(app, ["sample", "test", "--provider", "nnapi", "--gpu"])
+    assert result.exit_code == 2
+    assert "--provider cannot be combined with --gpu or --no-gpu" in result.output
 
 
 def test_root_and_module_entry_points_share_version_semantics() -> None:

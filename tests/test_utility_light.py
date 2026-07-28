@@ -1,0 +1,89 @@
+"""Tests for source-aware model and provider status rendering."""
+
+from dataclasses import dataclass
+from pathlib import Path
+
+from ttsforge.cli import utility_light
+
+
+@dataclass
+class _Assets:
+    source: str
+    variant: str
+    quality: str
+    config: Path
+    model: Path
+    voices: Path
+    missing: tuple[str, ...] = ()
+
+    @property
+    def complete(self) -> bool:
+        return not self.missing
+
+
+def _assets(source: str, *, complete: bool) -> _Assets:
+    missing = () if complete else ("model", "voices")
+    return _Assets(
+        source=source,
+        variant="v1.0",
+        quality="fp32",
+        config=Path(f"/{source}/config.json"),
+        model=Path(f"/{source}/model.onnx"),
+        voices=Path(f"/{source}/voices.bin"),
+        missing=missing,
+    )
+
+
+def test_github_complete_set_is_reported_downloaded(monkeypatch, capsys) -> None:
+    monkeypatch.setattr(
+        "pykokoro.model_assets.get_model_asset_paths",
+        lambda **kwargs: _assets(kwargs["source"], complete=True),
+    )
+    utility_light._show_model_status(
+        {"model_source": "github", "model_variant": "v1.0", "model_quality": "fp32"}
+    )
+    output = capsys.readouterr().out
+    assert "github / v1.0 / fp32" in output
+    assert "ONNX Models" in output and "Downloaded" in output
+
+
+def test_pykokoro_asset_api_owns_source_specific_voice_filenames() -> None:
+    from pykokoro.model_assets import get_model_asset_paths
+
+    github = get_model_asset_paths(source="github", variant="v1.0", quality="fp32")
+    huggingface = get_model_asset_paths(
+        source="huggingface", variant="v1.0", quality="fp32"
+    )
+    assert github.voices.name == "voices-v1.0.bin"
+    assert huggingface.voices.name == "voices.bin.npz"
+
+
+def test_incomplete_configured_source_reports_complete_alternate(monkeypatch, capsys) -> None:
+    def fake_assets(**kwargs):
+        return _assets(kwargs["source"], complete=kwargs["source"] == "github")
+
+    monkeypatch.setattr("pykokoro.model_assets.get_model_asset_paths", fake_assets)
+    utility_light._show_model_status(
+        {"model_source": "huggingface", "model_variant": "v1.0", "model_quality": "fp32"}
+    )
+    output = capsys.readouterr().out
+    assert "Configured model set: huggingface / v1.0 / fp32" in output
+    assert "Found a complete alternate model set" in output
+    assert "config --set model_source github" in output
+
+
+def test_provider_probe_failure_does_not_hide_model_status(monkeypatch, capsys) -> None:
+    monkeypatch.setattr(
+        "pykokoro.model_assets.get_model_asset_paths",
+        lambda **kwargs: _assets("github", complete=True),
+    )
+    monkeypatch.setattr(
+        "pykokoro.onnx_session.get_available_execution_providers",
+        lambda: (_ for _ in ()).throw(RuntimeError("probe failed")),
+    )
+    config = {"model_source": "github", "model_variant": "v1.0", "model_quality": "fp32"}
+    utility_light._show_model_status(config)
+    utility_light._show_provider_status(config)
+    output = capsys.readouterr().out
+    assert "ONNX Models" in output and "Downloaded" in output
+    assert "ONNX Runtime Providers" in output and "Status unavailable" in output

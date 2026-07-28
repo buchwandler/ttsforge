@@ -18,6 +18,7 @@ from ttsforge.utils import (
     resolve_conversion_defaults,
     run_process,
     sanitize_filename,
+    validate_config_value,
 )
 
 
@@ -189,3 +190,42 @@ def test_load_config_ignores_invalid_pause_variance(
     assert "ignoring invalid config value" in captured.err
     assert "pause_variance" in captured.err
     assert config_path.read_text(encoding="utf-8") == json.dumps(original)
+
+
+@pytest.mark.parametrize(
+    ("raw", "expected"),
+    [
+        ({"use_gpu": True}, "auto"),
+        ({"use_gpu": False}, "cpu"),
+        ({"use_gpu": True, "onnx_provider": "nnapi"}, "nnapi"),
+        ({"default_use_gpu": True}, "auto"),
+    ],
+)
+def test_load_config_migrates_provider_in_memory(
+    tmp_path: Path, raw: dict[str, object], expected: str
+) -> None:
+    config_path = tmp_path / "config.json"
+    config_path.write_text(json.dumps(raw), encoding="utf-8")
+    with patch("ttsforge.utils.get_user_config_path", return_value=config_path):
+        config = load_config()
+    assert config["onnx_provider"] == expected
+    assert json.loads(config_path.read_text(encoding="utf-8")) == raw
+
+
+@pytest.mark.parametrize(
+    "value",
+    ["", "  ", "potato", "CPU ExecutionProvider", "cpu-execution-provider"],
+)
+def test_validate_config_value_rejects_invalid_provider(value: str) -> None:
+    with pytest.raises(ValueError, match="ONNX provider"):
+        validate_config_value("onnx_provider", value)
+
+
+@pytest.mark.parametrize(
+    "value",
+    ["auto", "NNAPI", "xnnpack", "CPUExecutionProvider", "Custom_1ExecutionProvider"],
+)
+def test_validate_config_value_accepts_provider_aliases_and_full_names(
+    value: str,
+) -> None:
+    validate_config_value("onnx_provider", value)

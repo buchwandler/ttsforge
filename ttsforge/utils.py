@@ -6,6 +6,7 @@ import logging
 import math
 import os
 import platform
+import re
 import shlex
 import shutil
 import subprocess
@@ -36,9 +37,39 @@ _NUMERIC_CONFIG_RANGES: dict[str, tuple[float | None, float | None]] = {
     "chapter_pause_after_title": (0.0, None),
 }
 
+_ONNX_PROVIDER_ALIASES = {
+    "auto",
+    "cpu",
+    "cuda",
+    "openvino",
+    "directml",
+    "dml",
+    "coreml",
+    "nnapi",
+    "xnnpack",
+}
+_FULL_ONNX_PROVIDER_RE = re.compile(r"^[A-Za-z0-9_]+ExecutionProvider$")
+
 
 def validate_config_value(key: str, value: Any) -> None:
     """Validate configuration values that have numeric runtime constraints."""
+    if key == "onnx_provider":
+        if not isinstance(value, str) or not value.strip():
+            raise ValueError(
+                "must be an ONNX provider alias such as auto, cpu, nnapi, or xnnpack, "
+                "or a full *ExecutionProvider name"
+            )
+        provider = value.strip()
+        if (
+            provider.lower() not in _ONNX_PROVIDER_ALIASES
+            and not _FULL_ONNX_PROVIDER_RE.fullmatch(provider)
+        ):
+            raise ValueError(
+                "must be an ONNX provider alias such as auto, cpu, nnapi, or xnnpack, "
+                "or a full *ExecutionProvider name"
+            )
+        return
+
     bounds = _NUMERIC_CONFIG_RANGES.get(key)
     if bounds is None:
         return
@@ -101,6 +132,14 @@ def load_config() -> dict[str, Any]:
                         "use 'use_gpu' instead.",
                         file=sys.stderr,
                     )
+            if (
+                isinstance(user_config, dict)
+                and "onnx_provider" not in user_config
+                and "use_gpu" in user_config
+            ):
+                user_config["onnx_provider"] = (
+                    "auto" if bool(user_config["use_gpu"]) else "cpu"
+                )
             if isinstance(user_config, dict):
                 sanitized = dict(user_config)
                 for key, value in tuple(sanitized.items()):
@@ -138,6 +177,7 @@ def resolve_conversion_defaults(
         "speed": resolve("speed", "default_speed", "default_speed"),
         "split_mode": resolve("split_mode", "default_split_mode", "default_split_mode"),
         "use_gpu": resolve("use_gpu", "use_gpu", "use_gpu"),
+        "onnx_provider": resolve("onnx_provider", "onnx_provider", "onnx_provider"),
         "lang": resolve("lang", "phonemization_lang", "phonemization_lang"),
     }
 

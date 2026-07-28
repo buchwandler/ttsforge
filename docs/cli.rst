@@ -66,7 +66,13 @@ Options
    Speech speed multiplier (0.5 to 2.0). Default: ``1.0``.
 
 ``--gpu / --no-gpu``
-   Enable or disable GPU acceleration.
+   Compatibility shortcut: ``--gpu`` maps to provider ``auto`` and ``--no-gpu``
+   maps to provider ``cpu``.
+
+``--provider PROVIDER``
+   ONNX Runtime execution provider or alias (``auto``, ``cpu``, ``nnapi``,
+   ``xnnpack``, or a full ``*ExecutionProvider`` name). Available on
+   ``convert``, ``sample``, ``read``, ``demo``, and ``phonemes convert``.
 
 ``--chapters SELECTION``
    Chapters to convert. Examples: ``1-5``, ``1,3,5``, ``1-3,5,7-10``, ``all``.
@@ -297,7 +303,10 @@ Options
    Speech speed. Default: ``1.0``.
 
 ``--gpu / --no-gpu``
-   Enable or disable GPU acceleration.
+   Compatibility shortcut mapping to ``auto`` or ``cpu``.
+
+``--provider PROVIDER``
+   ONNX Runtime execution provider or alias.
 
 ``--split-mode MODE``
    Text splitting mode.
@@ -378,7 +387,10 @@ Options
    Speech speed. Default: ``1.0``.
 
 ``--gpu / --no-gpu``
-   Enable or disable GPU acceleration.
+   Compatibility shortcut mapping to ``auto`` or ``cpu``.
+
+``--provider PROVIDER``
+   ONNX Runtime execution provider or alias.
 
 ``--mode MODE``
    Content mode: ``chapters`` or ``pages``.
@@ -610,7 +622,10 @@ Examples
    # Set multiple options
    ttsforge config --set default_voice af_sarah --set default_speed 1.1
 
-   # Enable GPU
+   # Select the default ONNX provider
+   ttsforge config --set onnx_provider nnapi
+
+   # Legacy compatibility shortcut
    ttsforge config --set use_gpu true
 
    # Reset to defaults
@@ -753,7 +768,10 @@ Options
    Speech speed. Default: ``1.0``.
 
 ``--gpu / --no-gpu``
-   Enable or disable GPU acceleration.
+   Compatibility shortcut mapping to ``auto`` or ``cpu``.
+
+``--provider PROVIDER``
+   ONNX Runtime execution provider or alias.
 
 ``--silence FLOAT``
    Silence between chapters. Default: ``2.0``.

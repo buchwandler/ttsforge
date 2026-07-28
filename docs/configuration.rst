@@ -104,12 +104,23 @@ Output Settings
 Processing Settings
 ^^^^^^^^^^^^^^^^^^^
 
+``onnx_provider``
+   ONNX Runtime execution provider used for synthesis. Use ``auto``, ``cpu``,
+   ``cuda``, ``openvino``, ``directml``/``dml``, ``coreml``, ``nnapi``,
+   ``xnnpack``, or a full ``*ExecutionProvider`` name. TTSForge validates the
+   syntax and PyKokoro validates runtime availability.
+
+   - Type: string
+   - Default: ``cpu``
+   - Examples: ``ttsforge config --set onnx_provider nnapi`` and
+     ``ttsforge config --set onnx_provider NnapiExecutionProvider``
+
 ``use_gpu``
-   Enable GPU acceleration for TTS inference.
+   Legacy compatibility setting. ``true`` maps to ``onnx_provider=auto`` and
+   ``false`` maps to ``onnx_provider=cpu`` when no provider is configured.
 
    - Type: boolean
    - Default: ``false``
-   - Requires: ``onnxruntime-gpu`` package
    - Example: ``ttsforge config --set use_gpu true``
 
 ``model_quality``
@@ -339,7 +350,11 @@ Complete Configuration Reference
    * - ``use_gpu``
      - boolean
      - ``false``
-     - Enable GPU acceleration
+     - Legacy provider compatibility shortcut
+   * - ``onnx_provider``
+     - string
+     - ``cpu``
+     - ONNX Runtime provider alias or full name
    * - ``model_quality``
      - string
      - ``fp32``
@@ -498,9 +513,34 @@ take precedence over configuration file settings:
    # Override voice and format
    ttsforge convert book.epub -v bf_emma -f mp3
 
+   # Select a provider for one command
+   ttsforge sample "Provider test" --provider xnnpack
+
+Provider precedence is explicit ``--provider``, then ``--gpu``/``--no-gpu``, then
+``onnx_provider``, then legacy ``use_gpu``, then CPU. PyKokoro may apply its documented
+``ONNX_PROVIDER`` environment override during runtime provider resolution.
+
 
 Environment Variables
 ---------------------
 
-ttsforge does not currently support environment variables for configuration.
-Use the config file or command-line options instead.
+TTSForge configuration has no separate environment-variable file format. The PyKokoro
+runtime may still honor its documented ``ONNX_PROVIDER`` environment override after
+TTSForge resolves the configured provider.
+
+Model source status
+-------------------
+
+Set ``model_source`` to ``github`` when using the GitHub asset set. ``ttsforge config
+--show`` uses PyKokoro's source/variant/quality-aware asset paths and reports missing
+assets. If the configured set is incomplete but the alternate supported source is
+complete, the command reports that alternate and gives an activation command without
+silently switching sources.
+
+On Termux/Android, a typical setup is:
+
+.. code-block:: bash
+
+   ttsforge config --set model_source github --set model_variant v1.0 \
+      --set model_quality fp32 --set onnx_provider nnapi
+   ttsforge config --show

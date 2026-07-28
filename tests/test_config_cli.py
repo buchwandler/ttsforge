@@ -92,3 +92,40 @@ def test_config_options_cannot_be_combined_with_subcommand() -> None:
 
     assert result.exit_code != 0
     assert "cannot be combined" in result.output
+
+
+def test_config_set_provider_persists_alias_and_full_name(tmp_path: Path) -> None:
+    config_path = tmp_path / "config.json"
+    with patch("ttsforge.utils.get_user_config_path", return_value=config_path):
+        result = CliRunner().invoke(
+            app,
+            ["config", "--set", "onnx_provider", "NnapiExecutionProvider"],
+        )
+    assert result.exit_code == 0, result.output
+    assert json.loads(config_path.read_text(encoding="utf-8"))["onnx_provider"] == (
+        "NnapiExecutionProvider"
+    )
+
+
+def test_config_set_invalid_provider_is_atomic(tmp_path: Path) -> None:
+    config_path = tmp_path / "config.json"
+    original = {"onnx_provider": "cpu"}
+    config_path.write_text(json.dumps(original), encoding="utf-8")
+    with patch("ttsforge.utils.get_user_config_path", return_value=config_path):
+        result = CliRunner().invoke(
+            app,
+            ["config", "--set", "onnx_provider", "potato"],
+        )
+    assert result.exit_code == 2
+    assert "Invalid value for onnx_provider" in result.output
+    assert json.loads(config_path.read_text(encoding="utf-8")) == original
+
+
+def test_config_reset_restores_provider_defaults(tmp_path: Path) -> None:
+    config_path = tmp_path / "config.json"
+    with patch("ttsforge.utils.get_user_config_path", return_value=config_path):
+        result = CliRunner().invoke(app, ["config", "--reset"])
+    assert result.exit_code == 0, result.output
+    saved = json.loads(config_path.read_text(encoding="utf-8"))
+    assert saved["onnx_provider"] == "cpu"
+    assert saved["use_gpu"] is False
