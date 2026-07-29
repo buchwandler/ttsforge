@@ -57,6 +57,36 @@ as a deprecated compatibility alias.
 Configuration Options
 ---------------------
 
+SSMD 0.8 policies
+^^^^^^^^^^^^^^^^^
+
+The following keys configure SSMD rendering. Persistent configuration is lower
+precedence than a document header; explicit CLI/API values are higher
+precedence. Do not use persistent ``pause_sentence`` or ``pause_paragraph``
+values as SSMD header overrides.
+
+``ssmd_parse_header`` (boolean, default ``true``)
+   Parse an exact leading ``---`` block. Set false only for literal header text.
+
+``ssmd_unknown_header`` (``warn``, ``error``, or ``ignore``)
+   Policy for unknown header keys.
+
+``ssmd_missing_voice`` (``error`` or ``use-default``)
+   Policy for logical voice references that cannot be resolved.
+
+``ssmd_validate_profile`` and ``ssmd_emphasis_mode``
+   Validate Kokoro-supported constructs and choose ``approximate``, ``warn``,
+   or ``error`` emphasis behavior.
+
+``ssmd_voice_bindings``
+   Mapping such as ``{"narrator": "af_sarah"}``; CLI/API bindings are
+   supplied with repeated ``--ssmd-voice ROLE=VOICE``.
+
+``ssmd_audio_allow_remote`` (default ``false``), ``ssmd_audio_root``,
+``ssmd_audio_max_bytes`` (default ``20000000``), and
+``ssmd_audio_max_duration_s`` (default ``120``)
+   Bound local/HTTPS audio annotation resolution. Remote audio is opt-in.
+
 Voice and Language Settings
 ^^^^^^^^^^^^^^^^^^^^^^^^^^^
 

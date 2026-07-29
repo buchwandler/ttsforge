@@ -1,296 +1,127 @@
-SSMD Editing
-============
+SSMD 0.8
+========
 
-SSMD (Speech Synthesis Markdown) is an intermediate text format used by ttsforge
-between EPUB extraction and TTS audio generation. It allows fine-grained control
-over pronunciation, pacing, and emphasis in your audiobooks.
+ttsforge treats SSMD 0.8 as a document format, not as decorated plain text.
+Generated, edited, and direct ``.ssmd`` documents are validated with the public
+``ssmd`` APIs and the pykokoro Kokoro profile before synthesis. Header metadata
+is never sent to speech.
 
-
-How SSMD Works
+Basic workflow
 --------------
-
-During conversion, ttsforge automatically generates ``.ssmd`` files for each chapter:
-
-.. code-block:: text
-
-   .{book_title}_chapters/
-   ├── {book_title}_state.json
-   ├── chapter_001_intro.ssmd      # Editable text with speech markup
-   ├── chapter_001_intro.wav
-   ├── chapter_002_chapter1.ssmd
-   ├── chapter_002_chapter1.wav
-   └── ...
-
-When you resume a conversion, ttsforge detects if you've edited any SSMD files
-(using MD5 hash comparison) and automatically regenerates the corresponding audio.
-
-
-Basic Workflow
---------------
-
-1. **Start conversion**:
-
-   .. code-block:: bash
-
-      ttsforge convert book.epub
-
-2. **Pause conversion** (Ctrl+C when needed)
-
-3. **Edit SSMD files** to fix pronunciation or pacing:
-
-   .. code-block:: bash
-
-      vim .book_chapters/chapter_001_intro.ssmd
-
-4. **Resume conversion** - automatically detects edits:
-
-   .. code-block:: bash
-
-      ttsforge convert book.epub
-
-
-SSMD Syntax
------------
-
-SSMD uses a simple markdown-like syntax for speech control.
-
-
-Structural Breaks
-~~~~~~~~~~~~~~~~~
-
-Control pauses between text segments:
-
-.. code-block:: ssmd
-
-   ...p    # Paragraph break (0.5-1.0s pause)
-   ...s    # Sentence break (0.1-0.3s pause)
-   ...c    # Clause break (shorter pause)
-
-Example:
-
-.. code-block:: ssmd
-
-   This is the first paragraph. ...s
-   It has multiple sentences. ...p
-
-   This is a second paragraph. ...s
-
-
-Emphasis
-~~~~~~~~
-
-Add vocal emphasis to words or phrases:
-
-.. code-block:: ssmd
-
-   *text*      # Moderate emphasis
-   **text**    # Strong emphasis
-
-Example:
-
-.. code-block:: ssmd
-
-   Harry was a *highly unusual* boy. ...s
-   He **hated** the summer holidays. ...s
-
-
-Custom Phonemes
-~~~~~~~~~~~~~~~
-
-Override pronunciation using IPA phonemes:
-
-.. code-block:: ssmd
-
-   [word]{ph="phoneme"}
-
-Examples:
-
-.. code-block:: ssmd
-
-   [Hermione]{ph="hɝmˈIni"} Granger was Harry's best friend. ...s
-   The [API]{ph="ˌeɪpiˈaɪ"} supports [JSON]{ph="dʒˈeɪsɑn"}. ...s
-   [Kubernetes]{ph="kubɚnˈɛtɪs"} is a container orchestrator. ...s
-
-
-Language Switching (Planned)
-~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
-
-Mark text as a different language (placeholder for future):
-
-.. code-block:: ssmd
-
-   [Bonjour]{lang="fr"}      # French text
-   [Hola]{lang="es"}         # Spanish text
-
-
-Complete Example
-----------------
-
-Here's a complete SSMD file example:
-
-.. code-block:: ssmd
-
-   Chapter One ...p
-
-   [Harry]{ph="hæɹi"} Potter was a *highly unusual* boy in many ways. ...s
-   For one thing, he **hated** the summer holidays more than any other
-   time of year. ...s For another, he really wanted to do his homework,
-   but was forced to do it in secret, in the dead of the night. ...p
-
-   And he also happened to be a wizard. ...p
-
-   The [Dursleys]{ph="dɝzliz"} had everything they wanted, but they
-   also had a secret. ...s And their greatest fear was that somebody
-   would discover it. ...p
-
-
-Automatic Features
-------------------
-
-SSMD files are automatically enhanced with:
-
-Phoneme Dictionary Injection
-~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
-
-If you use ``--phoneme-dict``, all phoneme substitutions are automatically
-injected into the SSMD:
 
 .. code-block:: bash
 
-   ttsforge convert book.epub --phoneme-dict custom_phonemes.json
-
-The generated SSMD will include:
-
-.. code-block:: ssmd
-
-   [Hermione]{ph="hɝmˈIni"} loved reading books. ...s
-
-
-HTML Emphasis Detection
-~~~~~~~~~~~~~~~~~~~~~~~
-
-Emphasis from the original EPUB HTML is automatically converted:
-
-- ``<em>text</em>`` → ``*text*``
-- ``<strong>text</strong>`` → ``**text**``
-
-
-Structural Break Preservation
-~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
-
-ttsforge preserves paragraph structure but does not insert explicit
-``...p`` or ``...s`` markers. Sentence detection is handled internally by
-pykokoro at synthesis time. Use manual break markers only when you need
-precise control over pauses.
-
-
-Use Cases
----------
-
-When to Edit SSMD
-~~~~~~~~~~~~~~~~~
-
-1. **Pronunciation issues**: Character names, technical terms, foreign words
-2. **Pacing problems**: Adjust paragraph and sentence breaks for better flow
-3. **Emphasis corrections**: Add or remove emphasis on specific words
-4. **Consistency**: Ensure consistent pronunciation across chapters
-
-
-Combining with Phoneme Dictionary
-~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
-
-For best results, use both features together:
-
-1. Create a phoneme dictionary for common names/terms
-2. Let ttsforge auto-inject into SSMD
-3. Edit SSMD files for chapter-specific tweaks
-
-.. code-block:: bash
-
-   # 1. Extract and review names
-   ttsforge extract-names book.epub
-   vim custom_phonemes.json
-
-   # 2. Start conversion (phonemes auto-injected into SSMD)
-   ttsforge convert book.epub --phoneme-dict custom_phonemes.json
-
-   # 3. Edit specific SSMD files as needed
-   vim .book_chapters/chapter_005.ssmd
-
-   # 4. Resume (regenerates edited chapters)
+   ttsforge convert book.epub --generate-ssmd
+   # edit the .ssmd files in the chapter directory
+   ttsforge ssmd validate .book_chapters/chapter_001.ssmd --strict
    ttsforge convert book.epub
 
+The generated files use truncated SHA-256 content hashes. An edited invalid
+file stops its chapter and is never silently replaced; an existing audio file
+is retained until a valid synthesis and its sidecars succeed.
 
-Tips and Best Practices
-------------------------
+Portable document example
+-------------------------
 
-1. **Start with phoneme dictionary**: Create a global dictionary first,
-   then use SSMD for chapter-specific overrides
+.. code-block:: ssmd
 
-2. **Test edits incrementally**: Edit one chapter, let it regenerate,
-   listen to verify before editing more
+   ---
+   title: Review podcast
+   voice_bindings:
+     kokoro:
+       moderator: af_sarah
+       positive: af_bella
+   pause_defaults:
+     enabled: true
+     sentence: 250ms
+     paragraph: 700ms
+     voice_change: 350ms
+   ---
+   <div voice="moderator">
+   Welcome to the review.
+   </div>
 
-3. **Use emphasis sparingly**: Too much emphasis can sound unnatural
+   <div voice="positive">
+   The new format is portable. @approved
+   </div>
 
-4. **Keep backups**: SSMD files are regenerated if missing, but manual
-   edits are preserved
+``title`` is metadata and is not spoken. Logical roles resolve through
+``voice_bindings.kokoro``. Explicit ``...100ms`` breaks beat implicit defaults;
+simultaneous implicit paragraph and voice changes use the longest duration.
+``@approved`` is retained as a marker event and exported to marker sidecars.
 
-5. **Consistent phonemes**: Use the same IPA notation throughout for
-   consistency
+Syntax
+------
 
+Canonical inline annotations use ``[text]{key="value"}``:
 
-Technical Details
+.. code-block:: ssmd
+
+   [Hermione]{ph="hɝmˈIni"}
+   [Bonjour]{lang="fr-FR"}
+   [100]{as="cardinal"}
+   [XML]{sub="extensible markup language"}
+   [fast words]{rate="fast" volume="loud"}
+   ...c ...s ...p ...250ms
+
+Moderate, strong, reduced, and none emphasis are parsed. Kokoro approximates
+emphasis by default; use ``--ssmd-emphasis warn`` or ``error`` for stricter
+behavior. Language, voice, prosody, say-as, substitution, phoneme, break,
+mark, paragraph, heading, and supported audio attributes are passed to the
+renderer.
+
+Direct SSMD input
 -----------------
 
-Hash-Based Change Detection
-~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+An exact leading ``---`` line opens front matter and a matching ``---`` or
+``...`` closes it. A ``----`` line is ordinary body text. Use
+``--no-ssmd-header`` when an exact leading block is literal spoken text.
 
-ttsforge tracks SSMD file changes using MD5 hashes (12 characters) stored
-in the state file. When you resume:
+For a direct ``.ssmd`` input, title precedence is explicit ``--title`` or API
+title, then header ``title``, then the filename stem. The complete source,
+including front matter, is preserved for rendering.
 
-1. Current SSMD file is hashed
-2. Compared with saved hash in state
-3. If different, audio is regenerated
-4. New hash is saved
+Policies and diagnostics
+------------------------
 
+Useful conversion options include:
 
-File Format
-~~~~~~~~~~~
+.. code-block:: bash
 
-SSMD files are plain text UTF-8 files with the ``.ssmd`` extension.
-They can be edited with any text editor.
+   --ssmd-unknown-header warn|error|ignore
+   --ssmd-missing-voice error|use-default
+   --ssmd-emphasis approximate|warn|error
+   --ssmd-voice narrator=af_sarah
+   --pause-voice-change 0.35
+   --ssmd-audio-root ./audio
+   --ssmd-remote-audio
+   --ssmd-fail-on-warning
 
+Diagnostics have stable codes and source locations. Inspect without loading
+ONNX using ``ttsforge ssmd inspect FILE`` or ``ttsforge ssmd inspect FILE
+--json``. Validate with ``ttsforge ssmd validate FILE``; ``--strict`` promotes
+warnings to failures.
 
-Error Handling
-~~~~~~~~~~~~~~
+Audio annotations use a document-relative local resolver with byte and duration
+limits. Remote audio is disabled by default; when enabled, only bounded HTTPS
+sources are accepted. Unresolved audio uses SSMD fallback text and emits an
+``ssmd.audio_fallback`` or ``ssmd.audio_unresolved`` diagnostic. Audio files are
+decoded and downmixed to mono before pykokoro applies SSMD transformations.
 
-If SSMD generation fails, ttsforge falls back to plain text conversion
-and logs a warning. The conversion continues without SSMD features.
+Intentional Kokoro limitations
+------------------------------
 
+* SSMD voice language, gender, and variant hints are preserved as metadata but
+  do not select a Kokoro voice.
+* SSMD extensions are rejected by default for the Kokoro profile.
+* Emphasis is approximated by default.
+* Remote audio is opt-in and bounded.
+* Marks are exported as ``chapter_NNN.markers.json`` and an aggregate output
+  sidecar rather than embedded in every audiobook container.
 
-Validation
-~~~~~~~~~~
-
-SSMD is not automatically validated during conversion. For manual checks,
-use the ``validate_ssmd`` helper from ``ttsforge.ssmd_generator`` to get
-warnings about unbalanced markers before you synthesize.
-
-
-Limitations
------------
-
-- Language switching is not yet implemented (planned feature)
-- Phoneme syntax must use valid IPA characters
-- Very long lines may be truncated in some editors
-- Hash detection only works with resumable conversions
-
-
-See Also
+See also
 --------
 
-- :doc:`quickstart` - Getting started with ttsforge
-- :doc:`cli` - Complete command reference
-- :doc:`configuration` - Configuration options
-
-For more SSMD examples and a quick reference, see ``SSMD_QUICKSTART.md``
-in the repository root.
+* :doc:`quickstart`
+* :doc:`cli`
+* :doc:`configuration`

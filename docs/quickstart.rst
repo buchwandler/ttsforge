@@ -305,7 +305,7 @@ During conversion, ``.ssmd`` files are automatically generated for each chapter:
    ...s                               # Sentence break
    *text*                             # Moderate emphasis
    **text**                           # Strong emphasis
-   [Hermione](ph: /hɝmˈIni/)          # Custom pronunciation
+   [Hermione]{ph="hɝmˈIni"}          # Custom pronunciation
 
 **Example SSMD file**:
 
@@ -313,7 +313,7 @@ During conversion, ``.ssmd`` files are automatically generated for each chapter:
 
    Chapter One ...p
 
-   [Harry](ph: /hæɹi/) Potter was a *highly unusual* boy. ...s
+   [Harry]{ph="hæɹi"} Potter was a *highly unusual* boy. ...s
    He **hated** the summer holidays. ...p
 
 For complete SSMD documentation, see :doc:`ssmd`.

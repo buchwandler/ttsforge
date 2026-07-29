@@ -10,6 +10,7 @@ import re
 from dataclasses import dataclass, field
 from pathlib import Path
 
+from .ssmd_support import SSMDValidationError, inspect_ssmd_document
 from .text_postprocessing import (
     TextPostprocessOptions,
     postprocess_extracted_text,
@@ -412,21 +413,34 @@ class InputReader:
 
     def _get_ssmd_metadata(self) -> Metadata:
         """Extract metadata from an SSMD file."""
-        return Metadata(title=self.file_path.stem, authors=[], language=None)
+        content = self._read_ssmd_source()
+        info = inspect_ssmd_document(content)
+        if info.errors:
+            raise SSMDValidationError(info.errors, self.file_path)
+        return Metadata(
+            title=info.title or self.file_path.stem, authors=[], language=None
+        )
 
     def _get_ssmd_chapters(self) -> list[Chapter]:
         """Read an SSMD file as a single chapter."""
-        encoding = detect_encoding(self.file_path)
-        with open(self.file_path, encoding=encoding, errors="replace") as f:
-            content = f.read()
+        content = self._read_ssmd_source()
+        info = inspect_ssmd_document(content)
+        if info.errors:
+            raise SSMDValidationError(info.errors, self.file_path)
         return [
             Chapter(
-                title=self.file_path.stem,
+                title=info.title or self.file_path.stem,
                 text=content,
                 index=0,
                 is_ssmd=True,
             )
         ]
+
+    def _read_ssmd_source(self) -> str:
+        """Read an SSMD document without applying plain-text transforms."""
+        encoding = detect_encoding(self.file_path)
+        with open(self.file_path, encoding=encoding, errors="replace") as f:
+            return f.read()
 
     # PDF methods (placeholder for future implementation)
     def _get_pdf_metadata(self) -> Metadata:

@@ -35,6 +35,9 @@ _NUMERIC_CONFIG_RANGES: dict[str, tuple[float | None, float | None]] = {
     "pause_paragraph": (0.0, None),
     "pause_variance": (0.0, None),
     "chapter_pause_after_title": (0.0, None),
+    "ssmd_audio_max_bytes": (1.0, None),
+    "ssmd_audio_max_duration_s": (0.0, None),
+    "ssmd_audio_timeout_s": (0.001, None),
 }
 
 _ONNX_PROVIDER_ALIASES = {
@@ -69,6 +72,38 @@ def validate_config_value(key: str, value: Any) -> None:
                 "or a full *ExecutionProvider name"
             )
         return
+
+    if key in {
+        "ssmd_parse_header",
+        "ssmd_validate_profile",
+        "ssmd_fail_on_warning",
+        "ssmd_audio_allow_remote",
+        "embed_ssmd_voice_bindings",
+        "embed_ssmd_pause_defaults",
+    }:
+        if not isinstance(value, bool):
+            raise ValueError("must be a boolean")
+        return
+    if key == "ssmd_unknown_header" and value not in {"warn", "error", "ignore"}:
+        raise ValueError("must be warn, error, or ignore")
+    if key == "ssmd_missing_voice" and value not in {"error", "use-default"}:
+        raise ValueError("must be error or use-default")
+    if key == "ssmd_emphasis_mode" and value not in {"approximate", "warn", "error"}:
+        raise ValueError("must be approximate, warn, or error")
+    if key == "ssmd_voice_bindings":
+        if not isinstance(value, dict):
+            raise ValueError("must be a mapping of logical roles to voice IDs")
+        for role, voice in value.items():
+            if (
+                not isinstance(role, str)
+                or not role
+                or not isinstance(voice, str)
+                or not voice
+            ):
+                raise ValueError("must contain non-empty role and voice strings")
+        return
+    if key == "ssmd_audio_root" and value is not None and not isinstance(value, str):
+        raise ValueError("must be a path string or null")
 
     bounds = _NUMERIC_CONFIG_RANGES.get(key)
     if bounds is None:

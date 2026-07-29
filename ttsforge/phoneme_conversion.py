@@ -525,12 +525,13 @@ class PhonemeConverter:
             # Announce chapter title if enabled
             # Only announce if there are segments to follow
             if self.options.announce_chapters and chapter.title and chapter.segments:
-                title_samples = self._runner.synthesize(
+                title_result = self._runner.synthesize(
                     chapter.title,
                     lang_code=lang_code,
                     pause_mode="tts",
                     is_phonemes=False,
                 )
+                title_samples = getattr(title_result, "audio", title_result)
                 out_file.write(title_samples)
                 duration += len(title_samples) / SAMPLE_RATE
 
@@ -545,7 +546,7 @@ class PhonemeConverter:
             if not self._cancel_event.is_set() and chapter.segments:
                 # Single pipeline call for entire chapter
                 ssmd_text = self._phoneme_segments_to_ssmd(chapter.segments)
-                samples = self._runner.synthesize(
+                result = self._runner.synthesize(
                     ssmd_text,
                     lang_code=lang_code,
                     pause_mode=cast(
@@ -553,6 +554,7 @@ class PhonemeConverter:
                     ),
                     is_phonemes=True,
                 )
+                samples = getattr(result, "audio", result)
 
                 out_file.write(samples)
                 duration += len(samples) / SAMPLE_RATE
@@ -1124,7 +1126,7 @@ class PhonemeConverter:
                         else (chapter.segments[0].lang if chapter.segments else "en-us")
                     )
                     ssmd_text = self._phoneme_segments_to_ssmd(chapter.segments)
-                    samples = self._runner.synthesize(
+                    result = self._runner.synthesize(
                         ssmd_text,
                         lang_code=lang_code,
                         pause_mode=cast(
@@ -1133,6 +1135,7 @@ class PhonemeConverter:
                         ),
                         is_phonemes=True,
                     )
+                    samples = getattr(result, "audio", result)
 
                     self._write_audio_chunk(samples, out_file, ffmpeg_proc)
                     current_time += len(samples) / SAMPLE_RATE

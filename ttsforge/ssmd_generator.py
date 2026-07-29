@@ -16,9 +16,21 @@ Users can manually add breaks in the SSMD file if desired:
 from __future__ import annotations
 
 import hashlib
+import os
 import re
+import tempfile
+from collections.abc import Mapping
 from html.parser import HTMLParser
 from pathlib import Path
+from typing import Any
+
+from .ssmd_support import (
+    SSMDPolicy,
+    SSMDValidationError,
+    format_issue,
+    inspect_ssmd_document,
+    validate_ssmd_document,
+)
 
 
 class SSMDGenerationError(Exception):
@@ -27,7 +39,7 @@ class SSMDGenerationError(Exception):
     pass
 
 
-def _hash_content(content: str) -> str:
+def hash_ssmd_content(content: str) -> str:
     """Generate a hash of content for change detection.
 
     Args:
@@ -36,7 +48,12 @@ def _hash_content(content: str) -> str:
     Returns:
         12-character hex hash
     """
-    return hashlib.md5(content.encode("utf-8")).hexdigest()[:12]
+    return hashlib.sha256(content.encode("utf-8")).hexdigest()[:12]
+
+
+def _hash_content(content: str) -> str:
+    """Compatibility alias for the canonical SSMD SHA-256 hash."""
+    return hash_ssmd_content(content)
 
 
 class _EmphasisHTMLParser(HTMLParser):
@@ -129,7 +146,7 @@ def _apply_emphasis_markers(text: str, emphasis_segments: list[tuple[str, str]])
 def _inject_phoneme_substitutions(
     text: str, phoneme_dict: dict[str, str], case_sensitive: bool = False
 ) -> str:
-    """Inject phoneme substitutions into text using SSMD [word](ph: /phoneme/) syntax.
+    """Inject canonical SSMD 0.8 ``[word]{ph="phoneme"}`` annotations.
 
     Args:
         text: Text to process
@@ -203,7 +220,7 @@ def _add_language_markers(text: str, mixed_language_config: dict | None = None) 
     # TODO: Implement language detection and wrapping
     # For now, return text unchanged
     # Future: Use lingua-language-detector to identify foreign segments
-    # and wrap them with [segment](lang_code)
+    # and wrap them with ``[segment]{lang="lang_code"}``.
     return text
 
 
@@ -280,6 +297,7 @@ def chapter_to_ssmd(
     mixed_language_config: dict | None = None,
     html_content: str | None = None,
     include_title: bool = True,
+    document_header: Mapping[str, Any] | None = None,
 ) -> str:
     """Convert a chapter to SSMD format.
 
@@ -291,6 +309,8 @@ def chapter_to_ssmd(
         mixed_language_config: Optional config for mixed-language mode
         html_content: Optional HTML content for emphasis detection
         include_title: Whether to include chapter title in SSMD
+        document_header: Optional explicit header values.  Missing generated
+            fields are filled without replacing explicit document values.
 
     Returns:
         SSMD formatted text
@@ -331,7 +351,13 @@ def chapter_to_ssmd(
             clean_title = chapter_title.strip()
             result = f"# {clean_title}\n\n{result}"
 
-        return result
+        from ssmd import merge_generated_header, serialize_front_matter
+
+        generated_header: dict[str, Any] = {}
+        if chapter_title:
+            generated_header["title"] = chapter_title.strip()
+        header = merge_generated_header(dict(document_header or {}), generated_header)
+        return serialize_front_matter(header, result)
 
     except Exception as e:
         raise SSMDGenerationError(
@@ -339,7 +365,12 @@ def chapter_to_ssmd(
         ) from e
 
 
-def save_ssmd_file(ssmd_content: str, output_path: Path) -> str:
+def save_ssmd_file(
+    ssmd_content: str,
+    output_path: Path,
+    *,
+    policy: SSMDPolicy | None = None,
+) -> str:
     """Save SSMD content to a file and return its hash.
 
     Args:
@@ -353,10 +384,23 @@ def save_ssmd_file(ssmd_content: str, output_path: Path) -> str:
         SSMDGenerationError: If file save fails
     """
     try:
+        validate_ssmd_document(ssmd_content, policy=policy or SSMDPolicy())
         output_path.parent.mkdir(parents=True, exist_ok=True)
-        with open(output_path, "w", encoding="utf-8") as f:
-            f.write(ssmd_content)
-        return _hash_content(ssmd_content)
+        fd, tmp_name = tempfile.mkstemp(
+            prefix=f".{output_path.name}.", suffix=".tmp", dir=output_path.parent
+        )
+        tmp_path = Path(tmp_name)
+        try:
+            with os.fdopen(fd, "w", encoding="utf-8") as f:
+                f.write(ssmd_content)
+                f.flush()
+                os.fsync(f.fileno())
+            os.replace(tmp_path, output_path)
+        finally:
+            tmp_path.unlink(missing_ok=True)
+        return hash_ssmd_content(ssmd_content)
+    except SSMDValidationError as e:
+        raise SSMDGenerationError(str(e)) from e
     except Exception as e:
         raise SSMDGenerationError(
             f"Failed to save SSMD file to {output_path}: {str(e)}"
@@ -392,11 +436,7 @@ def load_ssmd_file(ssmd_path: Path) -> tuple[str, str]:
 
 
 def validate_ssmd(ssmd_content: str) -> list[str]:
-    """Validate SSMD content and return warnings.
-
-    This is intentionally lightweight: it checks for obviously unbalanced
-    brackets/parentheses and unmatched emphasis markers. It does not attempt
-    to fully parse SSMD.
+    """Validate SSMD content through SSMD 0.8 and the Kokoro profile.
 
     Args:
         ssmd_content: SSMD formatted text
@@ -404,19 +444,24 @@ def validate_ssmd(ssmd_content: str) -> list[str]:
     Returns:
         List of warning strings. Empty list means no issues found.
     """
-    warnings: list[str] = []
+    info = inspect_ssmd_document(ssmd_content, policy=SSMDPolicy())
+    return [
+        format_issue(issue)
+        for issue in info.issues
+        if issue.severity in {"warn", "error"}
+    ]
 
-    if ssmd_content.count("[") != ssmd_content.count("]"):
-        warnings.append("Unbalanced '[' and ']' brackets")
 
-    if ssmd_content.count("(") != ssmd_content.count(")"):
-        warnings.append("Unbalanced '(' and ')' parentheses")
+def merge_ssmd_document_header(
+    existing_content: str,
+    generated_header: Mapping[str, Any],
+) -> str:
+    """Merge generated fields without replacing explicit header values."""
 
-    strong_count = ssmd_content.count("**")
-    if strong_count % 2 != 0:
-        warnings.append("Unbalanced strong emphasis markers '**'")
+    from ssmd import merge_generated_header, parse_front_matter, serialize_front_matter
 
-    if ssmd_content.count("*") % 2 != 0:
-        warnings.append("Unbalanced emphasis markers '*'")
-
-    return warnings
+    front_matter = parse_front_matter(existing_content)
+    if not front_matter.present:
+        return serialize_front_matter(dict(generated_header), existing_content)
+    merged = merge_generated_header(front_matter.data, generated_header)
+    return serialize_front_matter(merged, front_matter.body)

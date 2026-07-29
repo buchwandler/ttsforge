@@ -2,7 +2,9 @@
 
 import hashlib
 import json
+import os
 import re
+import tempfile
 import threading
 import time
 from collections.abc import Callable
@@ -30,11 +32,18 @@ from .constants import (
 from .kokoro_lang import get_onnx_lang_code
 from .short_sentence_config import resolve_short_sentence_config
 from .short_sentence_stats import ShortSentenceStats
+from .ssmd_audio import LocalSSMDAudioResolver
 from .ssmd_generator import (
     SSMDGenerationError,
     chapter_to_ssmd,
     load_ssmd_file,
     save_ssmd_file,
+)
+from .ssmd_support import (
+    SSMDDocumentInfo,
+    SSMDIssue,
+    SSMDPolicy,
+    validate_ssmd_document,
 )
 from .text_postprocessing import (
     TextPostprocessOptions,
@@ -110,6 +119,9 @@ class ConversionResult:
     error_message: str | None = None
     chapters_dir: Path | None = None
     short_sentence_stats: ShortSentenceStats = field(default_factory=ShortSentenceStats)
+    document_metadata: dict[str, Any] = field(default_factory=dict)
+    ssmd_diagnostics: tuple[SSMDIssue, ...] = ()
+    markers: list[dict[str, Any]] = field(default_factory=list)
 
 
 @dataclass
@@ -126,6 +138,9 @@ class ChapterState:
     ssmd_file: str | None = None  # Relative path to SSMD file
     ssmd_hash: str | None = None  # Hash of SSMD content for change detection
     render_fingerprint: str = ""  # Inputs that produced the audio artifact
+    ssmd_diagnostics_file: str | None = None
+    ssmd_markers_file: str | None = None
+    ssmd_document_title: str | None = None
 
 
 @dataclass
@@ -133,7 +148,7 @@ class ConversionState:
     """Persistent state for resumable conversions."""
 
     # Keep the constructor default compatible with callers that create legacy
-    # records directly; conversion-created records explicitly use schema v2.
+    # records directly; conversion-created records explicitly use schema v3.
     version: int = 1
     source_file: str = ""
     source_hash: str = ""  # Hash of source file for change detection
@@ -161,6 +176,7 @@ class ConversionState:
     chapters: list[ChapterState] = field(default_factory=list)
     source_selection: list[int] = field(default_factory=list)
     generation_fingerprint: str = ""
+    ssmd_policy_fingerprint: str = ""
     started_at: str = ""
     last_updated: str = ""
 
@@ -178,6 +194,7 @@ class ConversionState:
             data["chapters"] = chapters
             data.setdefault("source_selection", [])
             data.setdefault("generation_fingerprint", "")
+            data.setdefault("ssmd_policy_fingerprint", "")
 
             # Handle missing fields for backward compatibility
             if "silence_between_chapters" not in data:
@@ -275,6 +292,9 @@ class ConversionState:
                     "ssmd_file": ch.ssmd_file,
                     "ssmd_hash": ch.ssmd_hash,
                     "render_fingerprint": ch.render_fingerprint,
+                    "ssmd_diagnostics_file": ch.ssmd_diagnostics_file,
+                    "ssmd_markers_file": ch.ssmd_markers_file,
+                    "ssmd_document_title": ch.ssmd_document_title,
                 }
                 for ch in self.chapters
             ],
@@ -282,6 +302,7 @@ class ConversionState:
             "last_updated": self.last_updated,
             "source_selection": self.source_selection,
             "generation_fingerprint": self.generation_fingerprint,
+            "ssmd_policy_fingerprint": self.ssmd_policy_fingerprint,
         }
         atomic_write_json(state_file, data, indent=2, ensure_ascii=True)
 
@@ -329,6 +350,85 @@ def _path_identity(path: Path | str | None) -> dict[str, str] | None:
         return None
     resolved = Path(path)
     return {"path": str(resolved), "sha256": _hash_file(resolved)}
+
+
+def _ssmd_policy_payload(policy: SSMDPolicy) -> dict[str, Any]:
+    """Return a canonical, JSON-safe representation of SSMD render policy."""
+    pause = policy.pause_overrides
+    bindings = {
+        str(provider): {
+            str(reference): str(target)
+            for reference, target in sorted(provider_bindings.items())
+        }
+        for provider, provider_bindings in sorted(policy.voice_bindings.items())
+    }
+    return {
+        "parse_header": policy.parse_header,
+        "unknown_header": policy.unknown_header,
+        "missing_voice": policy.missing_voice,
+        "validate_profile": policy.validate_profile,
+        "emphasis_mode": policy.emphasis_mode,
+        "fail_on_warning": policy.fail_on_warning,
+        "voice_bindings": bindings,
+        "pause_overrides": (
+            {
+                "enabled": pause.enabled,
+                "sentence": pause.sentence,
+                "paragraph": pause.paragraph,
+                "voice_change": pause.voice_change,
+            }
+            if pause is not None
+            else None
+        ),
+        "audio_root": _path_identity(policy.audio_root),
+        "allow_remote_audio": policy.allow_remote_audio,
+        "audio_timeout_s": policy.audio_timeout_s,
+        "audio_max_bytes": policy.audio_max_bytes,
+        "audio_max_duration_s": policy.audio_max_duration_s,
+        # This changes when the public renderer contract changes and prevents
+        # older artifacts from being reused under a different policy model.
+        "ssmd_contract": "ssmd-0.8-pykokoro-0.7.2",
+    }
+
+
+def _result_issues(result: Any) -> tuple[SSMDIssue, ...]:
+    """Normalize pykokoro trace warnings into ttsforge issues."""
+    issues: list[SSMDIssue] = []
+    for warning in getattr(getattr(result, "trace", None), "warnings", ()):
+        message = str(warning)
+        code, _, detail = message.partition(":")
+        if not detail:
+            code, detail = "ssmd.renderer_warning", message
+        issues.append(SSMDIssue(code, "warn", detail.strip()))
+    return tuple(issues)
+
+
+def _marker_records(result: Any) -> list[dict[str, Any]]:
+    sample_rate = int(getattr(result, "sample_rate", SAMPLE_RATE) or SAMPLE_RATE)
+    records: list[dict[str, Any]] = []
+    for marker in getattr(result, "markers", ()):
+        sample_offset = int(marker.get("sample_offset", 0))
+        records.append(
+            {
+                "name": str(marker.get("name", "")),
+                "char_offset": int(marker.get("char_offset", 0)),
+                "sample_offset": sample_offset,
+                "time_s": sample_offset / sample_rate,
+            }
+        )
+    return records
+
+
+def _write_marker_sidecar(path: Path, result: Any) -> list[dict[str, Any]]:
+    markers = _marker_records(result)
+    sample_rate = int(getattr(result, "sample_rate", SAMPLE_RATE) or SAMPLE_RATE)
+    atomic_write_json(
+        path,
+        {"schema_version": 1, "sample_rate": sample_rate, "markers": markers},
+        indent=2,
+        ensure_ascii=True,
+    )
+    return markers
 
 
 # Split mode options
@@ -431,6 +531,9 @@ class ConversionOptions:
     text_postprocess_options: TextPostprocessOptions = field(
         default_factory=TextPostprocessOptions
     )
+    # SSMD rendering policy.  Explicit CLI/API values are represented inside
+    # this object; persistent config is translated separately by the CLI.
+    ssmd_policy: SSMDPolicy = field(default_factory=SSMDPolicy)
 
     def effective_onnx_provider(self) -> str:
         """Return the provider requested by this option set."""
@@ -449,6 +552,8 @@ class ConversionOptions:
             pause_variance=self.pause_variance,
             chapter_pause_after_title=self.chapter_pause_after_title,
         )
+        if not isinstance(self.ssmd_policy, SSMDPolicy):
+            raise TypeError("ssmd_policy must be an SSMDPolicy")
 
 
 # Pattern to detect chapter markers in text
@@ -566,6 +671,7 @@ class TTSConverter:
             voice_blend=self.options.voice_blend,
             voice_database=self.options.voice_database,
             tokenizer_config=tokenizer_config,
+            ssmd_policy=self.options.ssmd_policy,
         )
         self._runner = KokoroRunner(opts, log=self.log)
         self._runner.ensure_ready()
@@ -577,7 +683,7 @@ class TTSConverter:
         mixed_language_config: dict[str, Any] | None,
         html_content: str | None,
     ) -> str:
-        """Generate SSMD content for a chapter, falling back to plain text."""
+        """Generate validated SSMD content for a chapter."""
         try:
             return chapter_to_ssmd(
                 chapter_title=chapter.title,
@@ -589,8 +695,8 @@ class TTSConverter:
                 include_title=self.options.announce_chapters,
             )
         except SSMDGenerationError as e:
-            self.log(f"SSMD generation failed: {e}, using plain text", "error")
-            return chapter.text
+            self.log(f"SSMD generation failed: {e}", "error")
+            raise
 
     def _load_or_generate_ssmd(
         self,
@@ -599,7 +705,7 @@ class TTSConverter:
         phoneme_dict: dict[str, str] | None,
         mixed_language_config: dict[str, Any] | None,
         html_content: str | None,
-    ) -> tuple[str, str]:
+    ) -> tuple[str, str, SSMDDocumentInfo]:
         """Load SSMD from disk or generate and save it."""
         ssmd_content: str | None = None
         ssmd_hash = ""
@@ -608,25 +714,43 @@ class TTSConverter:
             if ssmd_file.exists():
                 try:
                     ssmd_content, ssmd_hash = load_ssmd_file(ssmd_file)
+                    info = validate_ssmd_document(
+                        ssmd_content,
+                        policy=self.options.ssmd_policy,
+                        source=ssmd_file,
+                    )
                     self.log(f"Loaded SSMD from {ssmd_file.name}")
                 except SSMDGenerationError as e:
-                    self.log(f"Failed to load SSMD: {e}, using input", "warning")
-                    ssmd_content = None
+                    self.log(f"Failed to load SSMD: {e}", "error")
+                    raise
 
             if ssmd_content is None:
                 ssmd_content = chapter.text
-                ssmd_hash = save_ssmd_file(ssmd_content, ssmd_file)
+                ssmd_hash = save_ssmd_file(
+                    ssmd_content, ssmd_file, policy=self.options.ssmd_policy
+                )
+                info = validate_ssmd_document(
+                    ssmd_content,
+                    policy=self.options.ssmd_policy,
+                    source=ssmd_file,
+                )
                 self.log(f"Saved SSMD to {ssmd_file.name}")
 
-            return ssmd_content, ssmd_hash
+            assert info is not None
+            return ssmd_content, ssmd_hash, info
 
         if ssmd_file.exists():
             try:
                 ssmd_content, ssmd_hash = load_ssmd_file(ssmd_file)
+                info = validate_ssmd_document(
+                    ssmd_content,
+                    policy=self.options.ssmd_policy,
+                    source=ssmd_file,
+                )
                 self.log(f"Loaded SSMD from {ssmd_file.name}")
             except SSMDGenerationError as e:
-                self.log(f"Failed to load SSMD: {e}, regenerating...", "warning")
-                ssmd_content = None
+                self.log(f"Failed to load SSMD: {e}", "error")
+                raise
 
         if ssmd_content is None:
             self.log(f"Generating SSMD for chapter: {chapter.title}")
@@ -636,42 +760,74 @@ class TTSConverter:
                 mixed_language_config=mixed_language_config,
                 html_content=html_content,
             )
-            ssmd_hash = save_ssmd_file(ssmd_content, ssmd_file)
+            ssmd_hash = save_ssmd_file(
+                ssmd_content, ssmd_file, policy=self.options.ssmd_policy
+            )
+            info = validate_ssmd_document(
+                ssmd_content,
+                policy=self.options.ssmd_policy,
+                source=ssmd_file,
+            )
             self.log(f"Saved SSMD to {ssmd_file.name}")
 
-        return ssmd_content, ssmd_hash
+        assert info is not None
+        return ssmd_content, ssmd_hash, info
 
     def _render_chapter_wav(
         self,
         chapter: Chapter,
         output_file: Path,
         ssmd_content: str,
-    ) -> float:
+        ssmd_file: Path,
+    ) -> tuple[float, Any, Path]:
         """Render SSMD content to a chapter WAV file."""
         effective_lang = (
             self.options.lang if self.options.lang else self.options.language
         )
         lang_code = get_onnx_lang_code(effective_lang)
 
-        with sf.SoundFile(
-            str(output_file),
-            "w",
-            samplerate=SAMPLE_RATE,
-            channels=1,
-            format="wav",
-        ) as out_file:
+        temp_path: Path | None = None
+        try:
+            with tempfile.NamedTemporaryFile(
+                prefix=f".{output_file.name}.",
+                suffix=".tmp.wav",
+                dir=output_file.parent,
+                delete=False,
+            ) as temp_file:
+                temp_path = Path(temp_file.name)
+            resolver = LocalSSMDAudioResolver(
+                ssmd_file.parent,
+                allowed_root=self.options.ssmd_policy.audio_root or ssmd_file.parent,
+                allow_remote=self.options.ssmd_policy.allow_remote_audio,
+                timeout_s=self.options.ssmd_policy.audio_timeout_s,
+                max_bytes=self.options.ssmd_policy.audio_max_bytes,
+                max_duration_s=self.options.ssmd_policy.audio_max_duration_s,
+            )
             assert self._runner is not None
-            samples = self._runner.synthesize(
+            result = self._runner.synthesize(
                 ssmd_content,
                 lang_code=lang_code,
                 pause_mode=cast(
                     Literal["tts", "manual", "auto"], self.options.pause_mode
                 ),
                 is_phonemes=False,
+                audio_resolver=resolver,
             )
-            out_file.write(samples)
-
-        return len(samples) / SAMPLE_RATE
+            samples = getattr(result, "audio", result)
+            with sf.SoundFile(
+                str(temp_path),
+                "w",
+                samplerate=SAMPLE_RATE,
+                channels=1,
+                format="wav",
+            ) as out_file:
+                out_file.write(samples)
+            rendered_path = temp_path
+            temp_path = None
+            return len(samples) / SAMPLE_RATE, result, rendered_path
+        finally:
+            if temp_path is not None:
+                temp_path.unlink(missing_ok=True)
 
     def _generation_fingerprint(self) -> str:
         """Fingerprint every option that can affect generated audio."""
@@ -713,6 +869,7 @@ class TTSConverter:
             "generate_ssmd_only": options.generate_ssmd_only,
             "detect_emphasis": options.detect_emphasis,
             "text_postprocess_options": vars(options.text_postprocess_options),
+            "ssmd_policy": _ssmd_policy_payload(options.ssmd_policy),
         }
         return _canonical_fingerprint(payload)
 
@@ -791,6 +948,25 @@ class TTSConverter:
                         return False
                 except Exception:
                     return False
+                if (
+                    saved.ssmd_markers_file
+                    and not (work_dir / saved.ssmd_markers_file).is_file()
+                ):
+                    self.log(
+                        "Marker sidecar is missing, starting fresh conversion",
+                        "warning",
+                    )
+                    return False
+                if (
+                    saved.ssmd_diagnostics_file
+                    and not (work_dir / saved.ssmd_diagnostics_file).is_file()
+                ):
+                    self.log(
+                        "SSMD diagnostics sidecar is missing; "
+                        "starting fresh conversion",
+                        "warning",
+                    )
+                    return False
         return True
 
     def convert_chapters_resumable(  # noqa: C901 - Complex but necessary for resume logic
@@ -868,7 +1044,7 @@ class TTSConverter:
                 state = ConversionState(
                     source_file=str(source_file) if source_file else "",
                     source_hash=source_hash,
-                    version=2,
+                    version=3,
                     output_file=str(output_path),
                     work_dir=str(work_dir),
                     voice=self.options.voice,
@@ -909,6 +1085,9 @@ class TTSConverter:
                     ],
                     source_selection=[chapter.index for chapter in chapters],
                     generation_fingerprint=generation_fingerprint,
+                    ssmd_policy_fingerprint=_canonical_fingerprint(
+                        _ssmd_policy_payload(self.options.ssmd_policy)
+                    ),
                     started_at=time.strftime("%Y-%m-%d %H:%M:%S"),
                 )
                 state.save(state_file)
@@ -949,6 +1128,9 @@ class TTSConverter:
                 total_chars=total_chars,
                 chars_processed=chars_processed,
             )
+            aggregate_markers: list[dict[str, Any]] = []
+            aggregate_issues: list[SSMDIssue] = []
+            aggregate_metadata: dict[str, Any] = {}
 
             # Convert each chapter
             for chapter_idx, chapter in enumerate(chapters):
@@ -1040,7 +1222,7 @@ class TTSConverter:
                 html_content = (
                     chapter.html_content if self.options.detect_emphasis else None
                 )
-                ssmd_content, ssmd_hash = self._load_or_generate_ssmd(
+                ssmd_content, ssmd_hash, document_info = self._load_or_generate_ssmd(
                     chapter,
                     ssmd_file,
                     phoneme_dict=phoneme_dict,
@@ -1053,6 +1235,10 @@ class TTSConverter:
                     chapter_state.completed = True
                     chapter_state.ssmd_file = ssmd_filename
                     chapter_state.ssmd_hash = ssmd_hash
+                    chapter_state.ssmd_document_title = document_info.title
+                    aggregate_issues.extend(document_info.issues)
+                    if document_info.title:
+                        aggregate_metadata.setdefault("title", document_info.title)
                     state.save(state_file)
 
                     chars_processed += chapter.char_count
@@ -1064,10 +1250,72 @@ class TTSConverter:
                 # SSMD-only conversion is backend-independent. Initialize the
                 # runner only when an audio artifact is actually rendered.
                 self._init_runner()
-                duration = self._render_chapter_wav(
+                duration, audio_result, rendered_audio = self._render_chapter_wav(
                     chapter,
                     chapter_file,
                     ssmd_content,
+                    ssmd_file,
+                )
+
+                chapter_state.ssmd_diagnostics_file = ssmd_filename.replace(
+                    ".ssmd", ".diagnostics.json"
+                )
+                diagnostics = tuple(document_info.issues) + _result_issues(audio_result)
+                try:
+                    atomic_write_json(
+                        work_dir / chapter_state.ssmd_diagnostics_file,
+                        {
+                            "schema_version": 1,
+                            "issues": [
+                                {
+                                    "code": issue.code,
+                                    "severity": issue.severity,
+                                    "message": issue.message,
+                                    "line": issue.line,
+                                    "column": issue.column,
+                                }
+                                for issue in diagnostics
+                            ],
+                        },
+                        indent=2,
+                        ensure_ascii=True,
+                    )
+                    chapter_state.ssmd_markers_file = ssmd_filename.replace(
+                        ".ssmd", ".markers.json"
+                    )
+                    chapter_markers = _write_marker_sidecar(
+                        work_dir / chapter_state.ssmd_markers_file, audio_result
+                    )
+                    os.replace(rendered_audio, chapter_file)
+                except Exception:
+                    rendered_audio.unlink(missing_ok=True)
+                    raise
+                chapter_offset = sum(
+                    saved.duration
+                    + (
+                        self.options.silence_between_chapters
+                        if saved.index < chapter.index
+                        else 0.0
+                    )
+                    for saved in state.chapters
+                    if saved.index < chapter.index
+                )
+                aggregate_markers.extend(
+                    {
+                        **marker,
+                        "time_s": marker["time_s"] + chapter_offset,
+                    }
+                    for marker in chapter_markers
+                )
+                aggregate_issues.extend(diagnostics)
+                aggregate_metadata.update(
+                    {
+                        key: value
+                        for key, value in getattr(
+                            audio_result, "document_metadata", {}
+                        ).items()
+                        if key in {"title", "voice_bindings", "pause_defaults"}
+                    }
                 )
 
                 if self._cancel_event.is_set():
@@ -1086,6 +1334,7 @@ class TTSConverter:
                 chapter_state.audio_file = chapter_filename
                 chapter_state.ssmd_file = ssmd_filename
                 chapter_state.ssmd_hash = ssmd_hash
+                chapter_state.ssmd_document_title = document_info.title
                 chapter_state.duration = duration
                 state.save(state_file)
 
@@ -1141,6 +1390,20 @@ class TTSConverter:
                 meta,
             )
 
+            aggregate_marker_path = output_path.with_suffix(
+                output_path.suffix + ".markers.json"
+            )
+            atomic_write_json(
+                aggregate_marker_path,
+                {
+                    "schema_version": 1,
+                    "sample_rate": SAMPLE_RATE,
+                    "markers": aggregate_markers,
+                },
+                indent=2,
+                ensure_ascii=True,
+            )
+
             self.log("Conversion complete!")
 
             return ConversionResult(
@@ -1148,6 +1411,9 @@ class TTSConverter:
                 output_path=output_path,
                 chapters_dir=work_dir,
                 short_sentence_stats=self._short_sentence_stats(),
+                document_metadata=aggregate_metadata,
+                ssmd_diagnostics=tuple(aggregate_issues),
+                markers=aggregate_markers,
             )
 
         except Exception as e:

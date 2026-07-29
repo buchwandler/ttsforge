@@ -1,0 +1,6 @@
+---
+title: Unsupported extension
+extensions:
+  vendor_feature: true
+---
+This must fail under the Kokoro profile.

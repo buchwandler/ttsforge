@@ -54,6 +54,7 @@ from ..short_sentence_config import (
     validate_short_sentence_config,
 )
 from ..short_sentence_stats import format_short_sentence_stats
+from ..ssmd_support import SSMDPauseOverrideOptions, SSMDPolicy
 from ..text_postprocessing import (
     postprocess_extracted_text,
     resolve_text_postprocess_options,
@@ -138,6 +139,21 @@ def convert(  # noqa: C901
     phoneme_dictionary_path: str | None,
     phoneme_dict_case_sensitive: bool | None,
     subchapter_markers: tuple[str, ...],
+    ssmd_header: bool | None = None,
+    ssmd_unknown_header: str = "warn",
+    ssmd_missing_voice: str = "error",
+    ssmd_emphasis: str = "approximate",
+    ssmd_profile_validation: bool | None = None,
+    ssmd_fail_on_warning: bool | None = None,
+    ssmd_voice: list[str] | None = None,
+    ssmd_pause_defaults: bool | None = None,
+    pause_voice_change: float | None = None,
+    ssmd_audio_root: Path | None = None,
+    ssmd_remote_audio: bool | None = None,
+    ssmd_audio_max_bytes: int | None = None,
+    ssmd_audio_max_duration: float | None = None,
+    embed_ssmd_voice_bindings: bool | None = None,
+    embed_ssmd_pause_defaults: bool | None = None,
 ) -> None:
     """Convert an EPUB file to an audiobook.
 
@@ -334,6 +350,87 @@ def convert(  # noqa: C901
             lang.strip() for lang in mixed_language_allowed.split(",")
         ]
 
+    ssmd_bindings: dict[str, str] = {}
+    for binding in ssmd_voice or []:
+        if "=" not in binding:
+            raise typer.BadParameter("--ssmd-voice must use ROLE=VOICE")
+        role, target = binding.split("=", 1)
+        if not role or not target or "." in role:
+            raise typer.BadParameter(
+                "--ssmd-voice requires a non-empty unqualified ROLE and VOICE"
+            )
+        if role in ssmd_bindings and ssmd_bindings[role] != target:
+            raise typer.BadParameter(f"conflicting --ssmd-voice binding for {role!r}")
+        ssmd_bindings[role] = target
+    explicit_pause = SSMDPauseOverrideOptions(
+        enabled=ssmd_pause_defaults,
+        sentence=(f"{pause_sentence}s" if pause_sentence is not None else None),
+        paragraph=(f"{pause_paragraph}s" if pause_paragraph is not None else None),
+        voice_change=(
+            f"{pause_voice_change}s" if pause_voice_change is not None else None
+        ),
+    )
+    if all(
+        value is None
+        for value in (
+            explicit_pause.enabled,
+            explicit_pause.sentence,
+            explicit_pause.paragraph,
+            explicit_pause.voice_change,
+        )
+    ):
+        explicit_pause = None
+    ssmd_policy = SSMDPolicy(
+        parse_header=(
+            ssmd_header
+            if ssmd_header is not None
+            else bool(config.get("ssmd_parse_header", True))
+        ),
+        unknown_header=ssmd_unknown_header
+        if ssmd_unknown_header is not None
+        else config.get("ssmd_unknown_header", "warn"),
+        missing_voice=ssmd_missing_voice
+        if ssmd_missing_voice is not None
+        else config.get("ssmd_missing_voice", "error"),
+        validate_profile=(
+            ssmd_profile_validation
+            if ssmd_profile_validation is not None
+            else bool(config.get("ssmd_validate_profile", True))
+        ),
+        emphasis_mode=ssmd_emphasis,
+        fail_on_warning=(
+            ssmd_fail_on_warning
+            if ssmd_fail_on_warning is not None
+            else bool(config.get("ssmd_fail_on_warning", False))
+        ),
+        voice_bindings={"kokoro": ssmd_bindings}
+        if ssmd_bindings
+        else {"kokoro": dict(config.get("ssmd_voice_bindings", {}))}
+        if config.get("ssmd_voice_bindings") or ssmd_bindings
+        else {},
+        pause_overrides=explicit_pause,
+        audio_root=ssmd_audio_root
+        if ssmd_audio_root is not None
+        else (
+            Path(config["ssmd_audio_root"]) if config.get("ssmd_audio_root") else None
+        ),
+        allow_remote_audio=(
+            ssmd_remote_audio
+            if ssmd_remote_audio is not None
+            else bool(config.get("ssmd_audio_allow_remote", False))
+        ),
+        audio_max_bytes=(
+            ssmd_audio_max_bytes
+            if ssmd_audio_max_bytes is not None
+            else int(config.get("ssmd_audio_max_bytes", 20_000_000))
+        ),
+        audio_max_duration_s=(
+            ssmd_audio_max_duration
+            if ssmd_audio_max_duration is not None
+            else float(config.get("ssmd_audio_max_duration_s", 120.0))
+        ),
+    )
+
     # Validate all effective settings before showing a summary or asking for
     # confirmation. Config-derived values do not pass through Typer's bounds.
     try:
@@ -443,6 +540,7 @@ def convert(  # noqa: C901
             generate_ssmd_only=generate_ssmd_only,
             detect_emphasis=detect_emphasis,
             text_postprocess_options=text_postprocess_options,
+            ssmd_policy=ssmd_policy,
         )
     except ValueError as exc:
         console.print(f"[red]Invalid conversion configuration:[/red] {exc}.")

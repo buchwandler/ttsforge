@@ -204,6 +204,21 @@ DEFAULT_CONFIG = {
     "mixed_language_primary": None,  # Primary language (None = use current lang)
     "mixed_language_allowed": None,  # List of allowed languages (required if enabled)
     "mixed_language_confidence": 0.7,  # Detection confidence threshold (0.0-1.0)
+    # SSMD 0.8 rendering policies.  Pause values above remain pipeline
+    # defaults; they are intentionally not implicit SSMD header overrides.
+    "ssmd_parse_header": True,
+    "ssmd_unknown_header": "warn",
+    "ssmd_missing_voice": "error",
+    "ssmd_validate_profile": True,
+    "ssmd_emphasis_mode": "approximate",
+    "ssmd_fail_on_warning": False,
+    "ssmd_voice_bindings": {},
+    "ssmd_audio_allow_remote": False,
+    "ssmd_audio_max_bytes": 20_000_000,
+    "ssmd_audio_max_duration_s": 120.0,
+    "ssmd_audio_root": None,
+    "embed_ssmd_voice_bindings": False,
+    "embed_ssmd_pause_defaults": False,
 }
 
 # Audio settings

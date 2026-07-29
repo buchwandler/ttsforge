@@ -37,6 +37,7 @@ def test_public_command_tree_is_complete() -> None:
         "extract-names",
         "list-names",
         "phonemes",
+        "ssmd",
     } == visible_root_commands
     assert root.commands["short-sentence-advanced-config"].hidden
     assert {"short-sentence"} == set(root.commands["config"].commands)

@@ -28,7 +28,8 @@ dependencies = [
     "charset-normalizer",
     "platformdirs>=3.0.0",
     # CPU is the supported default provider; backend modules remain lazy.
-    "pykokoro[cpu]>=0.7.1",
+    "pykokoro[cpu]>=0.7.2,<0.8",
+    "ssmd>=0.8.0,<0.9",
 ]
 classifiers=[
     'Intended Audience :: End Users/Desktop',

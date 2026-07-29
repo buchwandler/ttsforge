@@ -374,7 +374,7 @@ SSMD files use a simple markdown-like syntax:
 [API]{ph="ˌeɪpiˈaɪ"}        # Technical terms
 ```
 
-**Language Switching** (planned):
+**Language annotations** (supported):
 
 ```
 [Bonjour]{lang="fr"}    # Mark text as French
@@ -400,7 +400,8 @@ And he also happened to be a wizard. ...p
 - **Emphasis corrections**: Add or remove emphasis on specific words
 - **Combine with phoneme dictionary**: Phoneme dictionary applied automatically to SSMD
 
-For detailed SSMD syntax and examples, see [SSMD_QUICKSTART.md](SSMD_QUICKSTART.md).
+For detailed SSMD 0.8 syntax, validation, policy options, and Kokoro
+limitations, see [docs/ssmd.rst](docs/ssmd.rst).
 
 ### Custom Phoneme Dictionary
 

@@ -34,5 +34,29 @@ def test_pykokoro_dependency_floor_is_released_handoff() -> None:
         (Path(__file__).parents[1] / "pyproject.toml").read_text(encoding="utf-8")
     )
     dependencies = project["project"]["dependencies"]
-    assert "pykokoro[cpu]>=0.7.1" in dependencies
+    assert "pykokoro[cpu]>=0.7.2,<0.8" in dependencies
     assert not any("pykokoro[cpu]>=0.6.6" in dependency for dependency in dependencies)
+
+
+def test_ssmd_dependency_is_direct_and_bounded() -> None:
+    tomllib = pytest.importorskip("tomllib")
+    project = tomllib.loads(
+        (Path(__file__).parents[1] / "pyproject.toml").read_text(encoding="utf-8")
+    )
+    assert "ssmd>=0.8.0,<0.9" in project["project"]["dependencies"]
+
+
+def test_pykokoro_ssmd_080_contract_is_importable() -> None:
+    pytest.importorskip("pykokoro")
+    try:
+        from pykokoro import SSMDPauseOverrides, SSMDRenderConfig
+        from pykokoro.ssmd_parser import parse_ssmd_document
+    except ImportError as exc:  # pragma: no cover - dependency compatibility path
+        pytest.fail(
+            "pykokoro>=0.7.2 is required for SSMD 0.8 integration; "
+            f"missing public symbol: {exc}"
+        )
+
+    assert SSMDPauseOverrides is not None
+    assert SSMDRenderConfig is not None
+    assert callable(parse_ssmd_document)

@@ -6,6 +6,7 @@ import numpy as np
 from pykokoro.short_sentence_handler import ShortSentenceConfig
 
 from ttsforge.kokoro_runner import KokoroRunner, KokoroRunOptions
+from ttsforge.ssmd_support import SSMDPauseOverrideOptions, SSMDPolicy
 
 
 def test_kokoro_run_options_accepts_short_sentence_override():
@@ -54,6 +55,54 @@ def test_kokoro_runner_passes_short_sentence_config_to_backend(monkeypatch):
     runner.ensure_ready()
 
     assert captured["short_sentence_config"] is short_sentence_config
+
+
+def test_kokoro_runner_builds_ssmd_pipeline_config_and_returns_result(monkeypatch):
+    captured: dict[str, object] = {}
+
+    class FakeKokoro:
+        def __init__(self, **kwargs):
+            pass
+
+    class FakePipeline:
+        def run(self, text, **kwargs):
+            captured.update(kwargs)
+            return type(
+                "Result",
+                (),
+                {
+                    "audio": np.array([0.0], dtype=np.float32),
+                    "trace": type("Trace", (), {"warnings": []})(),
+                },
+            )()
+
+    def fake_build_pipeline(**kwargs):
+        captured["config"] = kwargs["config"]
+        return FakePipeline()
+
+    monkeypatch.setattr("ttsforge.kokoro_runner.Kokoro", FakeKokoro)
+    monkeypatch.setattr("ttsforge.kokoro_runner.build_pipeline", fake_build_pipeline)
+    policy = SSMDPolicy(
+        pause_overrides=SSMDPauseOverrideOptions(sentence="250ms"),
+        voice_bindings={"kokoro": {"narrator": "af_sarah"}},
+    )
+    runner = KokoroRunner(
+        _runner_options(
+            model_path=Path("model.onnx"),
+            voices_path=Path("voices.bin"),
+            ssmd_policy=policy,
+        ),
+        log=lambda message, level="info": None,
+    )
+
+    runner.ensure_ready()
+    result = runner.synthesize("Hello.", lang_code="en-us", pause_mode="auto")
+
+    assert result.audio.shape == (1,)
+    config = captured["config"]
+    assert config.ssmd.voice_bindings == {"kokoro": {"narrator": "af_sarah"}}
+    assert config.ssmd.pause_defaults.sentence == "250ms"
+    assert config.return_trace is True
 
 
 def test_kokoro_runner_passes_provider_to_backend(monkeypatch):

@@ -379,6 +379,108 @@ def convert_command(
             help="Exact line marker to convert into a paragraph pause. Repeat for multiple markers.",
         ),
     ] = None,
+    ssmd_header: Annotated[
+        bool | None,
+        typer.Option(
+            "--ssmd-header/--no-ssmd-header",
+            help="Parse an exact leading --- block as SSMD front matter (default: enabled).",
+        ),
+    ] = None,
+    ssmd_unknown_header: Annotated[
+        Literal["warn", "error", "ignore"],
+        typer.Option(
+            "--ssmd-unknown-header", help="Policy for unknown SSMD header keys."
+        ),
+    ] = "warn",
+    ssmd_missing_voice: Annotated[
+        Literal["error", "use-default"],
+        typer.Option(
+            "--ssmd-missing-voice", help="Policy for unresolved logical voices."
+        ),
+    ] = "error",
+    ssmd_emphasis: Annotated[
+        Literal["approximate", "warn", "error"],
+        typer.Option(
+            "--ssmd-emphasis", help="Policy for Kokoro emphasis approximation."
+        ),
+    ] = "approximate",
+    ssmd_profile_validation: Annotated[
+        bool | None,
+        typer.Option(
+            "--ssmd-profile-validation/--no-ssmd-profile-validation",
+            help="Validate Kokoro SSMD profile support.",
+        ),
+    ] = None,
+    ssmd_fail_on_warning: Annotated[
+        bool | None,
+        typer.Option(
+            "--ssmd-fail-on-warning/--no-ssmd-fail-on-warning",
+            help="Promote SSMD warnings to errors.",
+        ),
+    ] = None,
+    ssmd_voice: Annotated[
+        list[str] | None,
+        typer.Option(
+            "--ssmd-voice",
+            help="Bind a logical SSMD role: ROLE=KOKORO_VOICE. Repeatable.",
+        ),
+    ] = None,
+    ssmd_pause_defaults: Annotated[
+        bool | None,
+        typer.Option(
+            "--ssmd-pause-defaults/--no-ssmd-pause-defaults",
+            help="Explicitly enable or disable SSMD pause defaults.",
+        ),
+    ] = None,
+    pause_voice_change: Annotated[
+        float | None,
+        typer.Option(
+            "--pause-voice-change",
+            help="Explicit pause after logical voice changes, in seconds.",
+            min=0.0,
+        ),
+    ] = None,
+    ssmd_audio_root: Annotated[
+        Path | None,
+        typer.Option(
+            "--ssmd-audio-root", help="Allowed root for local SSMD audio sources."
+        ),
+    ] = None,
+    ssmd_remote_audio: Annotated[
+        bool | None,
+        typer.Option(
+            "--ssmd-remote-audio/--no-ssmd-remote-audio",
+            help="Allow bounded HTTPS SSMD audio sources.",
+        ),
+    ] = None,
+    ssmd_audio_max_bytes: Annotated[
+        int | None,
+        typer.Option(
+            "--ssmd-audio-max-bytes", help="Maximum SSMD audio source bytes.", min=1
+        ),
+    ] = None,
+    ssmd_audio_max_duration: Annotated[
+        float | None,
+        typer.Option(
+            "--ssmd-audio-max-duration",
+            help="Maximum SSMD audio source duration in seconds.",
+            min=0.0,
+        ),
+    ] = None,
+    embed_ssmd_voice_bindings: Annotated[
+        bool | None,
+        typer.Option(
+            "--embed-ssmd-voice-bindings/--no-embed-ssmd-voice-bindings",
+            help="Embed explicit SSMD voice bindings in generated headers.",
+        ),
+    ] = None,
+    embed_ssmd_pause_defaults: Annotated[
+        bool | None,
+        typer.Option(
+            "--embed-ssmd-pause-defaults/--no-embed-ssmd-pause-defaults",
+            help="Embed explicit SSMD pause defaults in generated headers.",
+        ),
+    ] = None,
 ) -> None:
     "Convert an EPUB file to an audiobook.\n\nEPUB_FILE is the path to the EPUB file to convert."
     from .commands_conversion import convert
@@ -428,6 +530,21 @@ def convert_command(
         phoneme_dictionary_path=phoneme_dictionary_path,
         phoneme_dict_case_sensitive=phoneme_dict_case_sensitive,
         subchapter_markers=tuple(subchapter_markers or ()),
+        ssmd_header=ssmd_header,
+        ssmd_unknown_header=ssmd_unknown_header,
+        ssmd_missing_voice=ssmd_missing_voice,
+        ssmd_emphasis=ssmd_emphasis,
+        ssmd_profile_validation=ssmd_profile_validation,
+        ssmd_fail_on_warning=ssmd_fail_on_warning,
+        ssmd_voice=ssmd_voice or [],
+        ssmd_pause_defaults=ssmd_pause_defaults,
+        pause_voice_change=pause_voice_change,
+        ssmd_audio_root=ssmd_audio_root,
+        ssmd_remote_audio=ssmd_remote_audio,
+        ssmd_audio_max_bytes=ssmd_audio_max_bytes,
+        ssmd_audio_max_duration=ssmd_audio_max_duration,
+        embed_ssmd_voice_bindings=embed_ssmd_voice_bindings,
+        embed_ssmd_pause_defaults=embed_ssmd_pause_defaults,
     )
 
 

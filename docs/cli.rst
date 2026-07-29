@@ -119,6 +119,44 @@ Options
 ``--cover PATH``
    Cover image for M4B format.
 
+SSMD 0.8 options
+^^^^^^^^^^^^^^^^
+
+``--ssmd-header / --no-ssmd-header``
+   Parse or preserve an exact leading front-matter block.
+
+``--ssmd-unknown-header POLICY``
+   ``warn``, ``error``, or ``ignore`` unknown header keys.
+
+``--ssmd-missing-voice POLICY``
+   ``error`` or ``use-default`` for unresolved logical roles.
+
+``--ssmd-emphasis MODE``
+   ``approximate``, ``warn``, or ``error``.
+
+``--ssmd-voice ROLE=VOICE``
+   Repeatable explicit Kokoro binding override.
+
+``--ssmd-pause-defaults / --no-ssmd-pause-defaults`` and
+``--pause-voice-change FLOAT``
+   Explicit pause-default enablement and voice-change timing. Explicit pause
+   values override document defaults; persistent config values do not.
+
+``--ssmd-audio-root PATH``, ``--ssmd-remote-audio``,
+``--ssmd-audio-max-bytes INTEGER``, ``--ssmd-audio-max-duration FLOAT``
+   Secure bounded audio source policy. Remote sources require explicit opt-in.
+
+SSMD inspection
+^^^^^^^^^^^^^^^
+
+These commands do not initialize ONNX:
+
+.. code-block:: bash
+
+   ttsforge ssmd validate FILE
+   ttsforge ssmd validate FILE --strict
+   ttsforge ssmd inspect FILE --json
+
 ``-y, --yes``
    Skip confirmation prompts.
 

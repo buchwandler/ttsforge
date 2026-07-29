@@ -55,7 +55,15 @@ Utilities
    Parsing helpers for chapter selection strings.
 
 **ttsforge.ssmd_generator**
-   SSMD generation and validation helpers.
+   Canonical SSMD 0.8 generation, validation, deterministic front matter, and
+   SHA-256 content hashing helpers.
+
+**ttsforge.ssmd_support**
+   Stable SSMD policy, document metadata, diagnostics, and pykokoro config
+   translation types. Inspection and validation do not initialize ONNX.
+
+**ttsforge.ssmd_audio**
+   Bounded document-relative local and opt-in HTTPS audio source resolution.
 
 **ttsforge.input_reader**
    EPUB/text input parsing helpers.
@@ -92,7 +100,7 @@ Basic Text-to-Speech
    runner.ensure_ready()
 
    # Generate audio
-   audio = runner.synthesize(
+   result = runner.synthesize(
        "Hello, world!",
        lang_code=get_onnx_lang_code("en-us"),
        pause_mode="tts",
@@ -101,7 +109,8 @@ Basic Text-to-Speech
 
    # Save to file
    import soundfile as sf
-   sf.write("output.wav", audio, 24000)
+   sf.write("output.wav", result.audio, result.sample_rate)
+   print(result.document_metadata, result.markers)
 
 Converting an EPUB
 ^^^^^^^^^^^^^^^^^^

@@ -1,7 +1,7 @@
 # ttsforge/kokoro_runner.py
 from __future__ import annotations
 
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 from typing import Any, Literal, Protocol, cast
 
 import numpy as np
@@ -26,6 +26,7 @@ from pykokoro.stages.audio_postprocessing.onnx import OnnxAudioPostprocessingAda
 from pykokoro.stages.phoneme_processing.onnx import OnnxPhonemeProcessorAdapter
 
 from .short_sentence_stats import ShortSentenceStats
+from .ssmd_support import SSMDPolicy, build_pykokoro_ssmd_config
 
 
 @dataclass(slots=True)
@@ -49,6 +50,7 @@ class KokoroRunOptions:
     tokenizer_config: Any | None = None  # pykokoro.tokenizer.TokenizerConfig
     short_sentence_config: ShortSentenceConfig | None = None
     onnx_provider: str | None = None
+    ssmd_policy: SSMDPolicy = field(default_factory=SSMDPolicy)
 
     def effective_onnx_provider(self) -> str:
         """Return the provider requested by this runner option set."""
@@ -145,6 +147,8 @@ class KokoroRunner:
             voices_path=self.opts.voices_path,
             tokenizer_config=self.opts.tokenizer_config,
             short_sentence_config=self.opts.short_sentence_config,
+            ssmd=build_pykokoro_ssmd_config(self.opts.ssmd_policy),
+            return_trace=True,
         )
 
         # Use the same adapters everywhere (text + phonemes)
@@ -163,7 +167,9 @@ class KokoroRunner:
         lang_code: str,
         pause_mode: Literal["tts", "manual", "auto"],
         is_phonemes: bool = False,
-    ) -> np.ndarray:
+        ssmd_policy: SSMDPolicy | None = None,
+        audio_resolver: object | None = None,
+    ) -> Any:
         self.ensure_ready()
         assert self._pipeline is not None
         gen = GenerationConfig(
@@ -178,8 +184,37 @@ class KokoroRunner:
             pause_variance=self.opts.pause_variance,
             random_seed=self.opts.random_seed,
         )
-        result = self._pipeline.run(text_or_ssmd, generation=gen)
+        overrides: dict[str, Any] = {"generation": gen}
+        if ssmd_policy is not None or audio_resolver is not None:
+            effective_policy = ssmd_policy or self.opts.ssmd_policy
+            overrides["ssmd"] = build_pykokoro_ssmd_config(
+                effective_policy, audio_resolver=audio_resolver
+            )
+        result = self._pipeline.run(text_or_ssmd, **overrides)
         self.short_sentence_stats.add_audio_result(result)
+        for warning in getattr(getattr(result, "trace", None), "warnings", ()):
+            self.log(str(warning), "warning")
+        return result
+
+    def synthesize_audio(
+        self,
+        text_or_ssmd: str,
+        *,
+        lang_code: str,
+        pause_mode: Literal["tts", "manual", "auto"],
+        is_phonemes: bool = False,
+        ssmd_policy: SSMDPolicy | None = None,
+        audio_resolver: object | None = None,
+    ) -> np.ndarray:
+        """Compatibility helper returning only the audio samples."""
+        result = self.synthesize(
+            text_or_ssmd,
+            lang_code=lang_code,
+            pause_mode=pause_mode,
+            is_phonemes=is_phonemes,
+            ssmd_policy=ssmd_policy,
+            audio_resolver=audio_resolver,
+        )
         return cast(np.ndarray, result.audio)
 
     def get_short_sentence_stats(self) -> ShortSentenceStats:
