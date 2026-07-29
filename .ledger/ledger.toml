@@ -1,0 +1,12 @@
+schema_version = 3
+
+[project]
+uuid = "5ea3dd12-693b-473f-9a48-66ba85bfe839"
+name = "ttsforge"
+
+[ledgers.taskledger.mounts.data]
+storage = "external"
+root = "../ledger"
+
+[ledgers.taskledger.mounts.indexes]
+storage = "cache"

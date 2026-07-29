@@ -1,0 +1,80 @@
+schema_version = 3
+migration_id = "c269a5db06c64c5ca10f058b969625fc"
+project_uuid = "5ea3dd12-693b-473f-9a48-66ba85bfe839"
+phase = "complete"
+mode = "copy"
+verify = "sha256"
+project_root = "/data/data/com.termux/files/home/src/ttsforge"
+requires_staged_validation = false
+requires_activated_validation = false
+requires_finalization = false
+quiescence_completed = true
+staged_validated = []
+activated_validated = []
+finalized = false
+plan_digest = "7b5398383ba6151f0c2af2aceb2f872793e9fc950d271fb7ce8fadb64bf46a19"
+created_at = "2026-07-29T22:36:04Z"
+updated_at = "2026-07-29T22:36:05Z"
+
+[lock_identity]
+migration_id = "c269a5db06c64c5ca10f058b969625fc"
+owner = "ledgercore"
+pid = 16345
+
+[items.0]
+item_index = 0
+component = "mount"
+tool_name = "taskledger"
+mount_name = "data"
+source = "/data/data/com.termux/files/home/src/ledger/task/ttsforge"
+destination = "/data/data/com.termux/files/home/src/ledger/taskledger/5ea3dd12-693b-473f-9a48-66ba85bfe839/data"
+strategy = "copy"
+destination_policy = "create-only"
+state = "complete"
+expected_before_state = "absent"
+stage_path = "/data/data/com.termux/files/home/src/ledger/taskledger/5ea3dd12-693b-473f-9a48-66ba85bfe839/.data.migrating-c269a5db06c64c5ca10f058b969625fc-0"
+backup_path = "/data/data/com.termux/files/home/src/ledger/taskledger/5ea3dd12-693b-473f-9a48-66ba85bfe839/.data.backup-c269a5db06c64c5ca10f058b969625fc-0"
+
+[items.0.source_binding]
+schema_version = 1
+layout_version = 3
+project_uuid = "5ea3dd12-693b-473f-9a48-66ba85bfe839"
+tool = "taskledger"
+mount = "data"
+storage = "project"
+
+[items.0.destination_binding]
+schema_version = 1
+layout_version = 3
+project_uuid = "5ea3dd12-693b-473f-9a48-66ba85bfe839"
+tool = "taskledger"
+mount = "data"
+storage = "external"
+
+[items.0.staged_fingerprint]
+algorithm = "sha256-tree-v1"
+digest = "233793256ebb33522475fda6151adfbc7185c988c8541b292f28f78671452433"
+file_count = 513
+total_bytes = 1583593
+
+[items.0.activated_fingerprint]
+algorithm = "sha256-tree-v1"
+digest = "233793256ebb33522475fda6151adfbc7185c988c8541b292f28f78671452433"
+file_count = 513
+total_bytes = 1583593
+
+[config_switches.0]
+kind = "manifest"
+destination = "/data/data/com.termux/files/home/src/ttsforge/.ledger/ledger.toml"
+state = "activated"
+backup_path = "/data/data/com.termux/files/home/src/ttsforge/.ledger/.ledger.toml.backup-c269a5db06c64c5ca10f058b969625fc"
+intent_written = true
+applied = true
+verified = true
+target_content = "schema_version = 3\n\n[project]\nuuid = \"5ea3dd12-693b-473f-9a48-66ba85bfe839\"\nname = \"ttsforge\"\n\n[ledgers.taskledger.mounts.data]\nstorage = \"external\"\nroot = \"../ledger\"\n\n[ledgers.taskledger.mounts.indexes]\nstorage = \"cache\"\n"
+
+[config_switches.0.target_fingerprint]
+algorithm = "sha256-file-v1"
+digest = "05da93000d941edda0906fe3cd904c9bced967261cf3f7f3bf3f367bbaffc138"
+file_count = 1
+total_bytes = 223
