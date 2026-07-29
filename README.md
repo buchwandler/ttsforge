@@ -400,8 +400,8 @@ And he also happened to be a wizard. ...p
 - **Emphasis corrections**: Add or remove emphasis on specific words
 - **Combine with phoneme dictionary**: Phoneme dictionary applied automatically to SSMD
 
-For detailed SSMD 0.8 syntax, validation, policy options, and Kokoro
-limitations, see [docs/ssmd.rst](docs/ssmd.rst).
+For detailed SSMD 0.8 syntax, validation, policy options, and Kokoro limitations, see
+[docs/ssmd.rst](docs/ssmd.rst).
 
 ### Custom Phoneme Dictionary
 

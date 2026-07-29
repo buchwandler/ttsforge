@@ -58,13 +58,19 @@ def test_pykokoro_asset_api_owns_source_specific_voice_filenames() -> None:
     assert huggingface.voices.name == "voices.bin.npz"
 
 
-def test_incomplete_configured_source_reports_complete_alternate(monkeypatch, capsys) -> None:
+def test_incomplete_configured_source_reports_complete_alternate(
+    monkeypatch, capsys
+) -> None:
     def fake_assets(**kwargs):
         return _assets(kwargs["source"], complete=kwargs["source"] == "github")
 
     monkeypatch.setattr("pykokoro.model_assets.get_model_asset_paths", fake_assets)
     utility_light._show_model_status(
-        {"model_source": "huggingface", "model_variant": "v1.0", "model_quality": "fp32"}
+        {
+            "model_source": "huggingface",
+            "model_variant": "v1.0",
+            "model_quality": "fp32",
+        }
     )
     output = capsys.readouterr().out
     assert "Configured model set: huggingface / v1.0 / fp32" in output
@@ -81,7 +87,11 @@ def test_provider_probe_failure_does_not_hide_model_status(monkeypatch, capsys) 
         "pykokoro.onnx_session.get_available_execution_providers",
         lambda: (_ for _ in ()).throw(RuntimeError("probe failed")),
     )
-    config = {"model_source": "github", "model_variant": "v1.0", "model_quality": "fp32"}
+    config = {
+        "model_source": "github",
+        "model_variant": "v1.0",
+        "model_quality": "fp32",
+    }
     utility_light._show_model_status(config)
     utility_light._show_provider_status(config)
     output = capsys.readouterr().out

@@ -35,6 +35,4 @@ def test_provider_precedence(
 
 def test_provider_and_legacy_flag_conflict() -> None:
     with pytest.raises(ValueError, match="cannot be combined"):
-        resolve_onnx_provider(
-            {}, provider_override="nnapi", use_gpu_override=True
-        )
+        resolve_onnx_provider({}, provider_override="nnapi", use_gpu_override=True)
