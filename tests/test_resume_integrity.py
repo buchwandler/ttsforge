@@ -10,9 +10,12 @@ from ttsforge.conversion import (
     ChapterState,
     ConversionOptions,
     ConversionState,
+    ResumeValidation,
     TTSConverter,
     _canonical_fingerprint,
     _hash_content,
+    discover_resume_candidate,
+    resolve_conversion_workspace,
 )
 from ttsforge.phoneme_conversion import (
     PhonemeChapterState,
@@ -65,37 +68,284 @@ def test_text_resume_rejects_changed_content_settings_and_legacy_state(
     converter = TTSConverter(ConversionOptions(title="Book"))
     state = _text_state(converter, chapter, tmp_path)
 
-    assert converter._resume_state_matches(
+    validation = converter._resume_state_matches(
         state, [chapter], "source", converter._generation_fingerprint(), tmp_path
     )
-    assert not converter._resume_state_matches(
+    assert validation.reusable is True
+    assert validation.reason is None
+
+    validation = converter._resume_state_matches(
         state,
         [Chapter(title="Chapter", content="Changed", index=4)],
         "source",
         converter._generation_fingerprint(),
         tmp_path,
     )
+    assert validation.reusable is False
+    assert validation.reason == "chapter-content-changed"
+
     changed_converter = TTSConverter(ConversionOptions(title="Book", voice="af_heart"))
-    assert not changed_converter._resume_state_matches(
+    validation = changed_converter._resume_state_matches(
         state,
         [chapter],
         "source",
         changed_converter._generation_fingerprint(),
         tmp_path,
     )
+    assert validation.reusable is False
+    assert validation.reason == "generation-fingerprint-changed"
+
     state.version = 1
-    assert not converter._resume_state_matches(
+    validation = converter._resume_state_matches(
         state, [chapter], "source", converter._generation_fingerprint(), tmp_path
     )
+    assert validation.reusable is False
+    assert validation.reason == "legacy-state-version"
 
 
 def test_text_resume_rejects_missing_or_corrupt_audio(tmp_path: Path) -> None:
     chapter = Chapter(title="Chapter", content="Original", index=0)
     converter = TTSConverter(ConversionOptions(title="Book"))
     state = _text_state(converter, chapter, tmp_path)
-    assert not converter._resume_state_matches(
+    validation = converter._resume_state_matches(
         state, [chapter], "source", converter._generation_fingerprint(), tmp_path
     )
+    assert validation.reusable is False
+    assert validation.reason == "audio-file-invalid"
+
+
+def test_structured_validation_reasons(tmp_path: Path) -> None:
+    """Test that _resume_state_matches returns structured reasons."""
+    chapter = Chapter(title="Ch1", content="Hello world", index=0)
+    converter = TTSConverter(ConversionOptions(title="Book"))
+    generation = converter._generation_fingerprint()
+    content_hash = _hash_content(chapter.content)
+    render = _canonical_fingerprint(
+        {
+            "generation": generation,
+            "source_index": chapter.index,
+            "title": chapter.title,
+            "content_sha256": content_hash,
+        }
+    )
+
+    # Source hash mismatch
+    state = ConversionState(
+        version=3,
+        source_hash="different",
+        onnx_provider=converter.options.effective_onnx_provider(),
+        source_selection=[0],
+        generation_fingerprint=generation,
+        work_dir=str(tmp_path),
+        chapters=[
+            ChapterState(
+                index=0,
+                title="Ch1",
+                content_hash=content_hash,
+                render_fingerprint=render,
+            )
+        ],
+    )
+    result = converter._resume_state_matches(
+        state, [chapter], "source", generation, tmp_path
+    )
+    assert result == ResumeValidation(reusable=False, reason="source-hash-changed")
+
+    # Provider changed
+    state.source_hash = "source"
+    state.onnx_provider = "different"
+    result = converter._resume_state_matches(
+        state, [chapter], "source", generation, tmp_path
+    )
+    assert result == ResumeValidation(reusable=False, reason="provider-changed")
+
+    # Selection changed
+    state.onnx_provider = converter.options.effective_onnx_provider()
+    state.source_selection = [0, 1, 2]
+    result = converter._resume_state_matches(
+        state, [chapter], "source", generation, tmp_path
+    )
+    assert result == ResumeValidation(
+        reusable=False, reason="chapter-selection-changed"
+    )
+
+
+def test_discover_resume_candidate_basic(tmp_path: Path) -> None:
+    """Test basic resume candidate discovery."""
+    source_file = tmp_path / "book.txt"
+    source_file.write_text("content")
+    chapters = [Chapter(title="Ch1", content="Hello", index=i) for i in range(10)]
+    output_dir = tmp_path / "output"
+    output_dir.mkdir()
+
+    # No state file => no candidate
+    result = discover_resume_candidate(
+        source_file=source_file,
+        output_dir=output_dir,
+        book_title="Book",
+        chapters=chapters,
+    )
+    assert result is None
+
+    # Create a valid state file
+    workspace = resolve_conversion_workspace(
+        output_dir=output_dir,
+        book_title="Book",
+        source_file=source_file,
+    )
+    workspace.work_dir.mkdir(parents=True)
+    state = ConversionState(
+        version=3,
+        source_hash=workspace.source_hash,
+        source_selection=[3, 4, 5],
+        output_file="Book_chapters_4-6.m4b",
+        chapters=[
+            ChapterState(
+                index=3,
+                title="Ch4",
+                content_hash="h",
+                completed=True,
+                audio_file="ch4.wav",
+                duration=10.0,
+            ),
+            ChapterState(index=4, title="Ch5", content_hash="h", completed=False),
+            ChapterState(index=5, title="Ch6", content_hash="h", completed=False),
+        ],
+    )
+    state.save(workspace.state_file)
+
+    result = discover_resume_candidate(
+        source_file=source_file,
+        output_dir=output_dir,
+        book_title="Book",
+        chapters=chapters,
+    )
+    assert result is not None
+    assert result.selected_positions == [3, 4, 5]
+    assert result.state.source_selection == [3, 4, 5]
+
+
+def test_discover_resume_candidate_source_hash_mismatch(tmp_path: Path) -> None:
+    """Discovery returns None when source hash changes."""
+    source_file = tmp_path / "book.txt"
+    source_file.write_text("content")
+    chapters = [Chapter(title="Ch1", content="Hello", index=i) for i in range(5)]
+    output_dir = tmp_path / "output"
+    output_dir.mkdir()
+    workspace = resolve_conversion_workspace(
+        output_dir=output_dir,
+        book_title="Book",
+        source_file=source_file,
+    )
+    workspace.work_dir.mkdir(parents=True)
+    state = ConversionState(
+        version=3,
+        source_hash="wrong_hash",
+        source_selection=[0, 1],
+        chapters=[
+            ChapterState(index=0, title="Ch1", content_hash="h"),
+            ChapterState(index=1, title="Ch2", content_hash="h"),
+        ],
+    )
+    state.save(workspace.state_file)
+    result = discover_resume_candidate(
+        source_file=source_file,
+        output_dir=output_dir,
+        book_title="Book",
+        chapters=chapters,
+    )
+    assert result is None
+
+
+def test_discover_resume_candidate_missing_indices(tmp_path: Path) -> None:
+    """Discovery returns None when saved indices are missing from chapters."""
+    source_file = tmp_path / "book.txt"
+    source_file.write_text("content")
+    chapters = [Chapter(title="Ch1", content="Hello", index=i) for i in range(3)]
+    output_dir = tmp_path / "output"
+    output_dir.mkdir()
+    workspace = resolve_conversion_workspace(
+        output_dir=output_dir,
+        book_title="Book",
+        source_file=source_file,
+    )
+    workspace.work_dir.mkdir(parents=True)
+    state = ConversionState(
+        version=3,
+        source_hash=workspace.source_hash,
+        source_selection=[0, 1, 99],  # 99 doesn't exist
+        chapters=[
+            ChapterState(index=0, title="Ch1", content_hash="h"),
+            ChapterState(index=1, title="Ch2", content_hash="h"),
+            ChapterState(index=99, title="Ch100", content_hash="h"),
+        ],
+    )
+    state.save(workspace.state_file)
+    result = discover_resume_candidate(
+        source_file=source_file,
+        output_dir=output_dir,
+        book_title="Book",
+        chapters=chapters,
+    )
+    assert result is None
+
+
+def test_discover_resume_candidate_all_complete(tmp_path: Path) -> None:
+    """Discovery returns None when all chapters are complete and output exists."""
+    source_file = tmp_path / "book.txt"
+    source_file.write_text("content")
+    chapters = [Chapter(title="Ch1", content="Hello", index=i) for i in range(3)]
+    output_dir = tmp_path / "output"
+    output_dir.mkdir()
+    workspace = resolve_conversion_workspace(
+        output_dir=output_dir,
+        book_title="Book",
+        source_file=source_file,
+    )
+    workspace.work_dir.mkdir(parents=True)
+    output_path = output_dir / "Book.m4b"
+    output_path.write_bytes(b"fake audio")
+    state = ConversionState(
+        version=3,
+        source_hash=workspace.source_hash,
+        source_selection=[0, 1, 2],
+        output_file=str(output_path),
+        chapters=[
+            ChapterState(
+                index=0,
+                title="Ch1",
+                content_hash="h",
+                completed=True,
+                audio_file="ch0.wav",
+                duration=10.0,
+            ),
+            ChapterState(
+                index=1,
+                title="Ch2",
+                content_hash="h",
+                completed=True,
+                audio_file="ch1.wav",
+                duration=10.0,
+            ),
+            ChapterState(
+                index=2,
+                title="Ch3",
+                content_hash="h",
+                completed=True,
+                audio_file="ch2.wav",
+                duration=10.0,
+            ),
+        ],
+    )
+    state.save(workspace.state_file)
+    result = discover_resume_candidate(
+        source_file=source_file,
+        output_dir=output_dir,
+        book_title="Book",
+        chapters=chapters,
+    )
+    # All complete + output exists => no need to resume
+    assert result is None
 
 
 def test_phoneme_resume_rejects_changed_book_content(tmp_path: Path) -> None:
@@ -171,3 +421,17 @@ def test_provider_changes_invalidate_resume_fingerprints() -> None:
         cpu_phonemes._generation_fingerprint()
         != nnapi_phonemes._generation_fingerprint()
     )
+
+
+def test_resolve_conversion_workspace(tmp_path: Path) -> None:
+    """Test shared workspace resolver produces correct paths."""
+    source = tmp_path / "book.epub"
+    source.write_text("epub content")
+    workspace = resolve_conversion_workspace(
+        output_dir=tmp_path,
+        book_title="My Book",
+        source_file=source,
+    )
+    assert workspace.source_hash != ""
+    assert workspace.work_dir.name.endswith("_chapters")
+    assert workspace.state_file == workspace.work_dir / "state.json"

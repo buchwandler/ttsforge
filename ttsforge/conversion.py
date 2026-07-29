@@ -7,7 +7,7 @@ import re
 import tempfile
 import threading
 import time
-from collections.abc import Callable
+from collections.abc import Callable, Sequence
 from dataclasses import dataclass, field
 from pathlib import Path
 from typing import TYPE_CHECKING, Any, Literal, Optional, cast
@@ -320,6 +320,145 @@ class ConversionState:
     def is_complete(self) -> bool:
         """Check if all chapters are completed."""
         return all(ch.completed for ch in self.chapters)
+
+
+@dataclass(frozen=True)
+class ConversionWorkspace:
+    """Centralized workspace identity for a resumable conversion."""
+
+    source_hash: str
+    work_dir: Path
+    state_file: Path
+
+
+@dataclass(frozen=True)
+class ResumeValidation:
+    """Structured result from resume state validation."""
+
+    reusable: bool
+    reason: str | None = None
+
+
+@dataclass(frozen=True)
+class ResumeCandidate:
+    """A discovered resumable conversion state."""
+
+    state: ConversionState
+    workspace: ConversionWorkspace
+    selected_positions: list[int]
+    saved_output: Path
+
+
+def resolve_conversion_workspace(
+    *,
+    output_dir: Path,
+    book_title: str,
+    source_file: Path,
+) -> ConversionWorkspace:
+    """Compute workspace identity from source and output directory.
+
+    Uses the same naming scheme as the existing converter so current
+    state files remain discoverable.
+    """
+    source_hash = _hash_file(source_file)
+    safe_title = sanitize_filename(book_title)[:50]
+    work_dir = output_dir / f".{safe_title}-{source_hash[:12]}_chapters"
+    return ConversionWorkspace(
+        source_hash=source_hash,
+        work_dir=work_dir,
+        state_file=work_dir / "state.json",
+    )
+
+
+def resolve_saved_output_path(
+    state: ConversionState,
+    state_file: Path,
+) -> Path:
+    """Resolve the saved output path from a conversion state.
+
+    Handles both absolute and relative paths.  A conversion workspace is
+    always a sibling of the final output, so for relative paths the output
+    lives two directories up from the state file.
+    """
+    saved = Path(state.output_file)
+    if saved.is_absolute():
+        return saved
+    # Workspace is <output_dir>/.<title>-<hash>_chapters; output is in
+    # <output_dir>, so two parents up from state_file.
+    return state_file.parent.parent / saved.name
+
+
+def discover_resume_candidate(
+    *,
+    source_file: Path,
+    output_dir: Path,
+    book_title: str,
+    chapters: Sequence[Chapter],
+    min_schema_version: int = 3,
+) -> ResumeCandidate | None:
+    """Discover a resumable conversion state without side effects.
+
+    Returns a ResumeCandidate when a compatible saved state exists, or
+    None when no usable state is found.  Never creates directories or
+    mutates state.
+    """
+    workspace = resolve_conversion_workspace(
+        output_dir=output_dir,
+        book_title=book_title,
+        source_file=source_file,
+    )
+    if not workspace.state_file.exists():
+        return None
+
+    state = ConversionState.load(workspace.state_file)
+    if state is None:
+        return None
+
+    # Version check
+    if state.version < min_schema_version:
+        return None
+
+    # Source hash must match
+    if state.source_hash != workspace.source_hash:
+        return None
+
+    # source_selection must be present and non-empty
+    if not state.source_selection:
+        return None
+
+    # Build position map from current chapters
+    position_by_source_index: dict[int, int] = {
+        chapter.index: position for position, chapter in enumerate(chapters)
+    }
+
+    # Every saved source index must exist in the current chapter list
+    missing = [
+        idx for idx in state.source_selection if idx not in position_by_source_index
+    ]
+    if missing:
+        return None
+
+    # Verify chapter order is preserved
+    restored_positions = [
+        position_by_source_index[idx] for idx in state.source_selection
+    ]
+    if restored_positions != sorted(restored_positions):
+        return None
+
+    # At least one chapter must be incomplete, or the output needs
+    # rebuilding
+    has_incomplete = any(not ch.completed for ch in state.chapters)
+    output_path = resolve_saved_output_path(state, workspace.state_file)
+    output_missing = not output_path.exists()
+    if not has_incomplete and not output_missing:
+        return None
+
+    return ResumeCandidate(
+        state=state,
+        workspace=workspace,
+        selected_positions=restored_positions,
+        saved_output=output_path,
+    )
 
 
 def _hash_content(content: str) -> str:
@@ -880,40 +1019,72 @@ class TTSConverter:
         source_hash: str,
         generation_fingerprint: str,
         work_dir: Path,
+    ) -> ResumeValidation:
+        """Validate resume state and return structured result."""
+        result = self._resume_state_validation(
+            state, chapters, source_hash, generation_fingerprint, work_dir
+        )
+        return result
+
+    def _resume_state_matches_bool(
+        self,
+        state: ConversionState,
+        chapters: list[Chapter],
+        source_hash: str,
+        generation_fingerprint: str,
+        work_dir: Path,
     ) -> bool:
+        """Compatibility wrapper returning bool."""
+        return self._resume_state_matches(
+            state, chapters, source_hash, generation_fingerprint, work_dir
+        ).reusable
+
+    def _resume_state_validation(
+        self,
+        state: ConversionState,
+        chapters: list[Chapter],
+        source_hash: str,
+        generation_fingerprint: str,
+        work_dir: Path,
+    ) -> ResumeValidation:
         """Allow reuse only when v2 inputs and completed artifacts still match."""
         if state.version < 2:
             self.log(
                 "Legacy resume state is unsafe; starting fresh conversion", "warning"
             )
-            return False
+            return ResumeValidation(reusable=False, reason="legacy-state-version")
         if state.source_hash != source_hash:
             self.log(
                 "Source file or chapter inputs changed, starting fresh conversion",
                 "warning",
             )
-            return False
+            return ResumeValidation(reusable=False, reason="source-hash-changed")
         if state.onnx_provider is None:
             self.log(
                 "Resume state predates provider-aware fingerprints; "
                 "starting fresh conversion",
                 "warning",
             )
-            return False
+            return ResumeValidation(
+                reusable=False, reason="missing-provider-fingerprint"
+            )
         if state.onnx_provider != self.options.effective_onnx_provider():
             self.log("ONNX provider changed, starting fresh conversion", "warning")
-            return False
+            return ResumeValidation(reusable=False, reason="provider-changed")
         if state.source_selection != [chapter.index for chapter in chapters]:
             self.log("Chapter selection changed, starting fresh conversion", "warning")
-            return False
+            return ResumeValidation(reusable=False, reason="chapter-selection-changed")
         if state.generation_fingerprint != generation_fingerprint:
             self.log(
-                "Generation settings changed, starting fresh conversion", "warning"
+                "Generation settings changed, starting fresh conversion",
+                "warning",
             )
-            return False
+            return ResumeValidation(
+                reusable=False, reason="generation-fingerprint-changed"
+            )
         if len(state.chapters) != len(chapters):
             self.log("Chapter count changed, starting fresh conversion", "warning")
-            return False
+            return ResumeValidation(reusable=False, reason="chapter-count-changed")
 
         for saved, chapter in zip(state.chapters, chapters, strict=True):
             content_hash = _hash_content(chapter.content)
@@ -935,19 +1106,25 @@ class TTSConverter:
                     f"Chapter {chapter.index + 1} changed, starting fresh conversion",
                     "warning",
                 )
-                return False
+                return ResumeValidation(
+                    reusable=False, reason="chapter-content-changed"
+                )
             if saved.completed:
                 if not saved.audio_file:
-                    return False
+                    return ResumeValidation(reusable=False, reason="missing-audio-file")
                 audio_path = work_dir / saved.audio_file
                 try:
                     if (
                         not audio_path.is_file()
                         or sf.info(str(audio_path)).duration <= 0
                     ):
-                        return False
+                        return ResumeValidation(
+                            reusable=False, reason="audio-file-invalid"
+                        )
                 except Exception:
-                    return False
+                    return ResumeValidation(
+                        reusable=False, reason="audio-file-unreadable"
+                    )
                 if (
                     saved.ssmd_markers_file
                     and not (work_dir / saved.ssmd_markers_file).is_file()
@@ -956,7 +1133,9 @@ class TTSConverter:
                         "Marker sidecar is missing, starting fresh conversion",
                         "warning",
                     )
-                    return False
+                    return ResumeValidation(
+                        reusable=False, reason="marker-sidecar-missing"
+                    )
                 if (
                     saved.ssmd_diagnostics_file
                     and not (work_dir / saved.ssmd_diagnostics_file).is_file()
@@ -966,8 +1145,10 @@ class TTSConverter:
                         "starting fresh conversion",
                         "warning",
                     )
-                    return False
-        return True
+                    return ResumeValidation(
+                        reusable=False, reason="diagnostics-sidecar-missing"
+                    )
+        return ResumeValidation(reusable=True)
 
     def convert_chapters_resumable(  # noqa: C901 - Complex but necessary for resume logic
         self,
@@ -1006,14 +1187,23 @@ class TTSConverter:
         prevent_sleep_start()
 
         try:
-            # Include source/content identity so same-title books cannot collide.
-            safe_book_title = sanitize_filename(self.options.title or output_path.stem)[
-                :50
-            ]
-            source_hash = (
-                _hash_file(source_file)
-                if source_file
-                else _canonical_fingerprint(
+            # Compute workspace using shared helper when source_file is
+            # available (CLI path); fall back to content-derived hash for
+            # source-less API calls.
+            if source_file is not None:
+                workspace = resolve_conversion_workspace(
+                    output_dir=output_path.parent,
+                    book_title=self.options.title or output_path.stem,
+                    source_file=source_file,
+                )
+                source_hash = workspace.source_hash
+                work_dir = workspace.work_dir
+                state_file = workspace.state_file
+            else:
+                safe_book_title = sanitize_filename(
+                    self.options.title or output_path.stem
+                )[:50]
+                source_hash = _canonical_fingerprint(
                     [
                         {
                             "index": chapter.index,
@@ -1023,21 +1213,43 @@ class TTSConverter:
                         for chapter in chapters
                     ]
                 )
-            )
-            source_key = source_hash[:12]
-            work_dir = output_path.parent / f".{safe_book_title}-{source_key}_chapters"
+                source_key = source_hash[:12]
+                work_dir = (
+                    output_path.parent / f".{safe_book_title}-{source_key}_chapters"
+                )
+                state_file = work_dir / "state.json"
             work_dir.mkdir(parents=True, exist_ok=True)
-            state_file = work_dir / "state.json"
             generation_fingerprint = self._generation_fingerprint()
 
             # Load or create state
             state: ConversionState | None = None
             if resume and state_file.exists():
                 state = ConversionState.load(state_file)
-                if state and not self._resume_state_matches(
-                    state, chapters, source_hash, generation_fingerprint, work_dir
-                ):
-                    state = None
+                if state:
+                    validation = self._resume_state_matches(
+                        state, chapters, source_hash, generation_fingerprint, work_dir
+                    )
+                    if not validation.reusable:
+                        # Archive incompatible state before replacing it so
+                        # evidence and completed artifacts are not silently lost.
+                        import shutil
+
+                        timestamp = time.strftime("%Y%m%dT%H%M%S")
+                        archived_name = f"state.invalidated-{timestamp}.json"
+                        archived_path = state_file.parent / archived_name
+                        try:
+                            shutil.copy2(state_file, archived_path)
+                            self.log(
+                                f"Archived incompatible state to {archived_name}",
+                                "info",
+                            )
+                        except OSError:
+                            pass
+                        self.log(
+                            f"Resume state incompatible: {validation.reason}",
+                            "warning",
+                        )
+                        state = None
 
             if state is None:
                 # Create new state
@@ -1045,7 +1257,7 @@ class TTSConverter:
                     source_file=str(source_file) if source_file else "",
                     source_hash=source_hash,
                     version=3,
-                    output_file=str(output_path),
+                    output_file=str(output_path.resolve()),
                     work_dir=str(work_dir),
                     voice=self.options.voice,
                     language=self.options.language,
@@ -1128,6 +1340,22 @@ class TTSConverter:
                 total_chars=total_chars,
                 chars_processed=chars_processed,
             )
+            # Initialize progress from saved state so the progress bar
+            # starts at the completion point rather than zero.
+            if state and chars_already_done > 0:
+                next_position = next(
+                    (
+                        pos
+                        for pos, ch_state in enumerate(state.chapters)
+                        if not ch_state.completed
+                    ),
+                    len(chapters),
+                )
+                progress.current_chapter = min(next_position + 1, len(chapters))
+                if next_position < len(chapters):
+                    progress.chapter_name = chapters[next_position].title
+                if self.progress_callback:
+                    self.progress_callback(progress)
             aggregate_markers: list[dict[str, Any]] = []
             aggregate_issues: list[SSMDIssue] = []
             aggregate_metadata: dict[str, Any] = {}
@@ -1191,6 +1419,58 @@ class TTSConverter:
                         self.log(
                             f"Skipping completed chapter {ch_num}: {chapter.title}"
                         )
+                        # Rehydrate aggregate sidecars from the completed
+                        # chapter so the final output has complete navigation
+                        # metadata.
+                        chapter_offset = sum(
+                            saved.duration
+                            + (
+                                self.options.silence_between_chapters
+                                if saved.index < chapter_state.index
+                                else 0.0
+                            )
+                            for saved in state.chapters
+                            if saved.index < chapter_state.index
+                        )
+                        if chapter_state.ssmd_markers_file:
+                            markers_path = work_dir / chapter_state.ssmd_markers_file
+                            if markers_path.is_file():
+                                try:
+                                    markers_data = json.loads(
+                                        markers_path.read_text(encoding="utf-8")
+                                    )
+                                    for marker in markers_data.get("markers", []):
+                                        aggregate_markers.append(
+                                            {
+                                                **marker,
+                                                "time_s": (
+                                                    marker["time_s"] + chapter_offset
+                                                ),
+                                            }
+                                        )
+                                except (json.JSONDecodeError, OSError):
+                                    pass
+                        if chapter_state.ssmd_diagnostics_file:
+                            diag_path = work_dir / chapter_state.ssmd_diagnostics_file
+                            if diag_path.is_file():
+                                try:
+                                    diag_data = json.loads(
+                                        diag_path.read_text(encoding="utf-8")
+                                    )
+                                    for issue in diag_data.get("issues", []):
+                                        aggregate_issues.append(
+                                            SSMDIssue(
+                                                code=issue.get("code", ""),
+                                                severity=issue.get("severity", "warn"),
+                                                message=issue.get("message", ""),
+                                            )
+                                        )
+                                except (json.JSONDecodeError, OSError):
+                                    pass
+                        if chapter_state.ssmd_document_title:
+                            aggregate_metadata.setdefault(
+                                "title", chapter_state.ssmd_document_title
+                            )
                         continue
                     else:
                         # File missing, need to reconvert

@@ -286,9 +286,40 @@ def convert(  # noqa: C901
     if language is None:
         language = "a"
 
-    # Chapter selection
+    # Track whether the user explicitly supplied selection arguments.
+    selection_is_explicit = chapters is not None or skip_chapters is not None
+    output_was_explicit = output is not None
+
+    # --- Resume discovery ---
+    # Run before interactive selection to restore saved scope when the user
+    # did not explicitly supply a new selection.
+    from ..conversion import ResumeCandidate, discover_resume_candidate
+
+    resume_candidate: ResumeCandidate | None = None
+    if resume and not fresh and not selection_is_explicit:
+        resume_candidate = discover_resume_candidate(
+            source_file=epub_file,
+            output_dir=output.parent if output else epub_file.parent,
+            book_title=effective_title,
+            chapters=[
+                Chapter(
+                    title=ch.title,
+                    content=ch.text,
+                    index=ch.index,
+                    html_content=html_contents[i] if html_contents else None,
+                    is_ssmd=ch.is_ssmd,
+                )
+                for i, ch in enumerate(epub_chapters)
+            ],
+        )
+
+    # --- Chapter selection with precedence ---
+    #   1. Explicit --chapters / --skip-chapters (user intent wins)
+    #   2. Resume candidate (restore saved selection)
+    #   3. Interactive prompt (when not --yes)
+    #   4. All chapters (--yes with no selection)
     selected_indices: list[int] | None = None
-    if chapters or skip_chapters:
+    if selection_is_explicit:
         try:
             selected_indices = resolve_chapter_selection(
                 chapters, skip_chapters, len(epub_chapters)
@@ -296,6 +327,8 @@ def convert(  # noqa: C901
         except ValueError as exc:
             console.print(f"[yellow]{exc}[/yellow]")
             sys.exit(1)
+    elif resume_candidate is not None:
+        selected_indices = resume_candidate.selected_positions
     elif not yes:
         selected_indices = _interactive_chapter_selection(epub_chapters)
 
@@ -303,11 +336,16 @@ def convert(  # noqa: C901
         console.print("[yellow]No chapters selected. Exiting.[/yellow]")
         return
 
-    # Determine output path using filename template
-    if output is None:
+    # --- Output path ---
+    # When resuming and the user did not pass --output, restore the saved
+    # output path.  Otherwise derive it from the filename template.
+    if not output_was_explicit and resume_candidate is not None:
+        output = resume_candidate.saved_output
+    elif output is None:
         output_template = config.get("output_filename_template", "{book_title}")
         chapters_range = format_chapters_range(
-            selected_indices or list(range(len(epub_chapters))), len(epub_chapters)
+            selected_indices or list(range(len(epub_chapters))),
+            len(epub_chapters),
         )
         output_filename = format_filename_template(
             output_template,
@@ -325,7 +363,8 @@ def convert(  # noqa: C901
         # If output is a directory, construct filename using template
         output_template = config.get("output_filename_template", "{book_title}")
         chapters_range = format_chapters_range(
-            selected_indices or list(range(len(epub_chapters))), len(epub_chapters)
+            selected_indices or list(range(len(epub_chapters))),
+            len(epub_chapters),
         )
         output_filename = format_filename_template(
             output_template,
@@ -546,6 +585,36 @@ def convert(  # noqa: C901
         console.print(f"[red]Invalid conversion configuration:[/red] {exc}.")
         raise typer.Exit(code=2) from exc
 
+    # Show resume summary when a valid candidate was found.
+    if resume_candidate is not None:
+        state = resume_candidate.state
+        completed = state.get_completed_count()
+        total = len(state.chapters)
+        next_idx = state.get_next_incomplete_index()
+        # Find user-visible chapter number and title for the next incomplete
+        next_chapter_num = ""
+        next_chapter_title = ""
+        if next_idx is not None:
+            for pos, ch in enumerate(epub_chapters):
+                if ch.index == next_idx:
+                    next_chapter_num = str(pos + 1)
+                    next_chapter_title = ch.title
+                    break
+        sel_start = min(selected_indices) + 1 if selected_indices else 1
+        sel_end = max(selected_indices) + 1 if selected_indices else len(epub_chapters)
+        console.print()
+        console.print("[bold green]Found resumable conversion:[/bold green]")
+        console.print(f"  Output: {resume_candidate.saved_output.name}")
+        console.print(f"  Selection: chapters {sel_start}-{sel_end}")
+        console.print(f"  Progress: {completed}/{total} complete")
+        if next_chapter_num:
+            console.print(
+                f"  Next: chapter {next_chapter_num} \u2014 {next_chapter_title}"
+            )
+        console.print()
+        console.print("[dim]Resuming conversion...[/dim]")
+        console.print()
+
     # Show conversion summary
     _show_conversion_summary(
         epub_file=epub_file,
@@ -590,17 +659,23 @@ def convert(  # noqa: C901
             console.print("[yellow]Cancelled.[/yellow]")
             return
 
-    # Handle --fresh flag: delete existing progress
+    # Handle --fresh flag: delete existing progress using the correct
+    # source-hashed workspace path.
     if fresh:
         import shutil
 
-        from ..utils import sanitize_filename
+        from ..conversion import resolve_conversion_workspace
 
-        safe_book_title = sanitize_filename(effective_title)[:50]
-        work_dir = output.parent / f".{safe_book_title}_chapters"
-        if work_dir.exists():
-            console.print(f"[yellow]Removing previous progress:[/yellow] {work_dir}")
-            shutil.rmtree(work_dir)
+        workspace = resolve_conversion_workspace(
+            output_dir=output.parent,
+            book_title=effective_title,
+            source_file=epub_file,
+        )
+        if workspace.work_dir.exists():
+            console.print(
+                f"[yellow]Removing previous progress:[/yellow] {workspace.work_dir}"
+            )
+            shutil.rmtree(workspace.work_dir)
         # Fresh start means we don't try to resume
         resume = False
 
