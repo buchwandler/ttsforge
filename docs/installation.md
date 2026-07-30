@@ -2,13 +2,11 @@
 
 This guide covers the installation of ttsforge and its dependencies.
 
-
 ## System Requirements
 
 - **Python**: 3.10 or later
 - **Operating System**: Linux, macOS, or Windows
 - **Disk Space**: ~330MB for ONNX models (downloaded automatically on first use)
-
 
 ## Dependencies
 
@@ -23,7 +21,6 @@ ffmpeg is required for MP3/FLAC/OPUS/M4B output and chapter merging.
 ```bash
 pkg install ffmpeg
 ```
-
 
 **Ubuntu/Debian:**
 
@@ -71,8 +68,7 @@ Download from <https://github.com/espeak-ng/espeak-ng/releases>
 
 ### Audio Playback (Optional)
 
-Audio playback features (`--play` flags and the `read` command) require
-`sounddevice`:
+Audio playback features (`--play` flags and the `read` command) require `sounddevice`:
 
 ```bash
 pip install "ttsforge[audio]"
@@ -86,15 +82,14 @@ pip install sounddevice
 
 ### spaCy Models (Optional)
 
-spaCy is used for sentence splitting, name extraction, and spaCy-aware
-phonemization workflows:
+spaCy is used for sentence splitting, name extraction, and spaCy-aware phonemization
+workflows:
 
 ```bash
 pip install spacy
 python -m spacy download en_core_web_sm
 python -m spacy download en_core_web_md
 ```
-
 
 ## Installing ttsforge
 
@@ -104,10 +99,9 @@ python -m spacy download en_core_web_md
 pip install ttsforge
 ```
 
-The base installation includes the CPU ONNX Runtime provider. Provider-dependent
-modules are loaded only when audio rendering starts, so `import ttsforge`,
-`ttsforge --help`, and configuration/inspection commands work without model
-initialization.
+The base installation includes the CPU ONNX Runtime provider. Provider-dependent modules
+are loaded only when audio rendering starts, so `import ttsforge`, `ttsforge --help`,
+and configuration/inspection commands work without model initialization.
 
 Optional extras:
 
@@ -140,7 +134,6 @@ cd ttsforge
 pip install -e ".[dev]"
 ```
 
-
 ## ONNX Runtime Providers
 
 Select a provider with an alias or full runtime provider name. The legacy Boolean
@@ -169,14 +162,14 @@ ttsforge config --show
 ttsforge sample "Termux provider test" --provider nnapi
 ```
 
-Use `--gpu` as a compatibility shortcut for `--provider auto` or `--no-gpu`
-for `--provider cpu`. Provider availability and the documented `ONNX_PROVIDER`
-environment override are handled by PyKokoro.
-
+Use `--gpu` as a compatibility shortcut for `--provider auto` or `--no-gpu` for
+`--provider cpu`. Provider availability and the documented `ONNX_PROVIDER` environment
+override are handled by PyKokoro.
 
 ## Mixed-Language Support (Optional)
 
-For automatic detection and handling of multiple languages in text (e.g., German text with English technical terms):
+For automatic detection and handling of multiple languages in text (e.g., German text
+with English technical terms):
 
 ```bash
 pip install lingua-language-detector
@@ -199,11 +192,10 @@ ttsforge convert book.epub \
     --mixed-language-allowed de,en-us
 ```
 
-
 ## Downloading Models
 
-ttsforge uses Kokoro ONNX models (~330MB total) which are downloaded automatically
-on first use. You can also download them proactively:
+ttsforge uses Kokoro ONNX models (~330MB total) which are downloaded automatically on
+first use. You can also download them proactively:
 
 ```bash
 # Download models
@@ -218,7 +210,6 @@ Models are stored in:
 - Linux: `~/.cache/ttsforge/`
 - macOS: `~/Library/Caches/ttsforge/`
 - Windows: `%LOCALAPPDATA%\ttsforge\Cache\`
-
 
 ## Verifying Installation
 
@@ -236,7 +227,6 @@ ttsforge sample "Hello, world!"
 ```
 
 If the sample command succeeds and creates `sample.wav`, ttsforge is ready to use.
-
 
 ## Troubleshooting
 

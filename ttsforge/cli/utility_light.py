@@ -223,7 +223,14 @@ def short_sentence_advanced_config(
     )
 
     path = get_advanced_short_sentence_config_path()
-    console.print(f"[bold]Advanced short-sentence config:[/bold] {path}")
+    # Keep the path as one contiguous token so it remains copyable and
+    # callers can reliably identify the config file in captured output.
+    console.print(
+        f"[bold]Advanced short-sentence config:[/bold] {path}",
+        overflow="ignore",
+        no_wrap=True,
+        crop=False,
+    )
     if action == "show":
         if not path.exists():
             console.print("[yellow]Config file does not exist yet.[/yellow]")

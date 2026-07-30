@@ -1,0 +1,1432 @@
+schema_version: 1
+object_type: commit_audit_sheet
+versioning:
+  schema_version: 1
+  revision: 7
+release_version: 0.1.0
+git_base_ref: 48981a8
+git_base_sha: 48981a8935dea7e65c5a6b119d0dbb9ab457679e
+git_head_ref: v0.1.0
+git_head_sha: ac9dbcdb5cfe5a56632fed64d0bcdf6537810082
+git_range: 48981a8935dea7e65c5a6b119d0dbb9ab457679e..ac9dbcdb5cfe5a56632fed64d0bcdf6537810082
+commit_count: 64
+rows:
+  - sha: 823c348007edcb97daabb3f46effd47b66d2c3ce
+    source_ref: git:823c348007edcb97daabb3f46effd47b66d2c3ce
+    short_sha: 823c348
+    changed_paths:
+      - .coveragerc
+      - .gitignore
+      - .pre-commit-config.yaml
+      - .prettierrc.yml
+      - .ruff.toml
+      - LICENSE
+      - pyproject.toml
+      - setup.py
+      - tests/__init__.py
+      - ttsforge/__init__.py
+      - ttsforge/cli.py
+      - ttsforge/constants.py
+      - ttsforge/conversion.py
+      - ttsforge/utils.py
+    stats:
+      files_changed: 0
+      insertions: 2366
+      deletions: 1
+    inspected: true
+    inspected_paths:
+      - .coveragerc
+    observed_behavior:
+      Initial TTS-Forge release with CLI, conversion pipeline, and basic text-to-speech
+      functionality
+    public_impact: public
+    decision: accepted
+    evidence_subject: "feat: initial release"
+  - sha: c7993a9da6d09697c93a1314f5fe3c50789558e3
+    source_ref: git:c7993a9da6d09697c93a1314f5fe3c50789558e3
+    short_sha: c7993a9
+    changed_paths:
+      - ttsforge/cli.py
+      - ttsforge/conversion.py
+    stats:
+      files_changed: 0
+      insertions: 595
+      deletions: 0
+    inspected: true
+    inspected_paths:
+      - ttsforge/cli.py
+    observed_behavior: Resume option for interrupted conversions
+    public_impact: public
+    decision: accepted
+    evidence_subject: "feat: resume option"
+  - sha: f986b2207ef48edd00ff455f56cb018aca6b43bb
+    source_ref: git:f986b2207ef48edd00ff455f56cb018aca6b43bb
+    short_sha: f986b22
+    changed_paths:
+      - ttsforge/cli.py
+      - ttsforge/conversion.py
+    stats:
+      files_changed: 0
+      insertions: 57
+      deletions: 9
+    inspected: true
+    inspected_paths:
+      - ttsforge/cli.py
+    observed_behavior: Persistent settings for resume functionality
+    public_impact: public
+    decision: accepted
+    evidence_subject: "feat: store settings for resume"
+  - sha: 4593edd67f58d1244d5cc7f5b0db720317f19c1b
+    source_ref: git:4593edd67f58d1244d5cc7f5b0db720317f19c1b
+    short_sha: 4593edd
+    changed_paths:
+      - ttsforge/cli.py
+      - ttsforge/constants.py
+    stats:
+      files_changed: 0
+      insertions: 138
+      deletions: 2
+    inspected: true
+    inspected_paths:
+      - ttsforge/cli.py
+    observed_behavior: Sample command for testing
+    public_impact: public
+    decision: accepted
+    evidence_subject: "feat: sample command"
+  - sha: a508f1e08b263269ff22c24b91ce035aaa37461a
+    source_ref: git:a508f1e08b263269ff22c24b91ce035aaa37461a
+    short_sha: a508f1e
+    changed_paths:
+      - .gitignore
+      - README.md
+      - tests/test_cli.py
+      - tests/test_constants.py
+      - tests/test_conversion.py
+      - tests/test_utils.py
+      - ttsforge/cli.py
+      - ttsforge/constants.py
+      - ttsforge/conversion.py
+      - ttsforge/utils.py
+    stats:
+      files_changed: 0
+      insertions: 1136
+      deletions: 46
+    inspected: true
+    inspected_paths:
+      - .gitignore
+    observed_behavior: Added unit tests
+    public_impact: internal
+    decision: internal
+    evidence_subject: "test: add unit tests"
+  - sha: 1a887413f6ee0cb344bfc0fad8e9344a13a7a653
+    source_ref: git:1a887413f6ee0cb344bfc0fad8e9344a13a7a653
+    short_sha: 1a88741
+    changed_paths:
+      - pyproject.toml
+      - tests/test_conversion.py
+      - tests/test_onnx_backend.py
+      - tests/test_phonemes.py
+      - tests/test_tokenizer.py
+      - tests/test_utils.py
+      - ttsforge/__init__.py
+      - ttsforge/cli.py
+      - ttsforge/constants.py
+      - ttsforge/conversion.py
+      - ttsforge/onnx_backend.py
+      - ttsforge/phonemes.py
+      - ttsforge/tokenizer.py
+      - ttsforge/trim.py
+      - ttsforge/utils.py
+      - ttsforge/vocab/__init__.py
+      - ttsforge/vocab/v1_0.json
+    stats:
+      files_changed: 0
+      insertions: 3709
+      deletions: 161
+    inspected: true
+    inspected_paths:
+      - pyproject.toml
+    observed_behavior: Added ONNX runtime backend for text-to-speech inference
+    public_impact: public
+    decision: accepted
+    evidence_subject: "feat: first onnx version"
+  - sha: 9f3fde8de792abb94a60251351256aebd60e7358
+    source_ref: git:9f3fde8de792abb94a60251351256aebd60e7358
+    short_sha: 9f3fde8
+    changed_paths:
+      - ttsforge/cli.py
+      - ttsforge/phonemes.py
+    stats:
+      files_changed: 0
+      insertions: 86
+      deletions: 23
+    inspected: true
+    inspected_paths:
+      - ttsforge/cli.py
+    observed_behavior: Split mode for phoneme processing
+    public_impact: internal
+    decision: internal
+    evidence_subject: "feat: split mode"
+  - sha: 67e806fbb52e19cd956ff2a96f0edce245c9e61e
+    source_ref: git:67e806fbb52e19cd956ff2a96f0edce245c9e61e
+    short_sha: 67e806f
+    changed_paths:
+      - ttsforge/cli.py
+    stats:
+      files_changed: 0
+      insertions: 102
+      deletions: 1
+    inspected: true
+    inspected_paths:
+      - ttsforge/cli.py
+    observed_behavior: Phoneme statistics feature
+    public_impact: internal
+    decision: internal
+    evidence_subject: "feat: phoneme stats"
+  - sha: b8268d209d4ad7841558635c3b929512ee8461a8
+    source_ref: git:b8268d209d4ad7841558635c3b929512ee8461a8
+    short_sha: b8268d2
+    changed_paths:
+      - tests/test_phoneme_conversion.py
+      - ttsforge/cli.py
+      - ttsforge/phoneme_conversion.py
+      - ttsforge/phonemes.py
+    stats:
+      files_changed: 0
+      insertions: 1918
+      deletions: 23
+    inspected: true
+    inspected_paths:
+      - tests/test_phoneme_conversion.py
+    observed_behavior: Added phoneme conversion and phoneme-based audio generation
+    public_impact: public
+    decision: accepted
+    evidence_subject: "feat: phoneme conversion"
+  - sha: d57dac20c16d377175749fdc8584f389bd4b238f
+    source_ref: git:d57dac20c16d377175749fdc8584f389bd4b238f
+    short_sha: d57dac2
+    changed_paths:
+      - tests/test_phonemes.py
+      - ttsforge/cli.py
+      - ttsforge/onnx_backend.py
+      - ttsforge/phonemes.py
+    stats:
+      files_changed: 0
+      insertions: 65
+      deletions: 1
+    inspected: true
+    inspected_paths:
+      - tests/test_phonemes.py
+    observed_behavior: Fixed audio generation from phonemes
+    public_impact: public
+    decision: accepted
+    evidence_subject: "fix: create audio from phonemes"
+  - sha: 55d6753bf398f371da03a32630cbc227c686e16d
+    source_ref: git:55d6753bf398f371da03a32630cbc227c686e16d
+    short_sha: 55d6753
+    changed_paths:
+      - tests/test_onnx_backend.py
+      - tests/test_phoneme_conversion.py
+      - tests/test_phonemes.py
+      - ttsforge/cli.py
+      - ttsforge/conversion.py
+      - ttsforge/onnx_backend.py
+      - ttsforge/phoneme_conversion.py
+      - ttsforge/phonemes.py
+      - ttsforge/tokenizer.py
+      - ttsforge/trim.py
+      - ttsforge/utils.py
+      - ttsforge/vocab/v1_0.json
+    stats:
+      files_changed: 0
+      insertions: 50
+      deletions: 54
+    inspected: true
+    inspected_paths:
+      - tests/test_onnx_backend.py
+    observed_behavior: Pre-commit configuration fix
+    public_impact: internal
+    decision: internal
+    evidence_subject: "chore: pre-commmit fix"
+  - sha: 789b2e38a7094ebaabc24d36b9bb22fdd03bd597
+    source_ref: git:789b2e38a7094ebaabc24d36b9bb22fdd03bd597
+    short_sha: 789b2e3
+    changed_paths:
+      - ttsforge/cli.py
+    stats:
+      files_changed: 0
+      insertions: 216
+      deletions: 0
+    inspected: true
+    inspected_paths:
+      - ttsforge/cli.py
+    observed_behavior: Voice demo example
+    public_impact: internal
+    decision: internal
+    evidence_subject: "feat: voice demo"
+  - sha: 9e118ee7fb5adce11569e8ada33c73b2cc8a7078
+    source_ref: git:9e118ee7fb5adce11569e8ada33c73b2cc8a7078
+    short_sha: 9e118ee
+    changed_paths:
+      - ttsforge/cli.py
+      - ttsforge/constants.py
+      - ttsforge/conversion.py
+      - ttsforge/phoneme_conversion.py
+    stats:
+      files_changed: 0
+      insertions: 193
+      deletions: 21
+    inspected: true
+    inspected_paths:
+      - ttsforge/cli.py
+    observed_behavior: Added segment pause control
+    public_impact: public
+    decision: accepted
+    evidence_subject: "feat: add segment pause"
+  - sha: 9c0f29ecc4bdd7e9c84ae56807681c91027d93f8
+    source_ref: git:9c0f29ecc4bdd7e9c84ae56807681c91027d93f8
+    short_sha: 9c0f29e
+    changed_paths:
+      - README.md
+      - docs/api/index.rst
+      - docs/cli.rst
+      - docs/conf.py
+      - docs/configuration.rst
+      - docs/filename_templates.rst
+      - docs/index.rst
+      - docs/installation.rst
+      - docs/make.bat
+      - docs/make.py
+      - docs/quickstart.rst
+      - docs/requirements.txt
+      - docs/voices.rst
+      - tests/test_utils.py
+      - ttsforge/cli.py
+      - ttsforge/constants.py
+      - ttsforge/conversion.py
+      - ttsforge/phoneme_conversion.py
+      - ttsforge/utils.py
+    stats:
+      files_changed: 0
+      insertions: 3643
+      deletions: 59
+    inspected: true
+    inspected_paths:
+      - README.md
+    observed_behavior: Added comprehensive documentation and examples
+    public_impact: docs
+    decision: accepted
+    evidence_subject: "feat: docs, name template voice mixing demo"
+  - sha: d92120ddd2c186933d7899cc97a40bde2dbffffe
+    source_ref: git:d92120ddd2c186933d7899cc97a40bde2dbffffe
+    short_sha: d92120d
+    changed_paths:
+      - .gitignore
+      - README.md
+      - docs/configuration.rst
+      - scripts/export.py
+      - scripts/fetch_voices.py
+      - ttsforge/cli.py
+      - ttsforge/constants.py
+      - ttsforge/conversion.py
+      - ttsforge/phoneme_conversion.py
+      - ttsforge/phonemes.py
+      - ttsforge/vocab/v1_0.json
+    stats:
+      files_changed: 0
+      insertions: 670
+      deletions: 159
+    inspected: true
+    inspected_paths:
+      - .gitignore
+    observed_behavior: Scripts for ONNX model creation
+    public_impact: internal
+    decision: internal
+    evidence_subject: "feat: script for creating onnx model and paragraph pause"
+  - sha: 6c63a828a9953af29809c5b31d65cff8df6e0d9a
+    source_ref: git:6c63a828a9953af29809c5b31d65cff8df6e0d9a
+    short_sha: 6c63a82
+    changed_paths:
+      - README.md
+      - docs/api/index.rst
+      - docs/configuration.rst
+      - docs/filename_templates.rst
+      - docs/index.rst
+      - docs/voices.rst
+      - scripts/export.py
+      - tests/test_onnx_backend.py
+      - ttsforge/cli.py
+      - ttsforge/conversion.py
+      - ttsforge/onnx_backend.py
+      - ttsforge/phoneme_conversion.py
+      - ttsforge/utils.py
+    stats:
+      files_changed: 0
+      insertions: 347
+      deletions: 159
+    inspected: true
+    inspected_paths:
+      - README.md
+    observed_behavior: Native ONNX runtime integration
+    public_impact: public
+    decision: accepted
+    evidence_subject: "feat: native onnx runtime and other improvemts"
+  - sha: f5e55c5d90355e637e7bf9ff04a2f7b1a8384641
+    source_ref: git:f5e55c5d90355e637e7bf9ff04a2f7b1a8384641
+    short_sha: f5e55c5
+    changed_paths:
+      - ttsforge/onnx_backend.py
+    stats:
+      files_changed: 0
+      insertions: 15
+      deletions: 4
+    inspected: true
+    inspected_paths:
+      - ttsforge/onnx_backend.py
+    observed_behavior: ONNX backend format improvements
+    public_impact: internal
+    decision: internal
+    evidence_subject: "feat: new format"
+  - sha: adea1f94331e1c27c7eb1d4ed2067f94b1b81302
+    source_ref: git:adea1f94331e1c27c7eb1d4ed2067f94b1b81302
+    short_sha: adea1f9
+    changed_paths:
+      - pyproject.toml
+      - tests/test_onnx_backend.py
+      - ttsforge/cli.py
+      - ttsforge/constants.py
+      - ttsforge/onnx_backend.py
+      - ttsforge/vocab/__init__.py
+      - ttsforge/vocab/v1_0.json
+    stats:
+      files_changed: 0
+      insertions: 709
+      deletions: 311
+    inspected: true
+    inspected_paths:
+      - pyproject.toml
+    observed_behavior: Added support for Kokoro-82M-v1.0-ONNX models
+    public_impact: public
+    decision: accepted
+    evidence_subject: "feat: use models from Kokoro-82M-v1.0-ONNX"
+  - sha: b10f6c61262cc68e10e2668cbc1c5aee4e35012c
+    source_ref: git:b10f6c61262cc68e10e2668cbc1c5aee4e35012c
+    short_sha: b10f6c6
+    changed_paths:
+      - ttsforge/audio_player.py
+      - ttsforge/cli.py
+      - ttsforge/onnx_backend.py
+    stats:
+      files_changed: 0
+      insertions: 1100
+      deletions: 2
+    inspected: true
+    inspected_paths:
+      - ttsforge/audio_player.py
+    observed_behavior: Reader without audio creation mode
+    public_impact: internal
+    decision: internal
+    evidence_subject: "feat: reader without audio creatoin"
+  - sha: 8cc68f6bf20bcbdc50474543d74333da4f5e42e5
+    source_ref: git:8cc68f6bf20bcbdc50474543d74333da4f5e42e5
+    short_sha: 8cc68f6
+    changed_paths:
+      - examples/__init__.py
+      - examples/chinese.py
+      - examples/english.py
+      - examples/french.py
+      - examples/hindi.py
+      - examples/italian.py
+      - examples/japanese.py
+      - examples/phoneme_export.py
+      - examples/podcast.py
+      - examples/portuguese.py
+      - examples/punctuation.py
+      - examples/spanish.py
+      - pyproject.toml
+      - scripts/export.py
+      - tests/test_tokenizer.py
+      - ttsforge/cli.py
+      - ttsforge/constants.py
+      - ttsforge/conversion.py
+      - ttsforge/onnx_backend.py
+      - ttsforge/phoneme_conversion.py
+      - ttsforge/tokenizer.py
+      - ttsforge/utils.py
+      - ttsforge/vocab/__init__.py
+    stats:
+      files_changed: 0
+      insertions: 1606
+      deletions: 288
+    inspected: true
+    inspected_paths:
+      - examples/__init__.py
+    observed_behavior: Added multilingual examples
+    public_impact: internal
+    decision: internal
+    evidence_subject: "feat: several examples and uses kokorog2p lib"
+  - sha: b956389f0f5ee8f6603acc7e0a758fa54e15352f
+    source_ref: git:b956389f0f5ee8f6603acc7e0a758fa54e15352f
+    short_sha: b956389
+    changed_paths:
+      - examples/contractions.py
+      - examples/german.py
+      - examples/homographs.py
+    stats:
+      files_changed: 0
+      insertions: 288
+      deletions: 0
+    inspected: true
+    inspected_paths:
+      - examples/contractions.py
+    observed_behavior: Added more language examples
+    public_impact: internal
+    decision: internal
+    evidence_subject: "feat: some more examples"
+  - sha: aeb26724d60715d1af720a12bd6bace1e89892cb
+    source_ref: git:aeb26724d60715d1af720a12bd6bace1e89892cb
+    short_sha: aeb2672
+    changed_paths:
+      - ttsforge/cli.py
+      - ttsforge/constants.py
+      - ttsforge/conversion.py
+      - ttsforge/onnx_backend.py
+      - ttsforge/phoneme_conversion.py
+    stats:
+      files_changed: 0
+      insertions: 62
+      deletions: 7
+    inspected: true
+    inspected_paths:
+      - ttsforge/cli.py
+    observed_behavior: Added language option for specifying TTS language
+    public_impact: public
+    decision: accepted
+    evidence_subject: "feat: add lang option to specify language"
+  - sha: e722793d15a0fc352e27f968781510b6b7ac413c
+    source_ref: git:e722793d15a0fc352e27f968781510b6b7ac413c
+    short_sha: e722793
+    changed_paths:
+      - examples/contractions_advanced.py
+      - examples/german.py
+      - examples/voices.py
+      - tests/test_chapter_announcement.py
+      - tests/test_phoneme_conversion.py
+      - ttsforge/cli.py
+      - ttsforge/constants.py
+      - ttsforge/conversion.py
+      - ttsforge/phoneme_conversion.py
+    stats:
+      files_changed: 0
+      insertions: 753
+      deletions: 3
+    inspected: true
+    inspected_paths:
+      - examples/contractions_advanced.py
+    observed_behavior: Added chapter announcement feature
+    public_impact: public
+    decision: accepted
+    evidence_subject: "feat: chapter announcement and more examples"
+  - sha: 3ec6e0bc0d0828a70e7c87e6fff330d957fd48eb
+    source_ref: git:3ec6e0bc0d0828a70e7c87e6fff330d957fd48eb
+    short_sha: 3ec6e0b
+    changed_paths:
+      - examples/german.py
+      - tests/test_epub_chapter_markers.py
+      - ttsforge/conversion.py
+    stats:
+      files_changed: 0
+      insertions: 120
+      deletions: 5
+    inspected: true
+    inspected_paths:
+      - examples/german.py
+    observed_behavior: Fixed duplicate chapter reading
+    public_impact: public
+    decision: accepted
+    evidence_subject: "feat: fix chapter was read twice"
+  - sha: 4a7485e1b1c65d83ef0c90b6b7ec182974015cd6
+    source_ref: git:4a7485e1b1c65d83ef0c90b6b7ec182974015cd6
+    short_sha: 4a7485e
+    changed_paths:
+      - examples/contractions.py
+      - examples/german.py
+      - examples/homographs.py
+      - examples/korean.py
+      - examples/phoneme_export.py
+      - examples/punctuation.py
+      - tests/test_chapter_announcement.py
+      - tests/test_epub_chapter_markers.py
+      - tests/test_onnx_backend.py
+      - tests/test_phoneme_conversion.py
+      - ttsforge/conversion.py
+      - ttsforge/onnx_backend.py
+      - ttsforge/tokenizer.py
+    stats:
+      files_changed: 0
+      insertions: 518
+      deletions: 119
+    inspected: true
+    inspected_paths:
+      - examples/contractions.py
+    observed_behavior: Added examples and tests
+    public_impact: internal
+    decision: internal
+    evidence_subject: "feat: more examples and tests"
+  - sha: 63946f2ce31715a9f0a74e6bf02f2ef3baf78e75
+    source_ref: git:63946f2ce31715a9f0a74e6bf02f2ef3baf78e75
+    short_sha: 63946f2
+    changed_paths:
+      - README.md
+      - docs/cli.rst
+      - docs/configuration.rst
+      - docs/installation.rst
+      - docs/quickstart.rst
+      - examples/mixed_language.py
+      - tests/test_tokenizer.py
+      - ttsforge/cli.py
+      - ttsforge/constants.py
+      - ttsforge/conversion.py
+      - ttsforge/onnx_backend.py
+      - ttsforge/tokenizer.py
+    stats:
+      files_changed: 0
+      insertions: 1010
+      deletions: 17
+    inspected: true
+    inspected_paths:
+      - README.md
+    observed_behavior: Added mixed language support for multilingual text
+    public_impact: public
+    decision: accepted
+    evidence_subject: "feat: mixed lang support"
+  - sha: 5335e6afbce7510ee85ea97d3785624d23ed4e66
+    source_ref: git:5335e6afbce7510ee85ea97d3785624d23ed4e66
+    short_sha: 5335e6a
+    changed_paths:
+      - README.md
+      - examples/phoneme_dictionary.json
+      - examples/phoneme_dictionary_demo.py
+      - tests/test_name_extractor.py
+      - tests/test_phoneme_dictionary.py
+      - ttsforge/cli.py
+      - ttsforge/conversion.py
+      - ttsforge/name_extractor.py
+      - ttsforge/tokenizer.py
+    stats:
+      files_changed: 0
+      insertions: 1591
+      deletions: 14
+    inspected: true
+    inspected_paths:
+      - README.md
+    observed_behavior: Added custom phoneme dictionary and automatic name extraction
+    public_impact: public
+    decision: accepted
+    evidence_subject:
+      "feat: add custom phoneme dictionary and automatic name extraction"
+  - sha: d56233bed2401ab85c6d49c665c11e201c37419c
+    source_ref: git:d56233bed2401ab85c6d49c665c11e201c37419c
+    short_sha: d56233b
+    changed_paths:
+      - .gitignore
+    stats:
+      files_changed: 0
+      insertions: 17
+      deletions: 0
+    inspected: true
+    inspected_paths:
+      - .gitignore
+    observed_behavior: Updated gitignore
+    public_impact: internal
+    decision: internal
+    evidence_subject: "feat: update gitignore"
+  - sha: 4c5fea866810219732110ee277c7e8c26858b5e8
+    source_ref: git:4c5fea866810219732110ee277c7e8c26858b5e8
+    short_sha: 4c5fea8
+    changed_paths:
+      - tests/test_name_extractor.py
+      - ttsforge/cli.py
+      - ttsforge/name_extractor.py
+    stats:
+      files_changed: 0
+      insertions: 358
+      deletions: 28
+    inspected: true
+    inspected_paths:
+      - tests/test_name_extractor.py
+    observed_behavior: Added chunking for name extraction
+    public_impact: public
+    decision: accepted
+    evidence_subject: "feat: chunking for name extraction"
+  - sha: 27fa73f9a5f6a26abd873e0e81ee5d46138ad30a
+    source_ref: git:27fa73f9a5f6a26abd873e0e81ee5d46138ad30a
+    short_sha: 27fa73f
+    changed_paths:
+      - ttsforge/cli.py
+    stats:
+      files_changed: 0
+      insertions: 100
+      deletions: 7
+    inspected: true
+    inspected_paths:
+      - ttsforge/cli.py
+    observed_behavior: Improved phoneme conversion with playback
+    public_impact: internal
+    decision: internal
+    evidence_subject: "feat: improve phonemes convert word with play"
+  - sha: ee81ff06d073d7f980f104977d3c92e71bdfb4f4
+    source_ref: git:ee81ff06d073d7f980f104977d3c92e71bdfb4f4
+    short_sha: ee81ff0
+    changed_paths:
+      - ttsforge/cli.py
+      - ttsforge/conversion.py
+    stats:
+      files_changed: 0
+      insertions: 66
+      deletions: 11
+    inspected: true
+    inspected_paths:
+      - ttsforge/cli.py
+    observed_behavior: Added voice blending capability
+    public_impact: public
+    decision: accepted
+    evidence_subject: "feat: add voice blending"
+  - sha: d26862808a34dd0ebaf073e39b94b107ee1eb8af
+    source_ref: git:d26862808a34dd0ebaf073e39b94b107ee1eb8af
+    short_sha: d268628
+    changed_paths:
+      - README.md
+      - docs/cli.rst
+      - docs/quickstart.rst
+      - docs/voices.rst
+    stats:
+      files_changed: 0
+      insertions: 90
+      deletions: 7
+    inspected: true
+    inspected_paths:
+      - README.md
+    observed_behavior: Updated documentation for voice blending
+    public_impact: docs
+    decision: accepted
+    evidence_subject: "doc: update doc about voice blending"
+  - sha: b9502e689c3c1339b8341b9f542d9509b529688b
+    source_ref: git:b9502e689c3c1339b8341b9f542d9509b529688b
+    short_sha: b9502e6
+    changed_paths:
+      - README.md
+      - docs/cli.rst
+      - examples/phoneme_dictionary_demo.py
+      - tests/test_chapter_announcement.py
+      - tests/test_epub_chapter_markers.py
+      - tests/test_name_extractor.py
+      - tests/test_phoneme_dictionary.py
+      - ttsforge/cli.py
+      - ttsforge/conversion.py
+      - ttsforge/name_extractor.py
+      - ttsforge/phoneme_conversion.py
+      - ttsforge/phonemes.py
+      - ttsforge/tokenizer.py
+    stats:
+      files_changed: 0
+      insertions: 160
+      deletions: 67
+    inspected: true
+    inspected_paths:
+      - README.md
+    observed_behavior: Fixed pre-commit hooks
+    public_impact: internal
+    decision: internal
+    evidence_subject: "chore: fix pre-commit"
+  - sha: 9692a63ed167ce8910354935ed93f398b1b3efec
+    source_ref: git:9692a63ed167ce8910354935ed93f398b1b3efec
+    short_sha: 9692a63
+    changed_paths:
+      - tests/test_epub_chapter_markers.py
+      - ttsforge/cli.py
+      - ttsforge/conversion.py
+      - ttsforge/phonemes.py
+    stats:
+      files_changed: 0
+      insertions: 11
+      deletions: 11
+    inspected: true
+    inspected_paths:
+      - tests/test_epub_chapter_markers.py
+    observed_behavior: Fixed chapter announcement behavior
+    public_impact: public
+    decision: accepted
+    evidence_subject: "fix: chapter announcement"
+  - sha: d4e456f9acc4e3982414379132403d33e9cd8d2a
+    source_ref: git:d4e456f9acc4e3982414379132403d33e9cd8d2a
+    short_sha: d4e456f
+    changed_paths:
+      - pyproject.toml
+      - tests/test_chapter_announcement.py
+      - tests/test_constants.py
+      - tests/test_epub_chapter_markers.py
+      - tests/test_onnx_backend.py
+      - tests/test_phoneme_conversion.py
+      - tests/test_phoneme_dictionary.py
+      - tests/test_phonemes.py
+      - tests/test_tokenizer.py
+      - ttsforge/__init__.py
+      - ttsforge/cli.py
+      - ttsforge/constants.py
+      - ttsforge/conversion.py
+      - ttsforge/onnx_backend.py
+      - ttsforge/phoneme_conversion.py
+      - ttsforge/phonemes.py
+      - ttsforge/tokenizer.py
+      - ttsforge/trim.py
+      - ttsforge/utils.py
+    stats:
+      files_changed: 0
+      insertions: 259
+      deletions: 2741
+    inspected: true
+    inspected_paths:
+      - pyproject.toml
+    observed_behavior: Migrated to pykokoro as the core TTS engine
+    public_impact: public
+    decision: accepted
+    evidence_subject: "feat: use pykokoro as TTS engine"
+  - sha: 0a89e7e753611755569e17ab9057d570b5e961a4
+    source_ref: git:0a89e7e753611755569e17ab9057d570b5e961a4
+    short_sha: 0a89e7e
+    changed_paths:
+      - ttsforge/cli.py
+      - ttsforge/conversion.py
+      - ttsforge/input_reader.py
+      - ttsforge/phoneme_conversion.py
+    stats:
+      files_changed: 0
+      insertions: 444
+      deletions: 156
+    inspected: true
+    inspected_paths:
+      - ttsforge/cli.py
+    observed_behavior: Added new input reader supporting TXT and EPUB file formats
+    public_impact: public
+    decision: accepted
+    evidence_subject: "feat: new input reader which allow to input txt and epub"
+  - sha: 27d85c55a9cddaaf68974df6d9d1e5d90cf02c9e
+    source_ref: git:27d85c55a9cddaaf68974df6d9d1e5d90cf02c9e
+    short_sha: 27d85c5
+    changed_paths:
+      - examples/chinese.py
+      - examples/contractions.py
+      - examples/contractions_advanced.py
+      - examples/english.py
+      - examples/french.py
+      - examples/german.py
+      - examples/hindi.py
+      - examples/homographs.py
+      - examples/italian.py
+      - examples/japanese.py
+      - examples/korean.py
+      - examples/mixed_language.py
+      - examples/phoneme_dictionary.json
+      - examples/phoneme_dictionary_demo.py
+      - examples/podcast.py
+      - examples/portuguese.py
+      - examples/punctuation.py
+      - examples/spanish.py
+      - examples/voices.py
+      - tests/test_chapter_announcement.py
+      - tests/test_constants.py
+      - tests/test_epub_chapter_markers.py
+      - tests/test_onnx_backend.py
+      - tests/test_phoneme_conversion.py
+      - tests/test_phoneme_dictionary.py
+      - tests/test_phonemes.py
+      - tests/test_tokenizer.py
+      - ttsforge/cli.py
+      - ttsforge/constants.py
+      - ttsforge/conversion.py
+      - ttsforge/input_reader.py
+      - ttsforge/phoneme_conversion.py
+      - ttsforge/utils.py
+    stats:
+      files_changed: 0
+      insertions: 553
+      deletions: 2389
+    inspected: true
+    inspected_paths:
+      - examples/chinese.py
+    observed_behavior: Adapted to new pykokoro version
+    public_impact: public
+    decision: accepted
+    evidence_subject: "feat: adapt to new pykokoro version"
+  - sha: d351396a08b0090d174370d2cd32a8f7ec24a34b
+    source_ref: git:d351396a08b0090d174370d2cd32a8f7ec24a34b
+    short_sha: d351396
+    changed_paths:
+      - README.md
+      - docs/index.rst
+      - docs/quickstart.rst
+      - docs/ssmd.rst
+      - ttsforge/conversion.py
+      - ttsforge/input_reader.py
+      - ttsforge/ssmd_generator.py
+    stats:
+      files_changed: 0
+      insertions: 1023
+      deletions: 130
+    inspected: true
+    inspected_paths:
+      - README.md
+    observed_behavior: Added SSML/SSMD document generation support
+    public_impact: public
+    decision: accepted
+    evidence_subject: "feat: ssmd generation"
+  - sha: edc46f4ae6533ffd662fdba193a03c9c1061b819
+    source_ref: git:edc46f4ae6533ffd662fdba193a03c9c1061b819
+    short_sha: edc46f4
+    changed_paths:
+      - tests/test_onnx_backend.py
+      - ttsforge/cli.py
+      - ttsforge/conversion.py
+      - ttsforge/input_reader.py
+      - ttsforge/phoneme_conversion.py
+      - ttsforge/ssmd_generator.py
+    stats:
+      files_changed: 0
+      insertions: 166
+      deletions: 43
+    inspected: true
+    inspected_paths:
+      - tests/test_onnx_backend.py
+    observed_behavior: Generate SSMD-only mode
+    public_impact: public
+    decision: accepted
+    evidence_subject: "feat: generate ssmd only"
+  - sha: 81c10c21ccdbeafa8274866476c4e6d2a1e5105f
+    source_ref: git:81c10c21ccdbeafa8274866476c4e6d2a1e5105f
+    short_sha: 81c10c2
+    changed_paths:
+      - ttsforge/__init__.py
+      - ttsforge/constants.py
+    stats:
+      files_changed: 0
+      insertions: 27
+      deletions: 3
+    inspected: true
+    inspected_paths:
+      - ttsforge/__init__.py
+    observed_behavior: Minor fixes
+    public_impact: internal
+    decision: internal
+    evidence_subject: "feat: some fixes"
+  - sha: 697aaa580c1581a6bff46ff466b18919ffcda51f
+    source_ref: git:697aaa580c1581a6bff46ff466b18919ffcda51f
+    short_sha: 697aaa5
+    changed_paths:
+      - pyproject.toml
+      - ttsforge/cli.py
+      - ttsforge/cli/__init__.py
+      - ttsforge/cli/commands_conversion.py
+      - ttsforge/cli/commands_phonemes.py
+      - ttsforge/cli/commands_utility.py
+      - ttsforge/cli/helpers.py
+      - ttsforge/conversion.py
+      - ttsforge/input_reader.py
+      - ttsforge/ssmd_generator.py
+    stats:
+      files_changed: 0
+      insertions: 4333
+      deletions: 4149
+    inspected: true
+    inspected_paths:
+      - pyproject.toml
+    observed_behavior: CLI refactoring into modular command structure
+    public_impact: internal
+    decision: internal
+    evidence_subject: "refactor: refactor huge cli file"
+  - sha: 4ac3c51c4b7ac179c0e404fd95aebb7ca2e40841
+    source_ref: git:4ac3c51c4b7ac179c0e404fd95aebb7ca2e40841
+    short_sha: 4ac3c51
+    changed_paths:
+      - pyproject.toml
+      - tests/test_chapter_announcement.py
+      - tests/test_epub_chapter_markers.py
+      - tests/test_onnx_backend.py
+      - tests/test_phoneme_conversion.py
+      - tests/test_phoneme_dictionary.py
+      - tests/test_phonemes.py
+      - tests/test_tokenizer.py
+      - ttsforge/__init__.py
+      - ttsforge/cli/commands_conversion.py
+      - ttsforge/cli/commands_phonemes.py
+      - ttsforge/cli/commands_utility.py
+      - ttsforge/constants.py
+      - ttsforge/conversion.py
+      - ttsforge/phoneme_conversion.py
+      - ttsforge/phonemes.py
+      - ttsforge/utils.py
+    stats:
+      files_changed: 0
+      insertions: 468
+      deletions: 334
+    inspected: true
+    inspected_paths:
+      - pyproject.toml
+    observed_behavior: Pipeline rewrite for pykokoro
+    public_impact: internal
+    decision: internal
+    evidence_subject: "feat: rewrite for pipelines from pykokoro"
+  - sha: 26984a7d84793dcdae08c876f5cd7c2e42c9a29c
+    source_ref: git:26984a7d84793dcdae08c876f5cd7c2e42c9a29c
+    short_sha: 26984a7
+    changed_paths:
+      - tests/test_cli.py
+      - tests/test_phoneme_dictionary.py
+      - tests/test_tokenizer.py
+      - ttsforge/__init__.py
+    stats:
+      files_changed: 0
+      insertions: 54
+      deletions: 81
+    inspected: true
+    inspected_paths:
+      - tests/test_cli.py
+    observed_behavior: Unit test improvements
+    public_impact: internal
+    decision: internal
+    evidence_subject: "test: test unit tests"
+  - sha: 61e1542516ae23b1c0411dd32494ed4e2725562b
+    source_ref: git:61e1542516ae23b1c0411dd32494ed4e2725562b
+    short_sha: 61e1542
+    changed_paths:
+      - tests/test_phoneme_dictionary.py
+      - tests/test_tokenizer.py
+      - ttsforge/cli/commands_conversion.py
+      - ttsforge/conversion.py
+    stats:
+      files_changed: 0
+      insertions: 12
+      deletions: 6
+    inspected: true
+    inspected_paths:
+      - tests/test_phoneme_dictionary.py
+    observed_behavior: Pre-commit hook fix
+    public_impact: internal
+    decision: internal
+    evidence_subject: "chore: fix pre-commit"
+  - sha: 6698a9dc3ab3c497194baffb83fd24563aa00a05
+    source_ref: git:6698a9dc3ab3c497194baffb83fd24563aa00a05
+    short_sha: 6698a9d
+    changed_paths:
+      - tests/test_utils.py
+      - ttsforge/cli/commands_conversion.py
+      - ttsforge/conversion.py
+      - ttsforge/ssmd_generator.py
+      - ttsforge/utils.py
+    stats:
+      files_changed: 0
+      insertions: 244
+      deletions: 70
+    inspected: true
+    inspected_paths:
+      - tests/test_utils.py
+    observed_behavior: Fixed various bugs in conversion pipeline
+    public_impact: public
+    decision: accepted
+    evidence_subject: "fix: some bug fixes"
+  - sha: 18929a3473cff8be5f19858304f1f10a9cc5da5c
+    source_ref: git:18929a3473cff8be5f19858304f1f10a9cc5da5c
+    short_sha: 18929a3
+    changed_paths:
+      - ttsforge/cli/commands_conversion.py
+      - ttsforge/conversion.py
+      - ttsforge/input_reader.py
+    stats:
+      files_changed: 0
+      insertions: 122
+      deletions: 633
+    inspected: true
+    inspected_paths:
+      - ttsforge/cli/commands_conversion.py
+    observed_behavior: Code refactoring
+    public_impact: internal
+    decision: internal
+    evidence_subject: "refactor: begin to refactor"
+  - sha: aa4b442be0e0fd57c00fe27ea129c824914b5e53
+    source_ref: git:aa4b442be0e0fd57c00fe27ea129c824914b5e53
+    short_sha: aa4b442
+    changed_paths:
+      - ttsforge/cli/commands_conversion.py
+    stats:
+      files_changed: 0
+      insertions: 15
+      deletions: 1
+    inspected: true
+    inspected_paths:
+      - ttsforge/cli/commands_conversion.py
+    observed_behavior: Fixed generation config
+    public_impact: public
+    decision: accepted
+    evidence_subject: "fix: generation config"
+  - sha: fdf1b602b62f065388b61e8b6b07e68174d9ab45
+    source_ref: git:fdf1b602b62f065388b61e8b6b07e68174d9ab45
+    short_sha: fdf1b60
+    changed_paths:
+      - ttsforge/cli/commands_conversion.py
+      - ttsforge/conversion.py
+      - ttsforge/input_reader.py
+    stats:
+      files_changed: 0
+      insertions: 56
+      deletions: 6
+    inspected: true
+    inspected_paths:
+      - ttsforge/cli/commands_conversion.py
+    observed_behavior: Fixed input reader issues
+    public_impact: public
+    decision: accepted
+    evidence_subject: "fix: input reader"
+  - sha: 667860e5ac8033fb4afea438c3a6abafc8327b71
+    source_ref: git:667860e5ac8033fb4afea438c3a6abafc8327b71
+    short_sha: 667860e
+    changed_paths:
+      - ttsforge/ssmd_generator.py
+    stats:
+      files_changed: 0
+      insertions: 39
+      deletions: 0
+    inspected: true
+    inspected_paths:
+      - ttsforge/ssmd_generator.py
+    observed_behavior: Fixed title stripping in SSMD
+    public_impact: public
+    decision: accepted
+    evidence_subject: "fix: strip title"
+  - sha: d217c25c2a9b9f5e748d80f27ce13dc4fcb7e40d
+    source_ref: git:d217c25c2a9b9f5e748d80f27ce13dc4fcb7e40d
+    short_sha: d217c25
+    changed_paths:
+      - ttsforge/phoneme_conversion.py
+    stats:
+      files_changed: 0
+      insertions: 23
+      deletions: 51
+    inspected: true
+    inspected_paths:
+      - ttsforge/phoneme_conversion.py
+    observed_behavior: Fixed phoneme creation
+    public_impact: public
+    decision: accepted
+    evidence_subject: "fix: phoneme creation"
+  - sha: 87812a2bbcc70faec36eb46f3fb7fbe2830500a6
+    source_ref: git:87812a2bbcc70faec36eb46f3fb7fbe2830500a6
+    short_sha: 87812a2
+    changed_paths:
+      - .codecrate.toml
+      - .gitignore
+    stats:
+      files_changed: 0
+      insertions: 13
+      deletions: 0
+    inspected: true
+    inspected_paths:
+      - .codecrate.toml
+    observed_behavior: Updated gitignore
+    public_impact: internal
+    decision: internal
+    evidence_subject: "chore: update gitignore"
+  - sha: 85927844fecf904d9d19e6dbac431e6a445ce68c
+    source_ref: git:85927844fecf904d9d19e6dbac431e6a445ce68c
+    short_sha: "8592784"
+    changed_paths:
+      - scripts/export.py
+      - scripts/fetch_voices.py
+      - tests/test_phoneme_conversion.py
+      - tests/test_phonemes.py
+      - ttsforge/__init__.py
+      - ttsforge/constants.py
+      - ttsforge/conversion.py
+      - ttsforge/name_extractor.py
+      - ttsforge/ssmd_generator.py
+    stats:
+      files_changed: 0
+      insertions: 15
+      deletions: 373
+    inspected: true
+    inspected_paths:
+      - scripts/export.py
+    observed_behavior: Removed compiler warnings
+    public_impact: internal
+    decision: internal
+    evidence_subject: "fix: some warnings removed"
+  - sha: 8417a383d128bd7e2cf17894048075b816dbeb0b
+    source_ref: git:8417a383d128bd7e2cf17894048075b816dbeb0b
+    short_sha: 8417a38
+    changed_paths:
+      - .codecrate.toml
+      - pyproject.toml
+      - tests/test_chapter_announcement.py
+      - tests/test_phoneme_conversion.py
+      - tests/test_phoneme_dictionary.py
+      - tests/test_tokenizer.py
+      - ttsforge/__init__.py
+      - ttsforge/audio_merge.py
+      - ttsforge/chapter_selection.py
+      - ttsforge/cli/commands_phonemes.py
+      - ttsforge/constants.py
+      - ttsforge/conversion.py
+      - ttsforge/input_reader.py
+      - ttsforge/kokoro_lang.py
+      - ttsforge/kokoro_runner.py
+      - ttsforge/phoneme_conversion.py
+      - ttsforge/ssmd_generator.py
+    stats:
+      files_changed: 0
+      insertions: 602
+      deletions: 849
+    inspected: true
+    inspected_paths:
+      - .codecrate.toml
+    observed_behavior: Refactored pause mode and improved audio merge
+    public_impact: public
+    decision: accepted
+    evidence_subject: "feat: refactoring and support pause_mode"
+  - sha: 16114faf0df9832b7ffa33e88faf8faed799940b
+    source_ref: git:16114faf0df9832b7ffa33e88faf8faed799940b
+    short_sha: 16114fa
+    changed_paths:
+      - docs/api/index.rst
+      - docs/ssmd.rst
+      - ttsforge/cli/commands_conversion.py
+      - ttsforge/cli/commands_phonemes.py
+    stats:
+      files_changed: 0
+      insertions: 97
+      deletions: 36
+    inspected: true
+    inspected_paths:
+      - docs/api/index.rst
+    observed_behavior: Updated API documentation
+    public_impact: docs
+    decision: accepted
+    evidence_subject: "doc: update doc"
+  - sha: bb9a74848d96ee32eeb5c03e779d2af556b92468
+    source_ref: git:bb9a74848d96ee32eeb5c03e779d2af556b92468
+    short_sha: bb9a748
+    changed_paths:
+      - .github/pytest.ini
+      - .github/workflows/codecov.yml
+      - .github/workflows/pre-commit.yml
+      - .github/workflows/python-publish.yml
+      - .github/workflows/tests.yml
+      - pyproject.toml
+    stats:
+      files_changed: 0
+      insertions: 124
+      deletions: 1
+    inspected: true
+    inspected_paths:
+      - .github/pytest.ini
+    observed_behavior: Added GitHub Actions CI workflow
+    public_impact: internal
+    decision: internal
+    evidence_subject: "chore: add github workflow"
+  - sha: 03e5fa247a2889812c11b1a058c6fe0382137b5a
+    source_ref: git:03e5fa247a2889812c11b1a058c6fe0382137b5a
+    short_sha: 03e5fa2
+    changed_paths:
+      - .gitignore
+      - .ruff.toml
+      - docs/api/index.rst
+      - pyproject.toml
+      - requirements-test.txt
+      - tests/test_name_extractor.py
+      - tests/test_utils.py
+      - ttsforge/audio_merge.py
+      - ttsforge/audio_player.py
+      - ttsforge/chapter_selection.py
+      - ttsforge/cli/__init__.py
+      - ttsforge/cli/commands_conversion.py
+      - ttsforge/cli/commands_phonemes.py
+      - ttsforge/cli/commands_utility.py
+      - ttsforge/conversion.py
+      - ttsforge/input_reader.py
+      - ttsforge/name_extractor.py
+      - ttsforge/phoneme_conversion.py
+      - ttsforge/phonemes.py
+      - ttsforge/ssmd_generator.py
+      - ttsforge/utils.py
+    stats:
+      files_changed: 0
+      insertions: 701
+      deletions: 1164
+    inspected: true
+    inspected_paths:
+      - .gitignore
+    observed_behavior: General refactoring and bug fixes
+    public_impact: public
+    decision: accepted
+    evidence_subject: "feat: refactoring and bug fixes"
+  - sha: 8f4a9f6eeea433e5a550300309a23d671d36d2da
+    source_ref: git:8f4a9f6eeea433e5a550300309a23d671d36d2da
+    short_sha: 8f4a9f6
+    changed_paths:
+      - .gitignore
+      - .readthedocs.yaml
+      - ttsforge/audio_merge.py
+      - ttsforge/audio_player.py
+      - ttsforge/chapter_selection.py
+      - ttsforge/cli/commands_conversion.py
+      - ttsforge/cli/commands_phonemes.py
+      - ttsforge/cli/commands_utility.py
+      - ttsforge/constants.py
+      - ttsforge/conversion.py
+      - ttsforge/input_reader.py
+      - ttsforge/kokoro_lang.py
+      - ttsforge/kokoro_runner.py
+      - ttsforge/name_extractor.py
+      - ttsforge/phoneme_conversion.py
+      - ttsforge/ssmd_generator.py
+    stats:
+      files_changed: 0
+      insertions: 414
+      deletions: 193
+    inspected: true
+    inspected_paths:
+      - .gitignore
+    observed_behavior: Fixed mypy and improved model download
+    public_impact: internal
+    decision: internal
+    evidence_subject: "chore: fix mypy, improve model download"
+  - sha: a7398fc51ff354096e534b336eae5d9df0e9e893
+    source_ref: git:a7398fc51ff354096e534b336eae5d9df0e9e893
+    short_sha: a7398fc
+    changed_paths:
+      - ttsforge/audio_player.py
+      - ttsforge/cli/commands_conversion.py
+      - ttsforge/cli/commands_phonemes.py
+      - ttsforge/cli/commands_utility.py
+    stats:
+      files_changed: 0
+      insertions: 50
+      deletions: 46
+    inspected: true
+    inspected_paths:
+      - ttsforge/audio_player.py
+    observed_behavior: Fixed mypy type checking
+    public_impact: internal
+    decision: internal
+    evidence_subject: "chore: fix mypy"
+  - sha: 4b7add45ca6d592fbc3850965517902b73509dbb
+    source_ref: git:4b7add45ca6d592fbc3850965517902b73509dbb
+    short_sha: 4b7add4
+    changed_paths:
+      - docs/installation.rst
+      - pyproject.toml
+      - ttsforge/audio_merge.py
+      - ttsforge/phoneme_conversion.py
+      - ttsforge/utils.py
+    stats:
+      files_changed: 0
+      insertions: 72
+      deletions: 12
+    inspected: true
+    inspected_paths:
+      - docs/installation.rst
+    observed_behavior: Removed static-ffmpeg as required dependency
+    public_impact: public
+    decision: accepted
+    evidence_subject: "feat: remove static-ffmpeg as dep"
+  - sha: 3bfeac67b55dd18acd1fea2dd64fc9797926d434
+    source_ref: git:3bfeac67b55dd18acd1fea2dd64fc9797926d434
+    short_sha: 3bfeac6
+    changed_paths:
+      - .codecrate.toml
+      - README.md
+      - ttsforge/conversion.py
+      - ttsforge/phoneme_conversion.py
+    stats:
+      files_changed: 0
+      insertions: 30
+      deletions: 17
+    inspected: true
+    inspected_paths:
+      - .codecrate.toml
+    observed_behavior: Fixed unit tests
+    public_impact: internal
+    decision: internal
+    evidence_subject: "fix: unit test"
+  - sha: ff356a924cdb621f1190aa225c59cf02beb09276
+    source_ref: git:ff356a924cdb621f1190aa225c59cf02beb09276
+    short_sha: ff356a9
+    changed_paths:
+      - .github/workflows/tests.yml
+    stats:
+      files_changed: 0
+      insertions: 3
+      deletions: 3
+    inspected: true
+    inspected_paths:
+      - .github/workflows/tests.yml
+    observed_behavior: Added ffmpeg to CI
+    public_impact: internal
+    decision: internal
+    evidence_subject: "chore: install ffmpeg"
+  - sha: 45c92b3596083dc7154c23040d13af1d4912ede2
+    source_ref: git:45c92b3596083dc7154c23040d13af1d4912ede2
+    short_sha: 45c92b3
+    changed_paths:
+      - pyproject.toml
+      - ttsforge/audio_player.py
+      - ttsforge/cli/commands_phonemes.py
+      - ttsforge/cli/commands_utility.py
+    stats:
+      files_changed: 0
+      insertions: 59
+      deletions: 9
+    inspected: true
+    inspected_paths:
+      - pyproject.toml
+    observed_behavior: Made sounddevice an optional dependency
+    public_impact: public
+    decision: accepted
+    evidence_subject: "feat: sounddevice is optional"
+  - sha: 15ec92b2f114540c53902b8b04fb2688e4e3718d
+    source_ref: git:15ec92b2f114540c53902b8b04fb2688e4e3718d
+    short_sha: 15ec92b
+    changed_paths:
+      - ttsforge/phoneme_conversion.py
+    stats:
+      files_changed: 0
+      insertions: 1
+      deletions: 1
+    inspected: true
+    inspected_paths:
+      - ttsforge/phoneme_conversion.py
+    observed_behavior: Fixed soundfile to only handle WAV files
+    public_impact: public
+    decision: accepted
+    evidence_subject: "fix: soundfile is doing only wav files"
+  - sha: ac9dbcdb5cfe5a56632fed64d0bcdf6537810082
+    source_ref: git:ac9dbcdb5cfe5a56632fed64d0bcdf6537810082
+    short_sha: ac9dbcd
+    changed_paths:
+      - README.md
+      - docs/cli.rst
+      - docs/configuration.rst
+      - docs/index.rst
+      - docs/installation.rst
+      - docs/quickstart.rst
+      - tests/test_conversion.py
+      - tests/test_phonemes.py
+    stats:
+      files_changed: 0
+      insertions: 442
+      deletions: 95
+    inspected: true
+    inspected_paths:
+      - README.md
+    observed_behavior: Updated documentation and fixed Windows unit tests
+    public_impact: docs
+    decision: accepted
+    evidence_subject: "doc: update documentation and fix windows unit test"

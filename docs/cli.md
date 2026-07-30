@@ -2,11 +2,9 @@
 
 Complete command-line interface reference for ttsforge.
 
-The command tree is declared with explicit typed Typer wrappers. CLI startup,
-help, and version output remain independent of the ONNX provider. The legacy
-`--set KEY VALUE` configuration grammar accepts repeated pairs, including
-values that begin with `-`.
-
+The command tree is declared with explicit typed Typer wrappers. CLI startup, help, and
+version output remain independent of the ONNX provider. The legacy `--set KEY VALUE`
+configuration grammar accepts repeated pairs, including values that begin with `-`.
 
 ## Global Options
 
@@ -14,7 +12,6 @@ values that begin with `-`.
 ttsforge --version    # Show version and exit
 ttsforge --help       # Show help message
 ```
-
 
 ## convert
 
@@ -26,126 +23,102 @@ ttsforge convert EPUB_FILE [OPTIONS]
 
 ### Arguments
 
-`EPUB_FILE`
-: Path to the EPUB file to convert (required).
+`EPUB_FILE` : Path to the EPUB file to convert (required).
 
 ### Options
 
-`-o, --output PATH`
-: Output file path. Defaults to input filename with new extension in the same directory.
+`-o, --output PATH` : Output file path. Defaults to input filename with new extension in
+the same directory.
 
-`-f, --format FORMAT`
-: Output audio format. Choices: `wav`, `mp3`, `flac`, `opus`, `m4b`.
-  Default: `m4b`.
+`-f, --format FORMAT` : Output audio format. Choices: `wav`, `mp3`, `flac`, `opus`,
+`m4b`. Default: `m4b`.
 
-`-v, --voice VOICE`
-: Voice to use for TTS. Can be a single voice name or a voice blend.
+`-v, --voice VOICE` : Voice to use for TTS. Can be a single voice name or a voice blend.
 
-  - Single voice: `af_heart`, `am_adam`, etc.
-  - Voice blend: `af_nicole:50,am_michael:50` (auto-detects blend format)
+- Single voice: `af_heart`, `am_adam`, etc.
+- Voice blend: `af_nicole:50,am_michael:50` (auto-detects blend format)
 
-  See {doc}`voices` for available voices.
-  Default: `af_heart`.
+See {doc}`voices` for available voices. Default: `af_heart`.
 
-`-l, --language LANG`
-: Language code for TTS. Choices: `a` (American English), `b` (British English),
-  `e` (Spanish), `f` (French), `h` (Hindi), `i` (Italian), `j` (Japanese),
-  `p` (Brazilian Portuguese), `z` (Mandarin Chinese).
-  Default: auto-detected from EPUB metadata.
+`-l, --language LANG` : Language code for TTS. Choices: `a` (American English), `b`
+(British English), `e` (Spanish), `f` (French), `h` (Hindi), `i` (Italian), `j`
+(Japanese), `p` (Brazilian Portuguese), `z` (Mandarin Chinese). Default: auto-detected
+from EPUB metadata.
 
-`--lang LANG`
-: Override language for phonemization (e.g., `de`, `fr`, `en-us`).
-  By default, language is determined from the voice.
+`--lang LANG` : Override language for phonemization (e.g., `de`, `fr`, `en-us`). By
+default, language is determined from the voice.
 
-`-s, --speed FLOAT`
-: Speech speed multiplier (0.5 to 2.0). Default: `1.0`.
+`-s, --speed FLOAT` : Speech speed multiplier (0.5 to 2.0). Default: `1.0`.
 
-`--gpu / --no-gpu`
-: Compatibility shortcut: `--gpu` maps to provider `auto` and `--no-gpu`
-  maps to provider `cpu`.
+`--gpu / --no-gpu` : Compatibility shortcut: `--gpu` maps to provider `auto` and
+`--no-gpu` maps to provider `cpu`.
 
-`--provider PROVIDER`
-: ONNX Runtime execution provider or alias (`auto`, `cpu`, `nnapi`,
-  `xnnpack`, or a full `*ExecutionProvider` name). Available on
-  `convert`, `sample`, `read`, `demo`, and `phonemes convert`.
+`--provider PROVIDER` : ONNX Runtime execution provider or alias (`auto`, `cpu`,
+`nnapi`, `xnnpack`, or a full `*ExecutionProvider` name). Available on `convert`,
+`sample`, `read`, `demo`, and `phonemes convert`.
 
-`--chapters SELECTION`
-: Chapters to convert. Examples: `1-5`, `1,3,5`, `1-3,5,7-10`, `all`.
-  Default: all chapters (interactive selection if not specified).
+`--chapters SELECTION` : Chapters to convert. Examples: `1-5`, `1,3,5`, `1-3,5,7-10`,
+`all`. Default: all chapters (interactive selection if not specified).
 
-`--silence FLOAT`
-: Silence duration between chapters in seconds. Default: `2.0`.
+`--silence FLOAT` : Silence duration between chapters in seconds. Default: `2.0`.
 
-`--pause-clause FLOAT`
-: Pause after clauses in seconds. Default: `0.5`.
+`--pause-clause FLOAT` : Pause after clauses in seconds. Default: `0.5`.
 
-`--pause-sentence FLOAT`
-: Pause after sentences in seconds. Default: `0.7`.
+`--pause-sentence FLOAT` : Pause after sentences in seconds. Default: `0.7`.
 
-`--pause-paragraph FLOAT`
-: Pause after paragraphs in seconds. Default: `0.9`.
+`--pause-paragraph FLOAT` : Pause after paragraphs in seconds. Default: `0.9`.
 
-`--pause-variance FLOAT`
-: Random variance added to pauses in seconds. Default: `0.05`.
+`--pause-variance FLOAT` : Random variance added to pauses in seconds. Default: `0.05`.
 
-`--pause-mode MODE`
-: Pause mode: `tts`, `manual`, or `auto`. Default: `auto`.
+`--pause-mode MODE` : Pause mode: `tts`, `manual`, or `auto`. Default: `auto`.
 
-`--disable-short-sentence`
-: Disable special handling for short sentences.
+`--disable-short-sentence` : Disable special handling for short sentences.
 
-`--short-sentence TEXT`
-: Short-sentence handling config. Example:
-  `mode=randomized,threshold=30,selection=auto,max-tries=3`.
-  Can also reference a JSON config with `config=path/to/short_sentence.json`. See `ttsforge config short-sentence init`.
+`--short-sentence TEXT` : Short-sentence handling config. Example:
+`mode=randomized,threshold=30,selection=auto,max-tries=3`. Can also reference a JSON
+config with `config=path/to/short_sentence.json`. See
+`ttsforge config short-sentence init`.
 
-`--announce-chapters / --no-announce-chapters`
-: Read chapter titles aloud before chapter content. Default: enabled.
+`--announce-chapters / --no-announce-chapters` : Read chapter titles aloud before
+chapter content. Default: enabled.
 
-`--chapter-pause FLOAT`
-: Pause after chapter title announcement in seconds. Default: `2.0`.
+`--chapter-pause FLOAT` : Pause after chapter title announcement in seconds. Default:
+`2.0`.
 
-`--title TEXT`
-: Title metadata for the audiobook. Defaults to EPUB title.
+`--title TEXT` : Title metadata for the audiobook. Defaults to EPUB title.
 
-`--author TEXT`
-: Author metadata for the audiobook. Defaults to EPUB author.
+`--author TEXT` : Author metadata for the audiobook. Defaults to EPUB author.
 
-`--cover PATH`
-: Cover image for M4B format.
+`--cover PATH` : Cover image for M4B format.
 
 ### SSMD 0.8 options
 
-`--ssmd-header / --no-ssmd-header`
-: Parse or preserve an exact leading front-matter block.
+`--ssmd-header / --no-ssmd-header` : Parse or preserve an exact leading front-matter
+block.
 
-`--ssmd-unknown-header POLICY`
-: `warn`, `error`, or `ignore` unknown header keys.
+`--ssmd-unknown-header POLICY` : `warn`, `error`, or `ignore` unknown header keys.
 
-`--ssmd-missing-voice POLICY`
-: `error` or `use-default` for unresolved logical roles.
+`--ssmd-missing-voice POLICY` : `error` or `use-default` for unresolved logical roles.
 
-`--ssmd-emphasis MODE`
-: `plain`, `approximate`, `warn`, or `error`. The default is the
-  persisted `ssmd_emphasis_mode` value, normally `plain`. Plain speaks
-  emphasis unchanged; approximate applies segment-level volume/rate changes.
+`--ssmd-emphasis MODE` : `plain`, `approximate`, `warn`, or `error`. The default is the
+persisted `ssmd_emphasis_mode` value, normally `plain`. Plain speaks emphasis unchanged;
+approximate applies segment-level volume/rate changes.
 
-`--enable-ssmd-emphasis`
-: Convenience opt-in equivalent to `--ssmd-emphasis approximate`. It applies
-  segment-level volume/rate changes to existing SSMD emphasis. Use
-  `--detect-emphasis` separately when EPUB italic/bold styling should first
-  be extracted into SSMD annotations. This flag cannot be combined with
-  `--ssmd-emphasis`.
+`--enable-ssmd-emphasis` : Convenience opt-in equivalent to
+`--ssmd-emphasis approximate`. It applies segment-level volume/rate changes to existing
+SSMD emphasis. Use `--detect-emphasis` separately when EPUB italic/bold styling should
+first be extracted into SSMD annotations. This flag cannot be combined with
+`--ssmd-emphasis`.
 
-`--ssmd-voice ROLE=VOICE`
-: Repeatable explicit Kokoro binding override.
+`--ssmd-voice ROLE=VOICE` : Repeatable explicit Kokoro binding override.
 
-`--ssmd-pause-defaults / --no-ssmd-pause-defaults` and `--pause-voice-change FLOAT`
-: Explicit pause-default enablement and voice-change timing. Explicit pause
-  values override document defaults; persistent config values do not.
+`--ssmd-pause-defaults / --no-ssmd-pause-defaults` and `--pause-voice-change FLOAT` :
+Explicit pause-default enablement and voice-change timing. Explicit pause values
+override document defaults; persistent config values do not.
 
-`--ssmd-audio-root PATH`, `--ssmd-remote-audio`, `--ssmd-audio-max-bytes INTEGER`, `--ssmd-audio-max-duration FLOAT`
-: Secure bounded audio source policy. Remote sources require explicit opt-in.
+`--ssmd-audio-root PATH`, `--ssmd-remote-audio`, `--ssmd-audio-max-bytes INTEGER`,
+`--ssmd-audio-max-duration FLOAT` : Secure bounded audio source policy. Remote sources
+require explicit opt-in.
 
 ### SSMD inspection
 
@@ -157,61 +130,51 @@ ttsforge ssmd validate FILE --strict
 ttsforge ssmd inspect FILE --json
 ```
 
-`-y, --yes`
-: Skip confirmation prompts.
+`-y, --yes` : Skip confirmation prompts.
 
-`--verbose`
-: Show detailed output during conversion.
+`--verbose` : Show detailed output during conversion.
 
-`--split-mode MODE`
-: Text splitting mode. Choices: `auto`, `line`, `paragraph`, `sentence`, `clause`.
-  Default: `auto`.
+`--split-mode MODE` : Text splitting mode. Choices: `auto`, `line`, `paragraph`,
+`sentence`, `clause`. Default: `auto`.
 
-`--resume / --no-resume`
-: Enable or disable resume capability. Default: enabled.
+`--resume / --no-resume` : Enable or disable resume capability. Default: enabled.
 
-`--fresh`
-: Discard any previous progress and start conversion from scratch.
+`--fresh` : Discard any previous progress and start conversion from scratch.
 
-`--generate-ssmd`
-: Generate only SSMD files without creating audio (for manual editing).
+`--generate-ssmd` : Generate only SSMD files without creating audio (for manual
+editing).
 
-`--detect-emphasis / --no-detect-emphasis`
-: Detect emphasis (italic/bold) from EPUB HTML. Default: disabled.
+`--detect-emphasis / --no-detect-emphasis` : Detect emphasis (italic/bold) from EPUB
+HTML. Default: disabled.
 
-`--keep-chapters`
-: Keep individual chapter audio files after conversion.
+`--keep-chapters` : Keep individual chapter audio files after conversion.
 
-`--voice-blend SPEC`
-: Blend multiple voices (traditional method). Format: `voice1:weight1,voice2:weight2`.
-  Example: `af_nicole:50,am_michael:50`.
+`--voice-blend SPEC` : Blend multiple voices (traditional method). Format:
+`voice1:weight1,voice2:weight2`. Example: `af_nicole:50,am_michael:50`.
 
-  **Note:** You can also specify blends directly in the `--voice` parameter,
-  which will auto-detect the blend format. Both methods work identically.
+**Note:** You can also specify blends directly in the `--voice` parameter, which will
+auto-detect the blend format. Both methods work identically.
 
-`--voice-db PATH`
-: Path to custom voice database (SQLite).
+`--voice-db PATH` : Path to custom voice database (SQLite).
 
-`--phoneme-dict PATH`
-: Path to custom phoneme dictionary JSON file for pronunciation overrides.
+`--phoneme-dict PATH` : Path to custom phoneme dictionary JSON file for pronunciation
+overrides.
 
-`--phoneme-dict-case-sensitive`
-: Make phoneme dictionary matching case-sensitive (default: case-insensitive).
+`--phoneme-dict-case-sensitive` : Make phoneme dictionary matching case-sensitive
+(default: case-insensitive).
 
-`--use-mixed-language`
-: Enable mixed-language support (auto-detect multiple languages in text).
+`--use-mixed-language` : Enable mixed-language support (auto-detect multiple languages
+in text).
 
-`--mixed-language-primary LANG`
-: Primary language for mixed-language mode (e.g., `de`, `en-us`).
-  This language is used as the fallback when detection is uncertain.
+`--mixed-language-primary LANG` : Primary language for mixed-language mode (e.g., `de`,
+`en-us`). This language is used as the fallback when detection is uncertain.
 
-`--mixed-language-allowed LANGS`
-: Comma-separated list of allowed languages for detection (e.g., `de,en-us`).
-  Required when `--use-mixed-language` is enabled.
+`--mixed-language-allowed LANGS` : Comma-separated list of allowed languages for
+detection (e.g., `de,en-us`). Required when `--use-mixed-language` is enabled.
 
-`--mixed-language-confidence FLOAT`
-: Detection confidence threshold for mixed-language mode (0.0-1.0).
-  Default: `0.7`. Higher values require more confidence for language switches.
+`--mixed-language-confidence FLOAT` : Detection confidence threshold for mixed-language
+mode (0.0-1.0). Default: `0.7`. Higher values require more confidence for language
+switches.
 
 ### Examples
 
@@ -249,7 +212,6 @@ ttsforge convert book.epub \
     --mixed-language-allowed de,en-us
 ```
 
-
 ## list
 
 List chapters in an EPUB file.
@@ -260,8 +222,7 @@ ttsforge list EPUB_FILE
 
 ### Arguments
 
-`EPUB_FILE`
-: Path to the EPUB file (required).
+`EPUB_FILE` : Path to the EPUB file (required).
 
 ### Example
 
@@ -270,7 +231,6 @@ ttsforge list book.epub
 ```
 
 Output shows chapter numbers, titles, and character counts.
-
 
 ## info
 
@@ -282,8 +242,7 @@ ttsforge info EPUB_FILE
 
 ### Arguments
 
-`EPUB_FILE`
-: Path to the EPUB file (required).
+`EPUB_FILE` : Path to the EPUB file (required).
 
 ### Example
 
@@ -292,7 +251,6 @@ ttsforge info book.epub
 ```
 
 Shows title, author, language, publisher, year, chapter count, and file size.
-
 
 ## sample
 
@@ -304,66 +262,54 @@ ttsforge sample [TEXT] [OPTIONS]
 
 ### Arguments
 
-`TEXT`
-: Text to convert. If not provided, uses default sample text.
+`TEXT` : Text to convert. If not provided, uses default sample text.
 
 ### Options
 
-`-o, --output PATH`
-: Output file path. Default: `./sample.wav`.
+`-o, --output PATH` : Output file path. Default: `./sample.wav`.
 
-`-f, --format FORMAT`
-: Output audio format. Default: `wav`.
+`-f, --format FORMAT` : Output audio format. Default: `wav`.
 
-`-v, --voice VOICE`
-: TTS voice to use. Can be a single voice or voice blend.
+`-v, --voice VOICE` : TTS voice to use. Can be a single voice or voice blend.
 
-  - Single voice: `af_heart`
-  - Voice blend: `af_nicole:50,am_michael:50` (auto-detects blend format)
+- Single voice: `af_heart`
+- Voice blend: `af_nicole:50,am_michael:50` (auto-detects blend format)
 
-`-l, --language LANG`
-: Language for TTS.
+`-l, --language LANG` : Language for TTS.
 
-`--lang LANG`
-: Override language for phonemization (e.g., `de`, `fr`, `en-us`).
+`--lang LANG` : Override language for phonemization (e.g., `de`, `fr`, `en-us`).
 
-`-s, --speed FLOAT`
-: Speech speed. Default: `1.0`.
+`-s, --speed FLOAT` : Speech speed. Default: `1.0`.
 
-`--gpu / --no-gpu`
-: Compatibility shortcut mapping to `auto` or `cpu`.
+`--gpu / --no-gpu` : Compatibility shortcut mapping to `auto` or `cpu`.
 
-`--provider PROVIDER`
-: ONNX Runtime execution provider or alias.
+`--provider PROVIDER` : ONNX Runtime execution provider or alias.
 
-`--split-mode MODE`
-: Text splitting mode.
+`--split-mode MODE` : Text splitting mode.
 
-`--verbose`
-: Show detailed output.
+`--verbose` : Show detailed output.
 
-`-p, --play`
-: Play audio directly (also saves to file if `-o` specified).
+`-p, --play` : Play audio directly (also saves to file if `-o` specified).
 
-  **Note:** Playback requires the optional `ttsforge[audio]` extra.
+**Note:** Playback requires the optional `ttsforge[audio]` extra.
 
-`--use-mixed-language`
-: Enable mixed-language support (auto-detect multiple languages in text).
+`--use-mixed-language` : Enable mixed-language support (auto-detect multiple languages
+in text).
 
-`--mixed-language-primary LANG`
-: Primary language for mixed-language mode (e.g., `de`, `en-us`).
+`--mixed-language-primary LANG` : Primary language for mixed-language mode (e.g., `de`,
+`en-us`).
 
-`--mixed-language-allowed LANGS`
-: Comma-separated list of allowed languages (e.g., `de,en-us`).
+`--mixed-language-allowed LANGS` : Comma-separated list of allowed languages (e.g.,
+`de,en-us`).
 
-`--mixed-language-confidence FLOAT`
-: Detection confidence threshold (0.0-1.0). Default: `0.7`.
+`--mixed-language-confidence FLOAT` : Detection confidence threshold (0.0-1.0). Default:
+`0.7`.
 
-`--phoneme-dict PATH`
-: Path to custom phoneme dictionary JSON file for pronunciation overrides.
+`--phoneme-dict PATH` : Path to custom phoneme dictionary JSON file for pronunciation
+overrides.
 
-`--phoneme-dict-case-sensitive`
-: Make phoneme dictionary matching case-sensitive (default: case-insensitive).
+`--phoneme-dict-case-sensitive` : Make phoneme dictionary matching case-sensitive
+(default: case-insensitive).
 
 ### Examples
 
@@ -385,7 +331,6 @@ ttsforge sample \
    --mixed-language-allowed de,en-us
 ```
 
-
 ## read
 
 Stream playback from an EPUB or text file (no output files).
@@ -396,75 +341,55 @@ ttsforge read [INPUT_FILE] [OPTIONS]
 
 ### Arguments
 
-`INPUT_FILE`
-: Path to EPUB/TXT file, or `-` to read from stdin. If omitted, reads stdin.
+`INPUT_FILE` : Path to EPUB/TXT file, or `-` to read from stdin. If omitted, reads
+stdin.
 
 ### Options
 
-`-v, --voice VOICE`
-: TTS voice to use.
+`-v, --voice VOICE` : TTS voice to use.
 
-`-l, --language LANG`
-: Language for TTS.
+`-l, --language LANG` : Language for TTS.
 
-`-s, --speed FLOAT`
-: Speech speed. Default: `1.0`.
+`-s, --speed FLOAT` : Speech speed. Default: `1.0`.
 
-`--gpu / --no-gpu`
-: Compatibility shortcut mapping to `auto` or `cpu`.
+`--gpu / --no-gpu` : Compatibility shortcut mapping to `auto` or `cpu`.
 
-`--provider PROVIDER`
-: ONNX Runtime execution provider or alias.
+`--provider PROVIDER` : ONNX Runtime execution provider or alias.
 
-`--mode MODE`
-: Content mode: `chapters` or `pages`.
+`--mode MODE` : Content mode: `chapters` or `pages`.
 
-`-c, --chapters SELECTION`
-: Chapter selection for `chapters` mode.
+`-c, --chapters SELECTION` : Chapter selection for `chapters` mode.
 
-`-p, --pages SELECTION`
-: Page selection for `pages` mode.
+`-p, --pages SELECTION` : Page selection for `pages` mode.
 
-`--start-chapter INT`
-: Start from specific chapter number (1-indexed).
+`--start-chapter INT` : Start from specific chapter number (1-indexed).
 
-`--start-page INT`
-: Start from specific page number (1-indexed).
+`--start-page INT` : Start from specific page number (1-indexed).
 
-`--page-size INT`
-: Synthetic page size in characters (default: 2000).
+`--page-size INT` : Synthetic page size in characters (default: 2000).
 
-`--resume`
-: Resume from last saved position.
+`--resume` : Resume from last saved position.
 
-`--list`
-: List chapters/pages and exit without reading.
+`--list` : List chapters/pages and exit without reading.
 
-`--split MODE`
-: Text splitting mode: `sentence` or `paragraph`.
+`--split MODE` : Text splitting mode: `sentence` or `paragraph`.
 
-`--pause-clause FLOAT`
-: Pause after clauses in seconds.
+`--pause-clause FLOAT` : Pause after clauses in seconds.
 
-`--pause-sentence FLOAT`
-: Pause after sentences in seconds.
+`--pause-sentence FLOAT` : Pause after sentences in seconds.
 
-`--pause-paragraph FLOAT`
-: Pause after paragraphs in seconds.
+`--pause-paragraph FLOAT` : Pause after paragraphs in seconds.
 
-`--pause-variance FLOAT`
-: Random variance added to pauses in seconds.
+`--pause-variance FLOAT` : Random variance added to pauses in seconds.
 
-`--pause-mode MODE`
-: Pause mode: `tts`, `manual`, or `auto`.
+`--pause-mode MODE` : Pause mode: `tts`, `manual`, or `auto`.
 
-`--disable-short-sentence`
-: Disable special handling for short sentences.
+`--disable-short-sentence` : Disable special handling for short sentences.
 
-`--short-sentence TEXT`
-: Short-sentence handling config. Example:
-  `mode=randomized,threshold=30,selection=auto,max-tries=3`.
-  Can also reference a JSON config with `config=path/to/short_sentence.json`. See `ttsforge config short-sentence init`.
+`--short-sentence TEXT` : Short-sentence handling config. Example:
+`mode=randomized,threshold=30,selection=auto,max-tries=3`. Can also reference a JSON
+config with `config=path/to/short_sentence.json`. See
+`ttsforge config short-sentence init`.
 
 **Note:** Playback requires the optional `ttsforge[audio]` extra.
 
@@ -481,7 +406,6 @@ ttsforge read book.epub --mode pages --pages 1-10
 ttsforge read book.epub --resume
 ```
 
-
 ## voices
 
 List available TTS voices.
@@ -492,8 +416,7 @@ ttsforge voices [OPTIONS]
 
 ### Options
 
-`-l, --language LANG`
-: Filter voices by language code.
+`-l, --language LANG` : Filter voices by language code.
 
 ### Examples
 
@@ -508,7 +431,6 @@ ttsforge voices -l a
 ttsforge voices -l b
 ```
 
-
 ## demo
 
 Generate a demo audio file with voice samples.
@@ -519,41 +441,31 @@ ttsforge demo [OPTIONS]
 
 ### Options
 
-`-o, --output PATH`
-: Output file path. Default: `./voices_demo.wav` (or directory with `--separate`).
+`-o, --output PATH` : Output file path. Default: `./voices_demo.wav` (or directory with
+`--separate`).
 
-`-l, --language LANG`
-: Filter voices by language.
+`-l, --language LANG` : Filter voices by language.
 
-`-v, --voice VOICES`
-: Specific voices to include (comma-separated).
-  Example: `af_heart,am_adam`.
+`-v, --voice VOICES` : Specific voices to include (comma-separated). Example:
+`af_heart,am_adam`.
 
-`-s, --speed FLOAT`
-: Speech speed. Default: `1.0`.
+`-s, --speed FLOAT` : Speech speed. Default: `1.0`.
 
-`--gpu / --no-gpu`
-: Enable or disable GPU acceleration.
+`--gpu / --no-gpu` : Enable or disable GPU acceleration.
 
-`--silence FLOAT`
-: Silence between voice samples in seconds. Default: `0.5`.
+`--silence FLOAT` : Silence between voice samples in seconds. Default: `0.5`.
 
-`--text TEXT`
-: Custom text to use. Use `{voice}` placeholder for voice name.
+`--text TEXT` : Custom text to use. Use `{voice}` placeholder for voice name.
 
-`--separate`
-: Save each voice as a separate file instead of concatenating.
+`--separate` : Save each voice as a separate file instead of concatenating.
 
-`--blend SPEC`
-: Voice blend to demo (e.g., `af_nicole:50,am_michael:50`).
+`--blend SPEC` : Voice blend to demo (e.g., `af_nicole:50,am_michael:50`).
 
-`--blend-presets`
-: Demo a curated set of voice blend combinations.
+`--blend-presets` : Demo a curated set of voice blend combinations.
 
-`-p, --play`
-: Play audio directly instead of only saving files.
+`-p, --play` : Play audio directly instead of only saving files.
 
-  **Note:** Playback requires the optional `ttsforge[audio]` extra.
+**Note:** Playback requires the optional `ttsforge[audio]` extra.
 
 ### Examples
 
@@ -574,7 +486,6 @@ ttsforge demo --separate -o ./voice_samples/
 ttsforge demo --text "Hi, I'm {voice}. Nice to meet you!"
 ```
 
-
 ## download
 
 Download ONNX model files required for TTS.
@@ -585,8 +496,7 @@ ttsforge download [OPTIONS]
 
 ### Options
 
-`--force`
-: Force re-download even if files exist.
+`--force` : Force re-download even if files exist.
 
 ### Examples
 
@@ -597,7 +507,6 @@ ttsforge download
 # Force re-download
 ttsforge download --force
 ```
-
 
 ## config
 
@@ -611,14 +520,11 @@ Configuration is stored in `~/.config/ttsforge/config.json`.
 
 ### Options
 
-`--show`
-: Show current configuration.
+`--show` : Show current configuration.
 
-`--reset`
-: Reset configuration to defaults.
+`--reset` : Reset configuration to defaults.
 
-`--set KEY VALUE`
-: Set a configuration option. Can be used multiple times.
+`--set KEY VALUE` : Set a configuration option. Can be used multiple times.
 
 ### Examples
 
@@ -644,7 +550,6 @@ ttsforge config --reset
 
 See {doc}`configuration` for all available options.
 
-
 ## config short-sentence
 
 Create, link, or inspect the advanced short-sentence JSON configuration.
@@ -657,15 +562,12 @@ Called without an action, this command prints its help.
 
 ### Arguments
 
-`show`
-: Show the advanced JSON config.
+`show` : Show the advanced JSON config.
 
-`init`
-: Write the advanced JSON config and update the ttsforge config to use it.
+`init` : Write the advanced JSON config and update the ttsforge config to use it.
 
-`reset`
-: Recreate the advanced JSON config from defaults and update the ttsforge config
-  to use it.
+`reset` : Recreate the advanced JSON config from defaults and update the ttsforge config
+to use it.
 
 ### Examples
 
@@ -680,9 +582,8 @@ ttsforge config short-sentence show
 ttsforge config short-sentence reset
 ```
 
-The former `short-sentence-advanced-config` root command remains available
-as a deprecated compatibility alias.
-
+The former `short-sentence-advanced-config` root command remains available as a
+deprecated compatibility alias.
 
 ## phonemes
 
@@ -698,31 +599,24 @@ ttsforge phonemes export EPUB_FILE [OPTIONS]
 
 #### Arguments
 
-`EPUB_FILE`
-: Path to the EPUB file (required).
+`EPUB_FILE` : Path to the EPUB file (required).
 
 #### Options
 
-`-o, --output PATH`
-: Output file path. Default: input filename with `.phonemes.json`.
+`-o, --output PATH` : Output file path. Default: input filename with `.phonemes.json`.
 
-`--readable`
-: Export as human-readable text format instead of JSON.
+`--readable` : Export as human-readable text format instead of JSON.
 
-`-l, --language LANG`
-: Language code for phonemization. Default: `a`.
+`-l, --language LANG` : Language code for phonemization. Default: `a`.
 
-`--chapters SELECTION`
-: Chapters to export.
+`--chapters SELECTION` : Chapters to export.
 
-`--vocab-version VERSION`
-: Vocabulary version. Default: `v1.0`.
+`--vocab-version VERSION` : Vocabulary version. Default: `v1.0`.
 
-`--split-mode MODE`
-: Split mode: `paragraph`, `sentence`, or `clause`. Default: `sentence`.
+`--split-mode MODE` : Split mode: `paragraph`, `sentence`, or `clause`. Default:
+`sentence`.
 
-`--max-chars INT`
-: Maximum characters per segment. Default: `300`.
+`--max-chars INT` : Maximum characters per segment. Default: `300`.
 
 #### Examples
 
@@ -750,84 +644,63 @@ ttsforge phonemes convert PHONEME_FILE [OPTIONS]
 
 #### Arguments
 
-`PHONEME_FILE`
-: Path to the phoneme JSON file (required).
+`PHONEME_FILE` : Path to the phoneme JSON file (required).
 
 #### Options
 
-`-o, --output PATH`
-: Output file path.
+`-o, --output PATH` : Output file path.
 
-`-f, --format FORMAT`
-: Output audio format.
+`-f, --format FORMAT` : Output audio format.
 
-`-v, --voice VOICE`
-: Voice to use for TTS.
+`-v, --voice VOICE` : Voice to use for TTS.
 
-`-s, --speed FLOAT`
-: Speech speed. Default: `1.0`.
+`-s, --speed FLOAT` : Speech speed. Default: `1.0`.
 
-`--gpu / --no-gpu`
-: Compatibility shortcut mapping to `auto` or `cpu`.
+`--gpu / --no-gpu` : Compatibility shortcut mapping to `auto` or `cpu`.
 
-`--provider PROVIDER`
-: ONNX Runtime execution provider or alias.
+`--provider PROVIDER` : ONNX Runtime execution provider or alias.
 
-`--silence FLOAT`
-: Silence between chapters. Default: `2.0`.
+`--silence FLOAT` : Silence between chapters. Default: `2.0`.
 
-`--pause-clause FLOAT`
-: Pause after clauses in seconds. Default: `0.5`.
+`--pause-clause FLOAT` : Pause after clauses in seconds. Default: `0.5`.
 
-`--pause-sentence FLOAT`
-: Pause after sentences in seconds. Default: `0.7`.
+`--pause-sentence FLOAT` : Pause after sentences in seconds. Default: `0.7`.
 
-`--pause-paragraph FLOAT`
-: Pause after paragraphs in seconds. Default: `0.9`.
+`--pause-paragraph FLOAT` : Pause after paragraphs in seconds. Default: `0.9`.
 
-`--pause-variance FLOAT`
-: Random variance added to pauses in seconds. Default: `0.05`.
+`--pause-variance FLOAT` : Random variance added to pauses in seconds. Default: `0.05`.
 
-`--pause-mode MODE`
-: Pause mode: `tts`, `manual`, or `auto`. Default: `auto`.
+`--pause-mode MODE` : Pause mode: `tts`, `manual`, or `auto`. Default: `auto`.
 
-`--short-sentence TEXT`
-: Short-sentence handling config. Example:
-  `mode=randomized,threshold=30,selection=auto,max-tries=3`.
-  Can also reference a JSON config with `config=path/to/short_sentence.json`. See `ttsforge config short-sentence init`.
+`--short-sentence TEXT` : Short-sentence handling config. Example:
+`mode=randomized,threshold=30,selection=auto,max-tries=3`. Can also reference a JSON
+config with `config=path/to/short_sentence.json`. See
+`ttsforge config short-sentence init`.
 
-`--announce-chapters / --no-announce-chapters`
-: Read chapter titles aloud before chapter content. Default: enabled.
+`--announce-chapters / --no-announce-chapters` : Read chapter titles aloud before
+chapter content. Default: enabled.
 
-`--chapter-pause FLOAT`
-: Pause after chapter title announcement in seconds. Default: `2.0`.
+`--chapter-pause FLOAT` : Pause after chapter title announcement in seconds. Default:
+`2.0`.
 
-`--chapters SELECTION`
-: Select chapters to convert.
+`--chapters SELECTION` : Select chapters to convert.
 
-`--title TEXT`
-: Audiobook title.
+`--title TEXT` : Audiobook title.
 
-`--author TEXT`
-: Audiobook author.
+`--author TEXT` : Audiobook author.
 
-`--cover PATH`
-: Cover image path.
+`--cover PATH` : Cover image path.
 
-`--voice-blend SPEC`
-: Blend multiple voices.
+`--voice-blend SPEC` : Blend multiple voices.
 
-`--voice-database PATH`
-: Path to custom voice database.
+`--voice-database PATH` : Path to custom voice database.
 
-`--streaming / --no-streaming`
-: Use streaming mode (faster, no resume). Default: resumable.
+`--streaming / --no-streaming` : Use streaming mode (faster, no resume). Default:
+resumable.
 
-`--keep-chapters`
-: Keep intermediate chapter files.
+`--keep-chapters` : Keep intermediate chapter files.
 
-`-y, --yes`
-: Skip confirmation prompts.
+`-y, --yes` : Skip confirmation prompts.
 
 #### Examples
 
@@ -852,8 +725,7 @@ ttsforge phonemes info PHONEME_FILE [OPTIONS]
 
 #### Options
 
-`--stats`
-: Show detailed token statistics.
+`--stats` : Show detailed token statistics.
 
 #### Examples
 
@@ -875,23 +747,18 @@ ttsforge phonemes preview TEXT [OPTIONS]
 
 #### Options
 
-`-l, --language LANG`
-: Language code for phonemization. Default: `a`.
+`-l, --language LANG` : Language code for phonemization. Default: `a`.
 
-`-v, --voice VOICE`
-: Voice to use for audio preview (when using `--play`).
-  Can be a single voice or voice blend (e.g., `af_nicole:50,am_michael:50`).
+`-v, --voice VOICE` : Voice to use for audio preview (when using `--play`). Can be a
+single voice or voice blend (e.g., `af_nicole:50,am_michael:50`).
 
-`--play`
-: Generate and play audio preview of the phonemes.
+`--play` : Generate and play audio preview of the phonemes.
 
-  **Note:** Playback requires the optional `ttsforge[audio]` extra.
+**Note:** Playback requires the optional `ttsforge[audio]` extra.
 
-`--tokens`
-: Show token IDs in addition to phonemes.
+`--tokens` : Show token IDs in addition to phonemes.
 
-`--vocab-version VERSION`
-: Vocabulary version. Default: `v1.0`.
+`--vocab-version VERSION` : Vocabulary version. Default: `v1.0`.
 
 #### Examples
 

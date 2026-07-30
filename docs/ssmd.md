@@ -1,9 +1,8 @@
 # SSMD 0.8
 
-ttsforge treats SSMD 0.8 as a document format, not as decorated plain text.
-Generated, edited, and direct `.ssmd` documents are validated with the public
-`ssmd` APIs and the pykokoro Kokoro profile before synthesis. Header metadata
-is never sent to speech.
+ttsforge treats SSMD 0.8 as a document format, not as decorated plain text. Generated,
+edited, and direct `.ssmd` documents are validated with the public `ssmd` APIs and the
+pykokoro Kokoro profile before synthesis. Header metadata is never sent to speech.
 
 ## Basic workflow
 
@@ -14,9 +13,9 @@ ttsforge ssmd validate .book_chapters/chapter_001.ssmd --strict
 ttsforge convert book.epub
 ```
 
-The generated files use truncated SHA-256 content hashes. An edited invalid
-file stops its chapter and is never silently replaced; an existing audio file
-is retained until a valid synthesis and its sidecars succeed.
+The generated files use truncated SHA-256 content hashes. An edited invalid file stops
+its chapter and is never silently replaced; an existing audio file is retained until a
+valid synthesis and its sidecars succeed.
 
 ## Portable document example
 
@@ -43,9 +42,9 @@ The new format is portable. @approved
 ```
 
 `title` is metadata and is not spoken. Logical roles resolve through
-`voice_bindings.kokoro`. Explicit `...100ms` breaks beat implicit defaults;
-simultaneous implicit paragraph and voice changes use the longest duration.
-`@approved` is retained as a marker event and exported to marker sidecars.
+`voice_bindings.kokoro`. Explicit `...100ms` breaks beat implicit defaults; simultaneous
+implicit paragraph and voice changes use the longest duration. `@approved` is retained
+as a marker event and exported to marker sidecars.
 
 ## Syntax
 
@@ -60,25 +59,24 @@ Canonical inline annotations use `[text]{key="value"}`:
 ...c ...s ...p ...250ms
 ```
 
-Moderate, strong, reduced, and none emphasis are parsed. Emphasis is spoken
-plainly by default: it does not add automatic volume, rate, or pitch changes,
-and its metadata is preserved. Use `--ssmd-emphasis approximate` or the
-convenience flag `--enable-ssmd-emphasis` to opt into segment-level
-volume/rate approximation; use `warn` or `error` for stricter behavior.
-Explicit document prosody such as `[fast words]{rate="fast"}` remains active
-in plain mode. Language, voice, prosody, say-as, substitution, phoneme, break,
-mark, paragraph, heading, and supported audio attributes are passed to the
-renderer.
+Moderate, strong, reduced, and none emphasis are parsed. Emphasis is spoken plainly by
+default: it does not add automatic volume, rate, or pitch changes, and its metadata is
+preserved. Use `--ssmd-emphasis approximate` or the convenience flag
+`--enable-ssmd-emphasis` to opt into segment-level volume/rate approximation; use `warn`
+or `error` for stricter behavior. Explicit document prosody such as
+`[fast words]{rate="fast"}` remains active in plain mode. Language, voice, prosody,
+say-as, substitution, phoneme, break, mark, paragraph, heading, and supported audio
+attributes are passed to the renderer.
 
 ## Direct SSMD input
 
-An exact leading `---` line opens front matter and a matching `---` or
-`...` closes it. A `----` line is ordinary body text. Use
-`--no-ssmd-header` when an exact leading block is literal spoken text.
+An exact leading `---` line opens front matter and a matching `---` or `...` closes it.
+A `----` line is ordinary body text. Use `--no-ssmd-header` when an exact leading block
+is literal spoken text.
 
-For a direct `.ssmd` input, title precedence is explicit `--title` or API
-title, then header `title`, then the filename stem. The complete source,
-including front matter, is preserved for rendering.
+For a direct `.ssmd` input, title precedence is explicit `--title` or API title, then
+header `title`, then the filename stem. The complete source, including front matter, is
+preserved for rendering.
 
 ## Policies and diagnostics
 
@@ -97,28 +95,27 @@ Useful conversion options include:
 --ssmd-fail-on-warning
 ```
 
-Diagnostics have stable codes and source locations. Inspect without loading
-ONNX using `ttsforge ssmd inspect FILE` or `ttsforge ssmd inspect FILE
---json`. Validate with `ttsforge ssmd validate FILE`; `--strict` promotes
-warnings to failures.
+Diagnostics have stable codes and source locations. Inspect without loading ONNX using
+`ttsforge ssmd inspect FILE` or `ttsforge ssmd inspect FILE --json`. Validate with
+`ttsforge ssmd validate FILE`; `--strict` promotes warnings to failures.
 
-Audio annotations use a document-relative local resolver with byte and duration
-limits. Remote audio is disabled by default; when enabled, only bounded HTTPS
-sources are accepted. Unresolved audio uses SSMD fallback text and emits an
-`ssmd.audio_fallback` or `ssmd.audio_unresolved` diagnostic. Audio files are
-decoded and downmixed to mono before pykokoro applies SSMD transformations.
+Audio annotations use a document-relative local resolver with byte and duration limits.
+Remote audio is disabled by default; when enabled, only bounded HTTPS sources are
+accepted. Unresolved audio uses SSMD fallback text and emits an `ssmd.audio_fallback` or
+`ssmd.audio_unresolved` diagnostic. Audio files are decoded and downmixed to mono before
+pykokoro applies SSMD transformations.
 
 ## Intentional Kokoro limitations
 
-- SSMD voice language, gender, and variant hints are preserved as metadata but
-  do not select a Kokoro voice.
+- SSMD voice language, gender, and variant hints are preserved as metadata but do not
+  select a Kokoro voice.
 - SSMD extensions are rejected by default for the Kokoro profile.
-- Emphasis is spoken plainly by default. EPUB styling detection and SSMD
-  rendering are independent; use `--detect-emphasis` to extract italic/bold
-  HTML and `--enable-ssmd-emphasis` to opt into approximation.
+- Emphasis is spoken plainly by default. EPUB styling detection and SSMD rendering are
+  independent; use `--detect-emphasis` to extract italic/bold HTML and
+  `--enable-ssmd-emphasis` to opt into approximation.
 - Remote audio is opt-in and bounded.
-- Marks are exported as `chapter_NNN.markers.json` and an aggregate output
-  sidecar rather than embedded in every audiobook container.
+- Marks are exported as `chapter_NNN.markers.json` and an aggregate output sidecar
+  rather than embedded in every audiobook container.
 
 ## See also
 

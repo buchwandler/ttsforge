@@ -1,0 +1,58 @@
+schema_version: 1
+object_type: commit_audit_sheet
+versioning:
+  schema_version: 1
+  revision: 4
+release_version: 0.1.2
+git_base_ref: v0.1.1
+git_base_sha: 08367e85089e1df327d3e3d52f3ba575d507e125
+git_head_ref: v0.1.2
+git_head_sha: b31ed08988a066157772e19eba570a9e97fda580
+git_range: 08367e85089e1df327d3e3d52f3ba575d507e125..b31ed08988a066157772e19eba570a9e97fda580
+commit_count: 2
+rows:
+  - sha: b874637e10950cbc7dc5c5f620f95d52f912ad33
+    source_ref: git:b874637e10950cbc7dc5c5f620f95d52f912ad33
+    short_sha: b874637
+    changed_paths:
+      - README.md
+      - docs/cli.rst
+      - docs/configuration.rst
+      - tests/test_constants.py
+      - ttsforge/__init__.py
+      - ttsforge/cli/commands_conversion.py
+      - ttsforge/cli/commands_phonemes.py
+      - ttsforge/cli/commands_utility.py
+      - ttsforge/cli/helpers.py
+      - ttsforge/constants.py
+      - ttsforge/conversion.py
+      - ttsforge/kokoro_runner.py
+      - ttsforge/phoneme_conversion.py
+    stats:
+      files_changed: 0
+      insertions: 320
+      deletions: 79
+    inspected: true
+    inspected_paths:
+      - README.md
+    observed_behavior: Fixed German voice support and added short sentence handling
+    public_impact: public
+    decision: accepted
+    evidence_subject:
+      "fix: german voice, add missing model source and short_sentence handling"
+  - sha: b31ed08988a066157772e19eba570a9e97fda580
+    source_ref: git:b31ed08988a066157772e19eba570a9e97fda580
+    short_sha: b31ed08
+    changed_paths:
+      - .github/workflows/codecov.yml
+    stats:
+      files_changed: 0
+      insertions: 1
+      deletions: 1
+    inspected: true
+    inspected_paths:
+      - .github/workflows/codecov.yml
+    observed_behavior: Fixed CI codecov workflow
+    public_impact: internal
+    decision: internal
+    evidence_subject: "chore: fix ci"

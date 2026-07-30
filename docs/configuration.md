@@ -3,7 +3,6 @@
 ttsforge stores its configuration in a JSON file and provides a CLI interface for
 managing settings.
 
-
 ## Configuration File Location
 
 The configuration file is stored at:
@@ -11,7 +10,6 @@ The configuration file is stored at:
 - **Linux**: `~/.config/ttsforge/config.json`
 - **macOS**: `~/Library/Application Support/ttsforge/config.json`
 - **Windows**: `%APPDATA%\ttsforge\config.json`
-
 
 ## Managing Configuration
 
@@ -47,297 +45,265 @@ ttsforge config short-sentence show
 ttsforge config short-sentence reset
 ```
 
-The former `short-sentence-advanced-config` root command remains available
-as a deprecated compatibility alias.
-
+The former `short-sentence-advanced-config` root command remains available as a
+deprecated compatibility alias.
 
 ## Configuration Options
 
 ### SSMD 0.8 policies
 
 The following keys configure SSMD rendering. Persistent configuration is lower
-precedence than a document header; explicit CLI/API values are higher
-precedence. Do not use persistent `pause_sentence` or `pause_paragraph`
-values as SSMD header overrides.
+precedence than a document header; explicit CLI/API values are higher precedence. Do not
+use persistent `pause_sentence` or `pause_paragraph` values as SSMD header overrides.
 
-`ssmd_parse_header` (boolean, default `true`)
-: Parse an exact leading `---` block. Set false only for literal header text.
+`ssmd_parse_header` (boolean, default `true`) : Parse an exact leading `---` block. Set
+false only for literal header text.
 
-`ssmd_unknown_header` (`warn`, `error`, or `ignore`)
-: Policy for unknown header keys.
+`ssmd_unknown_header` (`warn`, `error`, or `ignore`) : Policy for unknown header keys.
 
-`ssmd_missing_voice` (`error` or `use-default`)
-: Policy for logical voice references that cannot be resolved.
+`ssmd_missing_voice` (`error` or `use-default`) : Policy for logical voice references
+that cannot be resolved.
 
-`ssmd_validate_profile` and `ssmd_emphasis_mode`
-: Validate Kokoro-supported constructs and choose `plain` (the default),
-  `approximate`, `warn`, or `error` emphasis behavior. Plain emphasis is
-  spoken normally without automatic prosody; explicit SSMD prosody remains
-  active. Approximation can also be selected per conversion with
-  `--enable-ssmd-emphasis`.
+`ssmd_validate_profile` and `ssmd_emphasis_mode` : Validate Kokoro-supported constructs
+and choose `plain` (the default), `approximate`, `warn`, or `error` emphasis behavior.
+Plain emphasis is spoken normally without automatic prosody; explicit SSMD prosody
+remains active. Approximation can also be selected per conversion with
+`--enable-ssmd-emphasis`.
 
-`ssmd_voice_bindings`
-: Mapping such as `{"narrator": "af_sarah"}`; CLI/API bindings are
-  supplied with repeated `--ssmd-voice ROLE=VOICE`.
+`ssmd_voice_bindings` : Mapping such as `{"narrator": "af_sarah"}`; CLI/API bindings are
+supplied with repeated `--ssmd-voice ROLE=VOICE`.
 
-`ssmd_audio_allow_remote` (default `false`), `ssmd_audio_root`,
-`ssmd_audio_max_bytes` (default `20000000`), and
-`ssmd_audio_max_duration_s` (default `120`)
-: Bound local/HTTPS audio annotation resolution. Remote audio is opt-in.
+`ssmd_audio_allow_remote` (default `false`), `ssmd_audio_root`, `ssmd_audio_max_bytes`
+(default `20000000`), and `ssmd_audio_max_duration_s` (default `120`) : Bound
+local/HTTPS audio annotation resolution. Remote audio is opt-in.
 
 ### Voice and Language Settings
 
-`default_voice`
-: Default TTS voice to use.
+`default_voice` : Default TTS voice to use.
 
-  - Type: string
-  - Default: `af_heart`
-  - Example: `ttsforge config --set default_voice am_adam`
+- Type: string
+- Default: `af_heart`
+- Example: `ttsforge config --set default_voice am_adam`
 
-`default_language`
-: Default language code.
+`default_language` : Default language code.
 
-  - Type: string
-  - Default: `a` (American English)
-  - Choices: `a`, `b`, `e`, `f`, `h`, `i`, `j`, `p`, `z`
-  - Example: `ttsforge config --set default_language b`
+- Type: string
+- Default: `a` (American English)
+- Choices: `a`, `b`, `e`, `f`, `h`, `i`, `j`, `p`, `z`
+- Example: `ttsforge config --set default_language b`
 
-`phonemization_lang`
-: Override language for phonemization (e.g., `de`, `fr`, `en-us`).
+`phonemization_lang` : Override language for phonemization (e.g., `de`, `fr`, `en-us`).
 
-  - Type: string or null
-  - Default: `None`
-  - Example: `ttsforge config --set phonemization_lang de`
+- Type: string or null
+- Default: `None`
+- Example: `ttsforge config --set phonemization_lang de`
 
-`default_speed`
-: Default speech speed multiplier.
+`default_speed` : Default speech speed multiplier.
 
-  - Type: float
-  - Default: `1.0`
-  - Range: `0.5` to `2.0`
-  - Example: `ttsforge config --set default_speed 1.1`
+- Type: float
+- Default: `1.0`
+- Range: `0.5` to `2.0`
+- Example: `ttsforge config --set default_speed 1.1`
 
 ### Output Settings
 
-`default_format`
-: Default output audio format.
+`default_format` : Default output audio format.
 
-  - Type: string
-  - Default: `m4b`
-  - Choices: `wav`, `mp3`, `flac`, `opus`, `m4b`
-  - Example: `ttsforge config --set default_format mp3`
+- Type: string
+- Default: `m4b`
+- Choices: `wav`, `mp3`, `flac`, `opus`, `m4b`
+- Example: `ttsforge config --set default_format mp3`
 
 ### Processing Settings
 
-`onnx_provider`
-: ONNX Runtime execution provider used for synthesis. Use `auto`, `cpu`,
-  `cuda`, `openvino`, `directml`/`dml`, `coreml`, `nnapi`,
-  `xnnpack`, or a full `*ExecutionProvider` name. TTSForge validates the
-  syntax and PyKokoro validates runtime availability.
+`onnx_provider` : ONNX Runtime execution provider used for synthesis. Use `auto`, `cpu`,
+`cuda`, `openvino`, `directml`/`dml`, `coreml`, `nnapi`, `xnnpack`, or a full
+`*ExecutionProvider` name. TTSForge validates the syntax and PyKokoro validates runtime
+availability.
 
-  - Type: string
-  - Default: `cpu`
-  - Examples: `ttsforge config --set onnx_provider nnapi` and
-    `ttsforge config --set onnx_provider NnapiExecutionProvider`
+- Type: string
+- Default: `cpu`
+- Examples: `ttsforge config --set onnx_provider nnapi` and
+  `ttsforge config --set onnx_provider NnapiExecutionProvider`
 
-`use_gpu`
-: Legacy compatibility setting. `true` maps to `onnx_provider=auto` and
-  `false` maps to `onnx_provider=cpu` when no provider is configured.
+`use_gpu` : Legacy compatibility setting. `true` maps to `onnx_provider=auto` and
+`false` maps to `onnx_provider=cpu` when no provider is configured.
 
-  - Type: boolean
-  - Default: `false`
-  - Example: `ttsforge config --set use_gpu true`
+- Type: boolean
+- Default: `false`
+- Example: `ttsforge config --set use_gpu true`
 
-`model_quality`
-: ONNX model quality/quantization.
+`model_quality` : ONNX model quality/quantization.
 
-  - Type: string
-  - Default: `fp32`
-  - Choices: `fp32`, `fp16`, `q8`, `q8f16`, `q4`, `q4f16`, `uint8`, `uint8f16`
-  - Example: `ttsforge config --set model_quality fp16`
+- Type: string
+- Default: `fp32`
+- Choices: `fp32`, `fp16`, `q8`, `q8f16`, `q4`, `q4f16`, `uint8`, `uint8f16`
+- Example: `ttsforge config --set model_quality fp16`
 
-`model_variant`
-: Model variant to download.
+`model_variant` : Model variant to download.
 
-  - Type: string
-  - Default: `v1.0`
-  - Choices: `v1.0`, `v1.1-zh`, `v1.1-de`
-  - Example: `ttsforge config --set model_variant v1.1-de`
+- Type: string
+- Default: `v1.0`
+- Choices: `v1.0`, `v1.1-zh`, `v1.1-de`
+- Example: `ttsforge config --set model_variant v1.1-de`
 
-`auto_detect_language`
-: Automatically detect language from EPUB metadata.
+`auto_detect_language` : Automatically detect language from EPUB metadata.
 
-  - Type: boolean
-  - Default: `true`
-  - Example: `ttsforge config --set auto_detect_language false`
+- Type: boolean
+- Default: `true`
+- Example: `ttsforge config --set auto_detect_language false`
 
-`default_split_mode`
-: Default text splitting mode for processing.
+`default_split_mode` : Default text splitting mode for processing.
 
-  - Type: string
-  - Default: `auto`
-  - Choices: `auto`, `line`, `paragraph`, `sentence`, `clause`
-  - Example: `ttsforge config --set default_split_mode sentence`
+- Type: string
+- Default: `auto`
+- Choices: `auto`, `line`, `paragraph`, `sentence`, `clause`
+- Example: `ttsforge config --set default_split_mode sentence`
 
 ### Read Settings
 
-`default_content_mode`
-: Default content mode for `read` (`chapters` or `pages`).
+`default_content_mode` : Default content mode for `read` (`chapters` or `pages`).
 
-  - Type: string
-  - Default: `chapters`
-  - Example: `ttsforge config --set default_content_mode pages`
+- Type: string
+- Default: `chapters`
+- Example: `ttsforge config --set default_content_mode pages`
 
-`default_page_size`
-: Synthetic page size in characters for `read` pages mode.
+`default_page_size` : Synthetic page size in characters for `read` pages mode.
 
-  - Type: integer
-  - Default: `2000`
-  - Example: `ttsforge config --set default_page_size 2500`
+- Type: integer
+- Default: `2000`
+- Example: `ttsforge config --set default_page_size 2500`
 
 ### Mixed-Language Settings
 
-`use_mixed_language`
-: Enable automatic detection and handling of multiple languages in text.
+`use_mixed_language` : Enable automatic detection and handling of multiple languages in
+text.
 
-  - Type: boolean
-  - Default: `false`
-  - Requires: `lingua-language-detector` package (`pip install lingua-language-detector`)
-  - Example: `ttsforge config --set use_mixed_language true`
+- Type: boolean
+- Default: `false`
+- Requires: `lingua-language-detector` package (`pip install lingua-language-detector`)
+- Example: `ttsforge config --set use_mixed_language true`
 
-`mixed_language_primary`
-: Primary/fallback language for mixed-language mode.
+`mixed_language_primary` : Primary/fallback language for mixed-language mode.
 
-  - Type: string or null
-  - Default: `None`
-  - Supported: `en-us`, `en-gb`, `de`, `fr-fr`, `es`, `it`, `pt`, `pl`, `tr`, `ru`, `ko`, `ja`, `zh`/`cmn`
-  - Example: `ttsforge config --set mixed_language_primary de`
+- Type: string or null
+- Default: `None`
+- Supported: `en-us`, `en-gb`, `de`, `fr-fr`, `es`, `it`, `pt`, `pl`, `tr`, `ru`, `ko`,
+  `ja`, `zh`/`cmn`
+- Example: `ttsforge config --set mixed_language_primary de`
 
-`mixed_language_allowed`
-: List of languages allowed for auto-detection in mixed-language mode.
+`mixed_language_allowed` : List of languages allowed for auto-detection in
+mixed-language mode.
 
-  - Type: list of strings or null
-  - Default: `None`
-  - Required when `use_mixed_language` is enabled
-  - Example: `ttsforge config --set mixed_language_allowed "['de', 'en-us']"`
+- Type: list of strings or null
+- Default: `None`
+- Required when `use_mixed_language` is enabled
+- Example: `ttsforge config --set mixed_language_allowed "['de', 'en-us']"`
 
-`mixed_language_confidence`
-: Confidence threshold for language detection (0.0-1.0).
+`mixed_language_confidence` : Confidence threshold for language detection (0.0-1.0).
 
-  - Type: float
-  - Default: `0.7`
-  - Range: `0.0` to `1.0`
-  - Higher values require more confidence before switching languages
-  - Example: `ttsforge config --set mixed_language_confidence 0.8`
+- Type: float
+- Default: `0.7`
+- Range: `0.0` to `1.0`
+- Higher values require more confidence before switching languages
+- Example: `ttsforge config --set mixed_language_confidence 0.8`
 
 ### Audio Timing Settings
 
-`silence_between_chapters`
-: Silence duration between chapters in seconds.
+`silence_between_chapters` : Silence duration between chapters in seconds.
 
-  - Type: float
-  - Default: `2.0`
-  - Example: `ttsforge config --set silence_between_chapters 3.0`
+- Type: float
+- Default: `2.0`
+- Example: `ttsforge config --set silence_between_chapters 3.0`
 
-`pause_clause`
-: Pause after clauses in seconds.
+`pause_clause` : Pause after clauses in seconds.
 
-  - Type: float
-  - Default: `0.5`
-  - Example: `ttsforge config --set pause_clause 0.4`
+- Type: float
+- Default: `0.5`
+- Example: `ttsforge config --set pause_clause 0.4`
 
-`pause_sentence`
-: Pause after sentences in seconds.
+`pause_sentence` : Pause after sentences in seconds.
 
-  - Type: float
-  - Default: `0.7`
-  - Example: `ttsforge config --set pause_sentence 0.6`
+- Type: float
+- Default: `0.7`
+- Example: `ttsforge config --set pause_sentence 0.6`
 
-`pause_paragraph`
-: Pause after paragraphs in seconds.
+`pause_paragraph` : Pause after paragraphs in seconds.
 
-  - Type: float
-  - Default: `0.9`
-  - Example: `ttsforge config --set pause_paragraph 1.1`
+- Type: float
+- Default: `0.9`
+- Example: `ttsforge config --set pause_paragraph 1.1`
 
-`pause_variance`
-: Random variance added to pause durations in seconds.
+`pause_variance` : Random variance added to pause durations in seconds.
 
-  - Type: float
-  - Default: `0.05`
-  - Example: `ttsforge config --set pause_variance 0.08`
+- Type: float
+- Default: `0.05`
+- Example: `ttsforge config --set pause_variance 0.08`
 
-`pause_mode`
-: Pause mode: `tts`, `manual`, or `auto`.
+`pause_mode` : Pause mode: `tts`, `manual`, or `auto`.
 
-  - Type: string
-  - Default: `auto`
-  - Example: `ttsforge config --set pause_mode manual`
+- Type: string
+- Default: `auto`
+- Example: `ttsforge config --set pause_mode manual`
 
 ### Chapter Announcement Settings
 
-`announce_chapters`
-: Read chapter titles aloud before chapter content.
+`announce_chapters` : Read chapter titles aloud before chapter content.
 
-  - Type: boolean
-  - Default: `true`
-  - Example: `ttsforge config --set announce_chapters false`
+- Type: boolean
+- Default: `true`
+- Example: `ttsforge config --set announce_chapters false`
 
-`chapter_pause_after_title`
-: Pause duration after the chapter title announcement in seconds.
+`chapter_pause_after_title` : Pause duration after the chapter title announcement in
+seconds.
 
-  - Type: float
-  - Default: `2.0`
-  - Example: `ttsforge config --set chapter_pause_after_title 1.5`
+- Type: float
+- Default: `2.0`
+- Example: `ttsforge config --set chapter_pause_after_title 1.5`
 
 ### File Output Settings
 
-`save_chapters_separately`
-: Save individual chapter audio files.
+`save_chapters_separately` : Save individual chapter audio files.
 
-  - Type: boolean
-  - Default: `false`
-  - Example: `ttsforge config --set save_chapters_separately true`
+- Type: boolean
+- Default: `false`
+- Example: `ttsforge config --set save_chapters_separately true`
 
-`merge_at_end`
-: Merge chapter files into final audiobook.
+`merge_at_end` : Merge chapter files into final audiobook.
 
-  - Type: boolean
-  - Default: `true`
-  - Example: `ttsforge config --set merge_at_end false`
+- Type: boolean
+- Default: `true`
+- Example: `ttsforge config --set merge_at_end false`
 
 ### Filename Template Settings
 
-These settings control how output files are named. See {doc}`filename_templates` for details.
+These settings control how output files are named. See {doc}`filename_templates` for
+details.
 
-`output_filename_template`
-: Template for final audiobook filenames.
+`output_filename_template` : Template for final audiobook filenames.
 
-  - Type: string
-  - Default: `{book_title}`
-  - Example: `ttsforge config --set output_filename_template "{author}_{book_title}"`
+- Type: string
+- Default: `{book_title}`
+- Example: `ttsforge config --set output_filename_template "{author}_{book_title}"`
 
-`chapter_filename_template`
-: Template for chapter WAV file names during conversion.
+`chapter_filename_template` : Template for chapter WAV file names during conversion.
 
-  - Type: string
-  - Default: `{chapter_num:03d}_{book_title}_{chapter_title}`
-  - Example: `ttsforge config --set chapter_filename_template "{chapter_num:03d}_{chapter_title}"`
+- Type: string
+- Default: `{chapter_num:03d}_{book_title}_{chapter_title}`
+- Example:
+  `ttsforge config --set chapter_filename_template "{chapter_num:03d}_{chapter_title}"`
 
-`phoneme_export_template`
-: Template for phoneme export filenames.
+`phoneme_export_template` : Template for phoneme export filenames.
 
-  - Type: string
-  - Default: `{book_title}`
-  - Example: `ttsforge config --set phoneme_export_template "{book_title}_phonemes"`
+- Type: string
+- Default: `{book_title}`
+- Example: `ttsforge config --set phoneme_export_template "{book_title}_phonemes"`
 
-`default_title`
-: Fallback title when book has no metadata.
+`default_title` : Fallback title when book has no metadata.
 
-  - Type: string
-  - Default: `Untitled`
-  - Example: `ttsforge config --set default_title "Unknown Book"`
-
+- Type: string
+- Default: `Untitled`
+- Example: `ttsforge config --set default_title "Unknown Book"`
 
 ## Complete Configuration Reference
 
@@ -475,7 +441,6 @@ These settings control how output files are named. See {doc}`filename_templates`
   - Language detection threshold
 ```
 
-
 ## Example Configuration File
 
 Here's an example `config.json` with custom settings:
@@ -516,11 +481,10 @@ Here's an example `config.json` with custom settings:
 }
 ```
 
-
 ## Command-Line Override
 
-Configuration values can be overridden on the command line. Command-line options
-take precedence over configuration file settings:
+Configuration values can be overridden on the command line. Command-line options take
+precedence over configuration file settings:
 
 ```bash
 # Use configured voice, but override speed
@@ -537,7 +501,6 @@ Provider precedence is explicit `--provider`, then `--gpu`/`--no-gpu`, then
 `onnx_provider`, then legacy `use_gpu`, then CPU. PyKokoro may apply its documented
 `ONNX_PROVIDER` environment override during runtime provider resolution.
 
-
 ## Environment Variables
 
 TTSForge configuration has no separate environment-variable file format. The PyKokoro
@@ -546,11 +509,11 @@ TTSForge resolves the configured provider.
 
 ## Model source status
 
-Set `model_source` to `github` when using the GitHub asset set. `ttsforge config
---show` uses PyKokoro's source/variant/quality-aware asset paths and reports missing
-assets. If the configured set is incomplete but the alternate supported source is
-complete, the command reports that alternate and gives an activation command without
-silently switching sources.
+Set `model_source` to `github` when using the GitHub asset set. `ttsforge config --show`
+uses PyKokoro's source/variant/quality-aware asset paths and reports missing assets. If
+the configured set is incomplete but the alternate supported source is complete, the
+command reports that alternate and gives an activation command without silently
+switching sources.
 
 On Termux/Android, a typical setup is:
 

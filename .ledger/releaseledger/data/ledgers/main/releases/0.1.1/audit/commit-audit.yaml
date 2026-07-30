@@ -1,0 +1,78 @@
+schema_version: 1
+object_type: commit_audit_sheet
+versioning:
+  schema_version: 1
+  revision: 4
+release_version: 0.1.1
+git_base_ref: v0.1.0
+git_base_sha: ac9dbcdb5cfe5a56632fed64d0bcdf6537810082
+git_head_ref: v0.1.1
+git_head_sha: 08367e85089e1df327d3e3d52f3ba575d507e125
+git_range: ac9dbcdb5cfe5a56632fed64d0bcdf6537810082..08367e85089e1df327d3e3d52f3ba575d507e125
+commit_count: 3
+rows:
+  - sha: c65bf441afa1381e3c5f570a0df8422644389cdf
+    source_ref: git:c65bf441afa1381e3c5f570a0df8422644389cdf
+    short_sha: c65bf44
+    changed_paths:
+      - .codecrate.toml
+      - .gitignore
+      - tests/test_chapter_marker_leading_space.py
+      - tests/test_chapter_selection.py
+      - tests/test_cli_smoke.py
+      - tests/test_conversion_state.py
+      - tests/test_ssmd_generator.py
+      - ttsforge/ssmd_generator.py
+    stats:
+      files_changed: 0
+      insertions: 247
+      deletions: 3
+    inspected: true
+    inspected_paths:
+      - .codecrate.toml
+    observed_behavior: Added more unit tests for SSMD generator and chapter selection
+    public_impact: internal
+    decision: internal
+    evidence_subject: "test: add more unit tests"
+  - sha: 88bd3fa719ebd381805627df189015410c13562f
+    source_ref: git:88bd3fa719ebd381805627df189015410c13562f
+    short_sha: 88bd3fa
+    changed_paths:
+      - docs/api/index.rst
+      - tests/test_conversion_state.py
+      - ttsforge/cli/commands_conversion.py
+      - ttsforge/cli/commands_phonemes.py
+      - ttsforge/constants.py
+      - ttsforge/conversion.py
+      - ttsforge/phoneme_conversion.py
+    stats:
+      files_changed: 0
+      insertions: 33
+      deletions: 43
+    inspected: true
+    inspected_paths:
+      - docs/api/index.rst
+    observed_behavior: Adapted pause defaults for better audio output
+    public_impact: public
+    decision: accepted
+    evidence_subject: "fix: adapt pause defaults"
+  - sha: 08367e85089e1df327d3e3d52f3ba575d507e125
+    source_ref: git:08367e85089e1df327d3e3d52f3ba575d507e125
+    short_sha: 08367e8
+    changed_paths:
+      - README.md
+      - docs/ssmd.rst
+      - tests/test_phoneme_dictionary.py
+      - ttsforge/name_extractor.py
+      - ttsforge/ssmd_generator.py
+    stats:
+      files_changed: 0
+      insertions: 44
+      deletions: 44
+    inspected: true
+    inspected_paths:
+      - README.md
+    observed_behavior: Fixed SSML and dictionary syntax for correct processing
+    public_impact: public
+    decision: accepted
+    evidence_subject: "feat: use correct ssmd and dictionary syntax"

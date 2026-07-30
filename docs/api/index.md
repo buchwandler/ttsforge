@@ -1,7 +1,7 @@
 # API Reference
 
-This section documents the Python API for ttsforge, allowing programmatic use
-of the library.
+This section documents the Python API for ttsforge, allowing programmatic use of the
+library.
 
 ## Module Overview
 
@@ -9,65 +9,50 @@ ttsforge is organized into the following modules:
 
 ### Core Modules
 
-**ttsforge.cli**
-: Command-line interface implementation using explicit typed Typer wrappers
-  (with Click as the runtime substrate). App construction and help paths are
-  provider-independent; implementation modules are imported lazily.
+**ttsforge.cli** : Command-line interface implementation using explicit typed Typer
+wrappers (with Click as the runtime substrate). App construction and help paths are
+provider-independent; implementation modules are imported lazily.
 
-**ttsforge.paths**
-: Provider-independent user configuration and advanced short-sentence path
-  calculations.
+**ttsforge.paths** : Provider-independent user configuration and advanced short-sentence
+path calculations.
 
-**ttsforge.conversion**
-: Main conversion logic for EPUB to audiobook conversion.
+**ttsforge.conversion** : Main conversion logic for EPUB to audiobook conversion.
 
-**ttsforge.phoneme_conversion**
-: Conversion logic for pre-tokenized phoneme files.
+**ttsforge.phoneme_conversion** : Conversion logic for pre-tokenized phoneme files.
 
 ### TTS Backend
 
-**ttsforge.kokoro_runner**
-: Shared Kokoro ONNX runner used by conversion paths.
+**ttsforge.kokoro_runner** : Shared Kokoro ONNX runner used by conversion paths.
 
-**ttsforge.kokoro_lang**
-: Language code helpers for Kokoro.
+**ttsforge.kokoro_lang** : Language code helpers for Kokoro.
 
-**ttsforge.phonemes**
-: Data structures for phoneme book representation.
+**ttsforge.phonemes** : Data structures for phoneme book representation.
 
 ### Utilities
 
-**ttsforge.constants**
-: Configuration defaults, voice definitions, and language mappings.
+**ttsforge.constants** : Configuration defaults, voice definitions, and language
+mappings.
 
-**ttsforge.utils**
-: Utility functions for file handling, configuration, and formatting.
+**ttsforge.utils** : Utility functions for file handling, configuration, and formatting.
 
-**ttsforge.audio_merge**
-: Audio concatenation and chapter marker handling.
+**ttsforge.audio_merge** : Audio concatenation and chapter marker handling.
 
-**ttsforge.chapter_selection**
-: Parsing helpers for chapter selection strings.
+**ttsforge.chapter_selection** : Parsing helpers for chapter selection strings.
 
-**ttsforge.ssmd_generator**
-: Canonical SSMD 0.8 generation, validation, deterministic front matter, and
-  SHA-256 content hashing helpers.
+**ttsforge.ssmd_generator** : Canonical SSMD 0.8 generation, validation, deterministic
+front matter, and SHA-256 content hashing helpers.
 
-**ttsforge.ssmd_support**
-: Stable SSMD policy, document metadata, diagnostics, and pykokoro config
-  translation types. Inspection and validation do not initialize ONNX.
+**ttsforge.ssmd_support** : Stable SSMD policy, document metadata, diagnostics, and
+pykokoro config translation types. Inspection and validation do not initialize ONNX.
 
-**ttsforge.ssmd_audio**
-: Bounded document-relative local and opt-in HTTPS audio source resolution.
+**ttsforge.ssmd_audio** : Bounded document-relative local and opt-in HTTPS audio source
+resolution.
 
-**ttsforge.input_reader**
-: EPUB/text input parsing helpers.
+**ttsforge.input_reader** : EPUB/text input parsing helpers.
 
-**ttsforge.name_extractor**
-: Name extraction utilities for dictionary building.
+**ttsforge.name_extractor** : Name extraction utilities for dictionary building.
 
-**ttsforge.vocab**
-: Vocabulary utilities and metadata.
+**ttsforge.vocab** : Vocabulary utilities and metadata.
 
 ## Quick API Examples
 
@@ -171,7 +156,6 @@ print(f"Default voice: {config['default_voice']}")
 config['default_voice'] = 'am_adam'
 save_config(config)
 ```
-
 
 ## Auto-generated API Documentation
 

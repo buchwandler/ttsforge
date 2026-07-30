@@ -1,7 +1,7 @@
 # ttsforge Documentation
 
-**ttsforge** is a command-line tool for converting EPUB files to audiobooks using
-Kokoro ONNX TTS (Text-to-Speech).
+**ttsforge** is a command-line tool for converting EPUB files to audiobooks using Kokoro
+ONNX TTS (Text-to-Speech).
 
 ```{toctree}
 :maxdepth: 2
@@ -24,21 +24,21 @@ testing
 api/index
 ```
 
-
 ## Features
 
-- **EPUB to Audiobook Conversion**: Convert EPUB files to M4B, MP3, WAV, FLAC, or OPUS formats
+- **EPUB to Audiobook Conversion**: Convert EPUB files to M4B, MP3, WAV, FLAC, or OPUS
+  formats
 - **50+ High-Quality Voices**: Support for 9 languages with multiple voice options
 - **SSMD Editing**: Edit intermediate SSMD files to fine-tune pronunciation and pacing
 - **Resumable Conversions**: Long audiobook conversions can be interrupted and resumed
-- **Phoneme Pre-tokenization**: Pre-process text to phonemes for faster batch conversions
+- **Phoneme Pre-tokenization**: Pre-process text to phonemes for faster batch
+  conversions
 - **Configurable Filename Templates**: Customize output filenames with book metadata
 - **Voice Blending**: Mix multiple voices for custom narration styles
 - **GPU Acceleration**: Optional GPU support for faster processing
 - **Chapter Selection**: Convert specific chapters or chapter ranges
 - **Metadata Support**: Automatic language detection and metadata embedding
 - **Streaming Read**: Real-time playback with the `read` command (optional audio extra)
-
 
 ## Quick Example
 
@@ -59,7 +59,6 @@ ttsforge convert book.epub --chapters 1-5
 ttsforge voices
 ```
 
-
 ## Supported Languages
 
 ttsforge supports 9 languages with native TTS voices:
@@ -74,7 +73,6 @@ ttsforge supports 9 languages with native TTS voices:
 - **Brazilian Portuguese** (p) - 3 voices
 - **Mandarin Chinese** (z) - 8 voices
 
-
 ## Requirements
 
 - Python 3.10 or later
@@ -83,11 +81,9 @@ ttsforge supports 9 languages with native TTS voices:
 - ~330MB disk space for ONNX models (downloaded automatically)
 - sounddevice (optional, for playback features)
 
-
 ## License
 
 ttsforge is released under the MIT License.
-
 
 ## Indices and tables
 

@@ -3,11 +3,9 @@
 ttsforge uses configurable filename templates to name output files based on book
 metadata. This allows you to organize your audiobook library with consistent naming.
 
-
 ## Template Syntax
 
-Templates use Python's format string syntax with curly braces for variable
-substitution:
+Templates use Python's format string syntax with curly braces for variable substitution:
 
 ```text
 {variable_name}
@@ -19,46 +17,41 @@ For example:
 - `{book_title}` → `My Great Novel`
 - `{chapter_num:03d}` → `001` (zero-padded to 3 digits)
 
-
 ## Available Variables
 
 The following variables are available in filename templates:
 
-`{book_title}`
-: The title of the book from EPUB metadata, or the configured `default_title`
-  if no title is found.
+`{book_title}` : The title of the book from EPUB metadata, or the configured
+`default_title` if no title is found.
 
-  Example: `Empire in Black and Gold`
+Example: `Empire in Black and Gold`
 
-`{author}`
-: The author name from EPUB metadata, or "Unknown" if not found.
+`{author}` : The author name from EPUB metadata, or "Unknown" if not found.
 
-  Example: `Adrian Tchaikovsky`
+Example: `Adrian Tchaikovsky`
 
-`{chapter_title}`
-: The title of the current chapter (only available in chapter filename templates).
+`{chapter_title}` : The title of the current chapter (only available in chapter filename
+templates).
 
-  Example: `Chapter 1 - The Beginning`
+Example: `Chapter 1 - The Beginning`
 
-`{chapter_num}`
-: The chapter number (1-based). Supports format specifiers for padding.
+`{chapter_num}` : The chapter number (1-based). Supports format specifiers for padding.
 
-  - `{chapter_num}` → `1`
-  - `{chapter_num:02d}` → `01`
-  - `{chapter_num:03d}` → `001`
+- `{chapter_num}` → `1`
+- `{chapter_num:02d}` → `01`
+- `{chapter_num:03d}` → `001`
 
-`{input_stem}`
-: The input filename without extension (useful for maintaining original naming).
+`{input_stem}` : The input filename without extension (useful for maintaining original
+naming).
 
-  Example: If input is `my_book.epub`, this gives `my_book`
+Example: If input is `my_book.epub`, this gives `my_book`
 
-`{chapters_range}`
-: A string representing the chapter selection, or empty if all chapters are selected.
+`{chapters_range}` : A string representing the chapter selection, or empty if all
+chapters are selected.
 
-  - Single chapter: `chapter_1`
-  - Range: `chapters_1-5`
-  - Multiple: `chapters_1-3_5_7-10`
-
+- Single chapter: `chapter_1`
+- Range: `chapters_1-5`
+- Multiple: `chapters_1-3_5_7-10`
 
 ## Template Types
 
@@ -73,6 +66,7 @@ Controls the name of the final audiobook file.
 **Default:** `{book_title}`
 
 **Used by:**
+
 - `ttsforge convert` command
 - `ttsforge phonemes convert` command
 
@@ -97,6 +91,7 @@ Controls the names of intermediate chapter WAV files created during conversion.
 **Default:** `{chapter_num:03d}_{book_title}_{chapter_title}`
 
 **Used by:**
+
 - `ttsforge convert` command (chapter files in work directory)
 - `ttsforge phonemes convert` command
 
@@ -121,6 +116,7 @@ Controls the name of phoneme JSON files created during export.
 **Default:** `{book_title}`
 
 **Used by:**
+
 - `ttsforge phonemes export` command
 
 **Example:**
@@ -134,7 +130,6 @@ ttsforge phonemes export book.epub
 
 # Output: "Empire in Black and Gold_phonemes.phonemes.json"
 ```
-
 
 ## Format Specifiers
 
@@ -156,7 +151,6 @@ Variables can include format specifiers after a colon:
 {book_title:.20}    → "My Book"    (max 20 chars, truncated if longer)
 ```
 
-
 ## Filename Sanitization
 
 All template values are automatically sanitized to be safe for filenames:
@@ -170,11 +164,10 @@ For example:
 - `"Book: The Story"` → `"Book_ The Story"`
 - `"What?"` → `"What_"`
 
-
 ## Partial Chapter Selections
 
-When converting a subset of chapters, the `{chapters_range}` variable contains
-the selection, and it's automatically appended to output filenames:
+When converting a subset of chapters, the `{chapters_range}` variable contains the
+selection, and it's automatically appended to output filenames:
 
 ```bash
 # Convert chapters 1-5
@@ -184,7 +177,6 @@ ttsforge convert book.epub --chapters 1-5
 ```
 
 This ensures partial conversions don't overwrite complete audiobooks.
-
 
 ## Examples
 
@@ -239,11 +231,10 @@ ttsforge config --set chapter_filename_template "{chapter_num:03d}"
 # Chapters: "001.wav", "002.wav", "003.wav", etc.
 ```
 
-
 ## Work Directory
 
-During conversion, ttsforge creates a hidden work directory to store chapter files
-and state information:
+During conversion, ttsforge creates a hidden work directory to store chapter files and
+state information:
 
 ```text
 .{book_title}_chapters/
@@ -255,7 +246,6 @@ and state information:
 
 The work directory is named after the book title and is cleaned up after successful
 conversion (unless `--keep-chapters` is used).
-
 
 ## Troubleshooting
 
@@ -269,14 +259,14 @@ If output filenames are too long for your filesystem:
 
 ### Special characters in titles
 
-Characters that are invalid in filenames are automatically replaced with underscores.
-If you see unexpected underscores in filenames, check the original EPUB metadata
-for special characters.
+Characters that are invalid in filenames are automatically replaced with underscores. If
+you see unexpected underscores in filenames, check the original EPUB metadata for
+special characters.
 
 ### Duplicate filenames
 
-If converting multiple books with the same title, use templates that include
-unique identifiers:
+If converting multiple books with the same title, use templates that include unique
+identifiers:
 
 ```bash
 ttsforge config --set output_filename_template "{author} - {book_title}"

@@ -2,7 +2,6 @@
 
 This guide will help you get started with ttsforge quickly.
 
-
 ## Basic Conversion
 
 Convert an EPUB file to an audiobook with default settings:
@@ -16,7 +15,6 @@ This creates `mybook.m4b` in the same directory with:
 - Default voice: `af_heart` (American English female)
 - Default format: M4B (with chapter markers)
 - Auto-detected language from EPUB metadata
-
 
 ## Choosing a Voice
 
@@ -39,10 +37,10 @@ Convert with a specific voice:
 ttsforge convert mybook.epub -v am_adam  # Male voice
 ```
 
-
 ## Voice Blending
 
-Mix multiple voices for unique narration by specifying voice blends in the `--voice` parameter:
+Mix multiple voices for unique narration by specifying voice blends in the `--voice`
+parameter:
 
 ```bash
 # 50/50 blend of two voices
@@ -55,14 +53,14 @@ ttsforge convert mybook.epub --voice "af_nicole:70,am_michael:30"
 ttsforge sample "Testing" --voice "af_sky:40,af_bella:30,am_adam:30" -p
 ```
 
-The format is: `voice1:weight1,voice2:weight2,...` where weights are percentages (0-100).
+The format is: `voice1:weight1,voice2:weight2,...` where weights are percentages
+(0-100).
 
 You can also use the traditional `--voice-blend` parameter:
 
 ```bash
 ttsforge convert mybook.epub --voice-blend "af_nicole:50,am_michael:50"
 ```
-
 
 ## Output Formats
 
@@ -85,7 +83,6 @@ ttsforge convert mybook.epub -f flac
 ttsforge convert mybook.epub -f opus
 ```
 
-
 ## Converting Specific Chapters
 
 Preview chapter list:
@@ -107,7 +104,6 @@ ttsforge convert mybook.epub --chapters 1,3,5,7
 ttsforge convert mybook.epub --chapters 1-3,5,7-10
 ```
 
-
 ## Speed Control
 
 Adjust speech speed (0.5 to 2.0):
@@ -119,7 +115,6 @@ ttsforge convert mybook.epub -s 1.2
 # Slower
 ttsforge convert mybook.epub -s 0.9
 ```
-
 
 ## Resumable Conversions
 
@@ -137,7 +132,6 @@ To start fresh, discarding previous progress:
 ```bash
 ttsforge convert mybook.epub --fresh
 ```
-
 
 ## Phoneme Pre-tokenization
 
@@ -157,7 +151,6 @@ Benefits:
 - Faster repeated conversions (skip phonemization)
 - Separate phonemization from audio generation
 
-
 ## Testing TTS Settings
 
 Generate a sample to test your settings:
@@ -176,11 +169,10 @@ ttsforge sample --voice am_adam --speed 1.1
 ttsforge sample --play
 ```
 
-
 ## Streaming Read (Optional)
 
-Listen to an EPUB or text file in real-time with the `read` command.
-This requires the optional audio playback extra:
+Listen to an EPUB or text file in real-time with the `read` command. This requires the
+optional audio playback extra:
 
 ```bash
 pip install "ttsforge[audio]"
@@ -193,7 +185,6 @@ ttsforge read mybook.epub
 # Read a text file
 ttsforge read story.txt
 ```
-
 
 ## Voice Demo
 
@@ -210,11 +201,10 @@ ttsforge demo -l a  # American English only
 ttsforge demo --separate -o ./voice_samples/
 ```
 
-
 ## Mixed-Language Support
 
-For books containing multiple languages (e.g., German text with English technical terms),
-ttsforge can automatically detect and handle different languages:
+For books containing multiple languages (e.g., German text with English technical
+terms), ttsforge can automatically detect and handle different languages:
 
 ```bash
 # Convert a book with German and English text
@@ -242,9 +232,11 @@ pip install lingua-language-detector
 - `--use-mixed-language` - Enable automatic language detection
 - `--mixed-language-primary LANG` - Primary/fallback language (e.g., `de`, `en-us`)
 - `--mixed-language-allowed LANGS` - Comma-separated list of languages to detect
-- `--mixed-language-confidence FLOAT` - Detection confidence threshold (0.0-1.0, default: 0.7)
+- `--mixed-language-confidence FLOAT` - Detection confidence threshold (0.0-1.0,
+  default: 0.7)
 
-**Supported languages**: `en-us`, `en-gb`, `de`, `fr-fr`, `es`, `it`, `pt`, `pl`, `tr`, `ru`, `ko`, `ja`, `zh`/`cmn`
+**Supported languages**: `en-us`, `en-gb`, `de`, `fr-fr`, `es`, `it`, `pt`, `pl`, `tr`,
+`ru`, `ko`, `ja`, `zh`/`cmn`
 
 **Configuration**: Set defaults in config:
 
@@ -255,11 +247,10 @@ ttsforge config --set mixed_language_allowed "['de', 'en-us']"
 ttsforge config --set mixed_language_confidence 0.7
 ```
 
-
 ## SSMD Editing
 
-ttsforge uses SSMD (Speech Synthesis Markdown) as an intermediate format between
-EPUB and audio. This allows you to fine-tune pronunciation and pacing.
+ttsforge uses SSMD (Speech Synthesis Markdown) as an intermediate format between EPUB
+and audio. This allows you to fine-tune pronunciation and pacing.
 
 During conversion, `.ssmd` files are automatically generated for each chapter:
 
@@ -293,23 +284,21 @@ ttsforge convert book.epub
 [Hermione]{ph="hɝmˈIni"}          # Custom pronunciation
 ```
 
-Emphasis is spoken plainly by default. To detect italic/bold EPUB styling and
-keep the resulting SSMD emphasis plain, use:
+Emphasis is spoken plainly by default. To detect italic/bold EPUB styling and keep the
+resulting SSMD emphasis plain, use:
 
 ```bash
 ttsforge convert book.epub --detect-emphasis
 ```
 
-To opt into approximate segment-level volume/rate changes, enable it
-separately:
+To opt into approximate segment-level volume/rate changes, enable it separately:
 
 ```bash
 ttsforge convert book.epub --detect-emphasis --enable-ssmd-emphasis
 ```
 
-The persistent policy can be set with `ttsforge config --set
-ssmd_emphasis_mode plain`. Explicit SSMD prosody remains supported in plain
-emphasis mode.
+The persistent policy can be set with `ttsforge config --set ssmd_emphasis_mode plain`.
+Explicit SSMD prosody remains supported in plain emphasis mode.
 
 **Example SSMD file**:
 
@@ -321,7 +310,6 @@ He **hated** the summer holidays. ...p
 ```
 
 For complete SSMD documentation, see {doc}`ssmd`.
-
 
 ## Configuration
 
@@ -342,9 +330,8 @@ ttsforge config --show
 ```
 
 Provider aliases include `auto`, `cpu`, `nnapi`, and `xnnpack`; full
-`*ExecutionProvider` names are also accepted. The legacy `--gpu` and
-`--no-gpu` flags map to `auto` and `cpu` respectively.
-
+`*ExecutionProvider` names are also accepted. The legacy `--gpu` and `--no-gpu` flags
+map to `auto` and `cpu` respectively.
 
 ## Complete Example
 
@@ -361,7 +348,6 @@ ttsforge convert mybook.epub \
     --cover cover.jpg \
     --output ./audiobooks/mybook.m4b
 ```
-
 
 ## Next Steps
 

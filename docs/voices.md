@@ -1,8 +1,7 @@
 # Voices
 
-ttsforge uses Kokoro TTS which provides 54 high-quality neural voices across
-9 languages.
-
+ttsforge uses Kokoro TTS which provides 54 high-quality neural voices across 9
+languages.
 
 ## Voice Naming Convention
 
@@ -24,7 +23,6 @@ For example:
 - `am_adam` = American English, Male, "Adam" voice
 - `bf_emma` = British English, Female, "Emma" voice
 
-
 ## Listing Voices
 
 List all available voices:
@@ -40,7 +38,6 @@ ttsforge voices -l a  # American English
 ttsforge voices -l b  # British English
 ```
 
-
 ## Voice Demo
 
 Listen to all voices:
@@ -55,7 +52,6 @@ ttsforge demo -l a
 # Save individual files
 ttsforge demo --separate -o ./voice_samples/
 ```
-
 
 ## Voices by Language
 
@@ -426,14 +422,14 @@ ttsforge demo --separate -o ./voice_samples/
   -
 ```
 
-
 ## Voice Blending
 
 Combine multiple voices for unique narration. You can specify voice blends in two ways:
 
 **Using --voice parameter (recommended):**
 
-The `--voice` parameter now auto-detects blend format when you include colons and commas:
+The `--voice` parameter now auto-detects blend format when you include colons and
+commas:
 
 ```bash
 # 50/50 blend of two voices
@@ -459,10 +455,9 @@ ttsforge convert book.epub --voice-blend "af_nicole:50,am_michael:50"
 ttsforge convert book.epub --voice af_sky --voice-blend "af_nicole:60,am_michael:40"
 ```
 
-Voice blending creates a mixed voice by interpolating the voice embeddings.
-This can create interesting narrator voices, but results may vary. Blending works best
-with voices of the same language and similar characteristics.
-
+Voice blending creates a mixed voice by interpolating the voice embeddings. This can
+create interesting narrator voices, but results may vary. Blending works best with
+voices of the same language and similar characteristics.
 
 ## Recommendations
 
@@ -485,7 +480,6 @@ with voices of the same language and similar characteristics.
 
 - Expressive voices: `af_kore`, `am_puck`
 - Storytelling voices: `bf_emma`, `bm_fable`
-
 
 ## Language Code Reference
 
