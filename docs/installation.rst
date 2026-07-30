@@ -137,7 +137,7 @@ From Source
 
 .. code-block:: bash
 
-   git clone https://github.com/holgern/ttsforge.git
+   git clone https://github.com/buchwandler/ttsforge.git
    cd ttsforge
    pip install -e .
 
@@ -148,7 +148,7 @@ For development with testing and linting tools:
 
 .. code-block:: bash
 
-   git clone https://github.com/holgern/ttsforge.git
+   git clone https://github.com/buchwandler/ttsforge.git
    cd ttsforge
    pip install -e ".[dev]"
 

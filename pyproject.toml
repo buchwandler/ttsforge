@@ -15,7 +15,7 @@ license = {file = "LICENSE"}
 authors = [
     {name = "Holger Nahrstaedt", email = "nahrstaedt@gmail.com"}
 ]
-urls = { Homepage = "https://github.com/holgern/ttsforge" }
+urls = { Homepage = "https://github.com/buchwandler/ttsforge" }
 dependencies = [
     # Explicit Literal-based wrappers require Typer 0.20.0 or newer.
     "typer>=0.20.0",
