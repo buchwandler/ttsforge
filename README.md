@@ -367,6 +367,24 @@ SSMD files use a simple markdown-like syntax:
 **text**    # Strong emphasis
 ```
 
+Emphasis is plain by default: styled EPUB text is spoken without automatic volume, rate,
+or pitch changes. EPUB styling detection and SSMD rendering are independent controls:
+
+```bash
+# Detect italic/bold EPUB text and speak it plainly (the default)
+ttsforge convert book.epub --detect-emphasis
+
+# Detect styling and explicitly opt into approximate volume/rate changes
+ttsforge convert book.epub --detect-emphasis --enable-ssmd-emphasis
+
+# Choose the persisted/default policy explicitly
+ttsforge config --set ssmd_emphasis_mode plain
+ttsforge convert book.epub --ssmd-emphasis approximate
+```
+
+The available policies are `plain`, `approximate`, `warn`, and `error`. Explicit SSMD
+prosody such as `[fast words]{rate="fast"}` remains active in plain emphasis mode.
+
 **Custom Phonemes**:
 
 ```

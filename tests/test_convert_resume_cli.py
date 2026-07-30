@@ -25,6 +25,7 @@ from ttsforge.conversion import (
 # Helpers
 # ---------------------------------------------------------------------------
 
+
 def _make_chapters(count: int) -> list[Chapter]:
     """Create fake chapters with indices 0..count-1."""
     return [
@@ -52,10 +53,9 @@ def _make_state_for_resume(
                 title=f"Chapter {idx + 1}",
                 content_hash=_hash_content(f"Content of chapter {idx + 1}"),
                 completed=idx in completed_indices,
-                audio_file=
-                    f"chapter_{idx:03d}.wav"
-                    if idx in completed_indices
-                    else None,
+                audio_file=f"chapter_{idx:03d}.wav"
+                if idx in completed_indices
+                else None,
                 duration=10.0 if idx in completed_indices else 0.0,
                 char_count=len(f"Content of chapter {idx + 1}"),
             )
@@ -74,6 +74,7 @@ def _make_state_for_resume(
 # ---------------------------------------------------------------------------
 # A. Regression test — 61 chapters, 50 selected, 2 complete
 # ---------------------------------------------------------------------------
+
 
 class TestRegression61Chapters:
     """Simulates the real-world scenario from the brief."""
@@ -181,6 +182,7 @@ class TestRegression61Chapters:
 # B. Enter-key regression
 # ---------------------------------------------------------------------------
 
+
 class TestEnterKeyRegression:
     """When a valid resume candidate exists, the prompt must never be reached."""
 
@@ -190,7 +192,9 @@ class TestEnterKeyRegression:
         output_dir = tmp_path / "output"
         output_dir.mkdir()
         workspace = resolve_conversion_workspace(
-            output_dir=output_dir, book_title="Book", source_file=source_file,
+            output_dir=output_dir,
+            book_title="Book",
+            source_file=source_file,
         )
         workspace.work_dir.mkdir(parents=True)
         chapters = _make_chapters(10)
@@ -202,7 +206,7 @@ class TestEnterKeyRegression:
             chapters=[
                 ChapterState(
                     index=i,
-                    title=f"Ch{i+1}",
+                    title=f"Ch{i + 1}",
                     content_hash=_hash_content(f"Content {i}"),
                     completed=False,
                 )
@@ -225,6 +229,7 @@ class TestEnterKeyRegression:
 # C. Explicit selection precedence
 # ---------------------------------------------------------------------------
 
+
 class TestExplicitSelectionPrecedence:
     """Explicit --chapters wins over saved selection."""
 
@@ -234,7 +239,9 @@ class TestExplicitSelectionPrecedence:
         output_dir = tmp_path / "output"
         output_dir.mkdir()
         workspace = resolve_conversion_workspace(
-            output_dir=output_dir, book_title="Book", source_file=source_file,
+            output_dir=output_dir,
+            book_title="Book",
+            source_file=source_file,
         )
         workspace.work_dir.mkdir(parents=True)
         chapters = _make_chapters(30)
@@ -244,7 +251,7 @@ class TestExplicitSelectionPrecedence:
             source_selection=list(range(5, 25)),  # Saved 6-25
             output_file="Book.m4b",
             chapters=[
-                ChapterState(index=i, title=f"Ch{i+1}", content_hash="h")
+                ChapterState(index=i, title=f"Ch{i + 1}", content_hash="h")
                 for i in range(5, 25)
             ],
         )
@@ -271,6 +278,7 @@ class TestExplicitSelectionPrecedence:
 # D. --no-resume
 # ---------------------------------------------------------------------------
 
+
 class TestNoResume:
     """--no-resume should ignore saved state."""
 
@@ -280,7 +288,9 @@ class TestNoResume:
         output_dir = tmp_path / "output"
         output_dir.mkdir()
         workspace = resolve_conversion_workspace(
-            output_dir=output_dir, book_title="Book", source_file=source_file,
+            output_dir=output_dir,
+            book_title="Book",
+            source_file=source_file,
         )
         workspace.work_dir.mkdir(parents=True)
         chapters = _make_chapters(10)
@@ -289,7 +299,7 @@ class TestNoResume:
             source_hash=workspace.source_hash,
             source_selection=[0, 1, 2],
             chapters=[
-                ChapterState(index=i, title=f"Ch{i+1}", content_hash="h")
+                ChapterState(index=i, title=f"Ch{i + 1}", content_hash="h")
                 for i in range(3)
             ],
         )
@@ -312,6 +322,7 @@ class TestNoResume:
 # E. --fresh
 # ---------------------------------------------------------------------------
 
+
 class TestFresh:
     """--fresh should delete the hashed workspace."""
 
@@ -321,7 +332,9 @@ class TestFresh:
         output_dir = tmp_path / "output"
         output_dir.mkdir()
         workspace = resolve_conversion_workspace(
-            output_dir=output_dir, book_title="Book", source_file=source_file,
+            output_dir=output_dir,
+            book_title="Book",
+            source_file=source_file,
         )
         workspace.work_dir.mkdir(parents=True)
         workspace.state_file.write_text("{}")
@@ -329,6 +342,7 @@ class TestFresh:
 
         # Simulate --fresh: delete workspace.work_dir
         import shutil
+
         shutil.rmtree(workspace.work_dir)
         assert not workspace.work_dir.exists()
 
@@ -339,7 +353,9 @@ class TestFresh:
         output_dir = tmp_path / "output"
         output_dir.mkdir()
         workspace = resolve_conversion_workspace(
-            output_dir=output_dir, book_title="Book", source_file=source_file,
+            output_dir=output_dir,
+            book_title="Book",
+            source_file=source_file,
         )
         # The workspace name should contain the source hash
         assert workspace.source_hash[:12] in workspace.work_dir.name
@@ -352,6 +368,7 @@ class TestFresh:
 # F. Changed source file
 # ---------------------------------------------------------------------------
 
+
 class TestChangedSourceFile:
     """When source bytes change, old state should not be a candidate."""
 
@@ -361,7 +378,9 @@ class TestChangedSourceFile:
         output_dir = tmp_path / "output"
         output_dir.mkdir()
         workspace = resolve_conversion_workspace(
-            output_dir=output_dir, book_title="Book", source_file=source_file,
+            output_dir=output_dir,
+            book_title="Book",
+            source_file=source_file,
         )
         workspace.work_dir.mkdir(parents=True)
         chapters = _make_chapters(5)
@@ -370,7 +389,7 @@ class TestChangedSourceFile:
             source_hash=workspace.source_hash,
             source_selection=[0, 1, 2],
             chapters=[
-                ChapterState(index=i, title=f"Ch{i+1}", content_hash="h")
+                ChapterState(index=i, title=f"Ch{i + 1}", content_hash="h")
                 for i in range(3)
             ],
         )
@@ -379,7 +398,9 @@ class TestChangedSourceFile:
         # Change source content
         source_file.write_text("modified content")
         new_workspace = resolve_conversion_workspace(
-            output_dir=output_dir, book_title="Book", source_file=source_file,
+            output_dir=output_dir,
+            book_title="Book",
+            source_file=source_file,
         )
         assert new_workspace.source_hash != workspace.source_hash
 
@@ -400,6 +421,7 @@ class TestChangedSourceFile:
 # G. Corrupt state
 # ---------------------------------------------------------------------------
 
+
 class TestCorruptState:
     """Corrupt state should be handled gracefully."""
 
@@ -409,7 +431,9 @@ class TestCorruptState:
         output_dir = tmp_path / "output"
         output_dir.mkdir()
         workspace = resolve_conversion_workspace(
-            output_dir=output_dir, book_title="Book", source_file=source_file,
+            output_dir=output_dir,
+            book_title="Book",
+            source_file=source_file,
         )
         workspace.work_dir.mkdir(parents=True)
         workspace.state_file.write_text("not valid json {{{")
@@ -428,7 +452,9 @@ class TestCorruptState:
         output_dir = tmp_path / "output"
         output_dir.mkdir()
         workspace = resolve_conversion_workspace(
-            output_dir=output_dir, book_title="Book", source_file=source_file,
+            output_dir=output_dir,
+            book_title="Book",
+            source_file=source_file,
         )
         workspace.work_dir.mkdir(parents=True)
         # Valid JSON but missing required fields
@@ -447,6 +473,7 @@ class TestCorruptState:
 # H. Missing completed WAV
 # ---------------------------------------------------------------------------
 
+
 class TestMissingCompletedWAV:
     """Validation should reject reuse when completed chapter audio is missing."""
 
@@ -456,7 +483,9 @@ class TestMissingCompletedWAV:
         output_dir = tmp_path / "output"
         output_dir.mkdir()
         workspace = resolve_conversion_workspace(
-            output_dir=output_dir, book_title="Book", source_file=source_file,
+            output_dir=output_dir,
+            book_title="Book",
+            source_file=source_file,
         )
         workspace.work_dir.mkdir(parents=True)
         chapters = _make_chapters(5)
@@ -473,9 +502,7 @@ class TestMissingCompletedWAV:
                 ChapterState(
                     index=0,
                     title="Ch1",
-                    content_hash=_hash_content(
-                        "Content of chapter 1"
-                    ),
+                    content_hash=_hash_content("Content of chapter 1"),
                     completed=True,
                     audio_file="ch0.wav",
                     duration=10.0,
@@ -483,17 +510,13 @@ class TestMissingCompletedWAV:
                 ChapterState(
                     index=1,
                     title="Ch2",
-                    content_hash=_hash_content(
-                        "Content of chapter 2"
-                    ),
+                    content_hash=_hash_content("Content of chapter 2"),
                     completed=False,
                 ),
                 ChapterState(
                     index=2,
                     title="Ch3",
-                    content_hash=_hash_content(
-                        "Content of chapter 3"
-                    ),
+                    content_hash=_hash_content("Content of chapter 3"),
                     completed=False,
                 ),
             ],
@@ -514,12 +537,14 @@ class TestMissingCompletedWAV:
         # But full validation in converter should reject.
         # Need to pass chapters matching the selection.
         selected_chapters = [
-            ch for ch in chapters
-            if ch.index in state.source_selection
+            ch for ch in chapters if ch.index in state.source_selection
         ]
         validation = converter._resume_state_matches(
-            state, selected_chapters, workspace.source_hash,
-            converter._generation_fingerprint(), workspace.work_dir
+            state,
+            selected_chapters,
+            workspace.source_hash,
+            converter._generation_fingerprint(),
+            workspace.work_dir,
         )
         assert validation.reusable is False
         # Reason could be chapter-content-changed or audio-file-invalid
@@ -530,6 +555,7 @@ class TestMissingCompletedWAV:
 # ---------------------------------------------------------------------------
 # I. Progress initialization
 # ---------------------------------------------------------------------------
+
 
 class TestProgressInitialization:
     """Progress callback should report saved character count."""
@@ -542,7 +568,8 @@ class TestProgressInitialization:
             source_selection=[0, 1, 2, 3, 4],
             chapters=[
                 ChapterState(
-                    index=i, title=f"Ch{i+1}",
+                    index=i,
+                    title=f"Ch{i + 1}",
                     content_hash=_hash_content(f"Content of chapter {i + 1}"),
                     completed=i < 2,  # First 2 completed
                     char_count=len(f"Content of chapter {i + 1}"),
@@ -562,6 +589,7 @@ class TestProgressInitialization:
         # The progress should start at chars_already_done, not 0
         total_chars = sum(ch.char_count for ch in chapters)
         from ttsforge.conversion import ConversionProgress
+
         progress = ConversionProgress(
             total_chapters=len(chapters),
             total_chars=total_chars,
@@ -590,6 +618,7 @@ class TestProgressInitialization:
 # J. Aggregate markers
 # ---------------------------------------------------------------------------
 
+
 class TestAggregateMarkers:
     """Resumed markers should have correct absolute offsets."""
 
@@ -604,23 +633,32 @@ class TestAggregateMarkers:
             {"name": "m2", "char_offset": 100, "sample_offset": 24000, "time_s": 1.0},
         ]
         markers_file = work_dir / "ch0.markers.json"
-        markers_file.write_text(json.dumps({
-            "schema_version": 1,
-            "sample_rate": 24000,
-            "markers": markers,
-        }))
+        markers_file.write_text(
+            json.dumps(
+                {
+                    "schema_version": 1,
+                    "sample_rate": 24000,
+                    "markers": markers,
+                }
+            )
+        )
 
         state = ConversionState(
             version=3,
             source_hash="test",
             chapters=[
                 ChapterState(
-                    index=0, title="Ch1", content_hash="h",
-                    completed=True, duration=10.0,
+                    index=0,
+                    title="Ch1",
+                    content_hash="h",
+                    completed=True,
+                    duration=10.0,
                     ssmd_markers_file="ch0.markers.json",
                 ),
                 ChapterState(
-                    index=1, title="Ch2", content_hash="h",
+                    index=1,
+                    title="Ch2",
+                    content_hash="h",
                     completed=False,
                 ),
             ],
@@ -635,20 +673,19 @@ class TestAggregateMarkers:
                 markers_path = work_dir / ch_state.ssmd_markers_file
                 if markers_path.is_file():
                     chapter_offset = sum(
-                        saved.duration + (
-                            silence
-                            if saved.index < ch_state.index
-                            else 0.0
-                        )
+                        saved.duration
+                        + (silence if saved.index < ch_state.index else 0.0)
                         for saved in state.chapters
                         if saved.index < ch_state.index
                     )
                     markers_data = json.loads(markers_path.read_text())
                     for marker in markers_data.get("markers", []):
-                        aggregate_markers.append({
-                            **marker,
-                            "time_s": marker["time_s"] + chapter_offset,
-                        })
+                        aggregate_markers.append(
+                            {
+                                **marker,
+                                "time_s": marker["time_s"] + chapter_offset,
+                            }
+                        )
 
         # First chapter has offset 0
         assert aggregate_markers[0]["time_s"] == 0.0
@@ -664,22 +701,34 @@ class TestAggregateMarkers:
             {"name": "m1", "char_offset": 0, "sample_offset": 0, "time_s": 0.0},
             {"name": "m2", "char_offset": 100, "sample_offset": 120000, "time_s": 5.0},
         ]
-        (work_dir / "ch0.markers.json").write_text(json.dumps({
-            "schema_version": 1, "sample_rate": 24000, "markers": ch0_markers,
-        }))
+        (work_dir / "ch0.markers.json").write_text(
+            json.dumps(
+                {
+                    "schema_version": 1,
+                    "sample_rate": 24000,
+                    "markers": ch0_markers,
+                }
+            )
+        )
 
         state = ConversionState(
             version=3,
             source_hash="test",
             chapters=[
                 ChapterState(
-                    index=0, title="Ch1", content_hash="h",
-                    completed=True, duration=10.0,
+                    index=0,
+                    title="Ch1",
+                    content_hash="h",
+                    completed=True,
+                    duration=10.0,
                     ssmd_markers_file="ch0.markers.json",
                 ),
                 ChapterState(
-                    index=1, title="Ch2", content_hash="h",
-                    completed=True, duration=8.0,
+                    index=1,
+                    title="Ch2",
+                    content_hash="h",
+                    completed=True,
+                    duration=8.0,
                     ssmd_markers_file=None,  # No markers for ch2
                 ),
             ],
@@ -693,7 +742,8 @@ class TestAggregateMarkers:
                 if markers_path.is_file():
                     offset = sum(
                         s.duration + (silence if s.index < ch_state.index else 0.0)
-                        for s in state.chapters if s.index < ch_state.index
+                        for s in state.chapters
+                        if s.index < ch_state.index
                     )
                     data = json.loads(markers_path.read_text())
                     for m in data.get("markers", []):
@@ -707,6 +757,7 @@ class TestAggregateMarkers:
 # ---------------------------------------------------------------------------
 # resolve_saved_output_path tests
 # ---------------------------------------------------------------------------
+
 
 class TestResolveSavedOutputPath:
     """Test output path resolution from state."""

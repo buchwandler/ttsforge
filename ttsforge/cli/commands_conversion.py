@@ -80,6 +80,24 @@ from .helpers import DEFAULT_SAMPLE_TEXT, console, parse_voice_parameter
 DEFAULT_MODEL_QUALITY: ModelQuality = "fp32"
 
 
+def _resolve_ssmd_emphasis_mode(
+    *,
+    configured: object,
+    explicit: str | None,
+    enable_approximation: bool,
+) -> str:
+    """Resolve explicit CLI emphasis controls over persistent configuration."""
+    if enable_approximation and explicit is not None:
+        raise typer.BadParameter(
+            "--enable-ssmd-emphasis cannot be combined with --ssmd-emphasis"
+        )
+    if enable_approximation:
+        return "approximate"
+    if explicit is not None:
+        return explicit
+    return str(configured or "plain")
+
+
 class ContentItem(TypedDict):
     title: str
     text: str
@@ -142,7 +160,8 @@ def convert(  # noqa: C901
     ssmd_header: bool | None = None,
     ssmd_unknown_header: str = "warn",
     ssmd_missing_voice: str = "error",
-    ssmd_emphasis: str = "approximate",
+    ssmd_emphasis: str | None = None,
+    enable_ssmd_emphasis: bool = False,
     ssmd_profile_validation: bool | None = None,
     ssmd_fail_on_warning: bool | None = None,
     ssmd_voice: list[str] | None = None,
@@ -389,6 +408,12 @@ def convert(  # noqa: C901
             lang.strip() for lang in mixed_language_allowed.split(",")
         ]
 
+    effective_ssmd_emphasis = _resolve_ssmd_emphasis_mode(
+        configured=config.get("ssmd_emphasis_mode", "plain"),
+        explicit=ssmd_emphasis,
+        enable_approximation=enable_ssmd_emphasis,
+    )
+
     ssmd_bindings: dict[str, str] = {}
     for binding in ssmd_voice or []:
         if "=" not in binding:
@@ -436,7 +461,7 @@ def convert(  # noqa: C901
             if ssmd_profile_validation is not None
             else bool(config.get("ssmd_validate_profile", True))
         ),
-        emphasis_mode=ssmd_emphasis,
+        emphasis_mode=effective_ssmd_emphasis,
         fail_on_warning=(
             ssmd_fail_on_warning
             if ssmd_fail_on_warning is not None
@@ -636,6 +661,8 @@ def convert(  # noqa: C901
         mixed_language_allowed=options.mixed_language_allowed,
         mixed_language_confidence=options.mixed_language_confidence,
         random_seed=random_seed,
+        detect_emphasis=detect_emphasis,
+        ssmd_emphasis_mode=ssmd_policy.emphasis_mode,
         short_sentence=_format_short_sentence_summary(
             effective_short_sentence,
             effective_enable_short_sentence,
@@ -1144,6 +1171,8 @@ def _show_conversion_summary(
     mixed_language_allowed: list[str] | None = None,
     mixed_language_confidence: float = 0.7,
     random_seed: int | None = None,
+    detect_emphasis: bool = False,
+    ssmd_emphasis_mode: str = "plain",
     short_sentence: str = DEFAULT_SHORT_SENTENCE,
     short_sentence_note: str | None = None,
     short_sentence_hint: str | None = None,
@@ -1174,6 +1203,19 @@ def _show_conversion_summary(
             table.add_row("  Allowed Langs", ", ".join(mixed_language_allowed))
         table.add_row("  Confidence", f"{mixed_language_confidence:.2f}")
     table.add_row("Speed", f"{speed}x")
+    table.add_row(
+        "EPUB Emphasis Detection", "Enabled" if detect_emphasis else "Disabled"
+    )
+    emphasis_labels = {
+        "plain": "Plain (no prosody)",
+        "approximate": "Approximate (volume/rate)",
+        "warn": "Plain + warnings",
+        "error": "Reject emphasis",
+    }
+    table.add_row(
+        "SSMD Emphasis",
+        emphasis_labels.get(ssmd_emphasis_mode, ssmd_emphasis_mode),
+    )
     if random_seed is not None:
         table.add_row("Seed", str(random_seed))
     table.add_row("Short Sentence", short_sentence)

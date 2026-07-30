@@ -132,7 +132,16 @@ SSMD 0.8 options
    ``error`` or ``use-default`` for unresolved logical roles.
 
 ``--ssmd-emphasis MODE``
-   ``approximate``, ``warn``, or ``error``.
+   ``plain``, ``approximate``, ``warn``, or ``error``. The default is the
+   persisted ``ssmd_emphasis_mode`` value, normally ``plain``. Plain speaks
+   emphasis unchanged; approximate applies segment-level volume/rate changes.
+
+``--enable-ssmd-emphasis``
+   Convenience opt-in equivalent to ``--ssmd-emphasis approximate``. It applies
+   segment-level volume/rate changes to existing SSMD emphasis. Use
+   ``--detect-emphasis`` separately when EPUB italic/bold styling should first
+   be extracted into SSMD annotations. This flag cannot be combined with
+   ``--ssmd-emphasis``.
 
 ``--ssmd-voice ROLE=VOICE``
    Repeatable explicit Kokoro binding override.

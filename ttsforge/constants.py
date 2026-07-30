@@ -210,7 +210,7 @@ DEFAULT_CONFIG = {
     "ssmd_unknown_header": "warn",
     "ssmd_missing_voice": "error",
     "ssmd_validate_profile": True,
-    "ssmd_emphasis_mode": "approximate",
+    "ssmd_emphasis_mode": "plain",
     "ssmd_fail_on_warning": False,
     "ssmd_voice_bindings": {},
     "ssmd_audio_allow_remote": False,

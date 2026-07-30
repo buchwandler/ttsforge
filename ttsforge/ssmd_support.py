@@ -15,7 +15,7 @@ from typing import Any, Literal
 IssueSeverity = Literal["info", "warn", "error"]
 UnknownHeaderPolicy = Literal["warn", "error", "ignore"]
 MissingVoicePolicy = Literal["error", "use-default"]
-EmphasisMode = Literal["approximate", "warn", "error"]
+EmphasisMode = Literal["plain", "approximate", "warn", "error"]
 
 
 @dataclass(frozen=True, slots=True)
@@ -65,7 +65,7 @@ class SSMDPolicy:
     unknown_header: UnknownHeaderPolicy = "warn"
     missing_voice: MissingVoicePolicy = "error"
     validate_profile: bool = True
-    emphasis_mode: EmphasisMode = "approximate"
+    emphasis_mode: EmphasisMode = "plain"
     fail_on_warning: bool = False
     voice_bindings: Mapping[str, Mapping[str, str]] = field(default_factory=dict)
     pause_overrides: SSMDPauseOverrideOptions | None = None
@@ -82,8 +82,10 @@ class SSMDPolicy:
             raise ValueError("unknown_header must be 'warn', 'error', or 'ignore'")
         if self.missing_voice not in {"error", "use-default"}:
             raise ValueError("missing_voice must be 'error' or 'use-default'")
-        if self.emphasis_mode not in {"approximate", "warn", "error"}:
-            raise ValueError("emphasis_mode must be 'approximate', 'warn', or 'error'")
+        if self.emphasis_mode not in {"plain", "approximate", "warn", "error"}:
+            raise ValueError(
+                "emphasis_mode must be 'plain', 'approximate', 'warn', or 'error'"
+            )
         if (
             isinstance(self.audio_max_bytes, bool)
             or not isinstance(self.audio_max_bytes, int)

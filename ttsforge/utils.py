@@ -88,8 +88,13 @@ def validate_config_value(key: str, value: Any) -> None:
         raise ValueError("must be warn, error, or ignore")
     if key == "ssmd_missing_voice" and value not in {"error", "use-default"}:
         raise ValueError("must be error or use-default")
-    if key == "ssmd_emphasis_mode" and value not in {"approximate", "warn", "error"}:
-        raise ValueError("must be approximate, warn, or error")
+    if key == "ssmd_emphasis_mode" and value not in {
+        "plain",
+        "approximate",
+        "warn",
+        "error",
+    }:
+        raise ValueError("must be plain, approximate, warn, or error")
     if key == "ssmd_voice_bindings":
         if not isinstance(value, dict):
             raise ValueError("must be a mapping of logical roles to voice IDs")

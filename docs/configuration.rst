@@ -75,8 +75,11 @@ values as SSMD header overrides.
    Policy for logical voice references that cannot be resolved.
 
 ``ssmd_validate_profile`` and ``ssmd_emphasis_mode``
-   Validate Kokoro-supported constructs and choose ``approximate``, ``warn``,
-   or ``error`` emphasis behavior.
+   Validate Kokoro-supported constructs and choose ``plain`` (the default),
+   ``approximate``, ``warn``, or ``error`` emphasis behavior. Plain emphasis is
+   spoken normally without automatic prosody; explicit SSMD prosody remains
+   active. Approximation can also be selected per conversion with
+   ``--enable-ssmd-emphasis``.
 
 ``ssmd_voice_bindings``
    Mapping such as ``{"narrator": "af_sarah"}``; CLI/API bindings are

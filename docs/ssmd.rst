@@ -64,9 +64,13 @@ Canonical inline annotations use ``[text]{key="value"}``:
    [fast words]{rate="fast" volume="loud"}
    ...c ...s ...p ...250ms
 
-Moderate, strong, reduced, and none emphasis are parsed. Kokoro approximates
-emphasis by default; use ``--ssmd-emphasis warn`` or ``error`` for stricter
-behavior. Language, voice, prosody, say-as, substitution, phoneme, break,
+Moderate, strong, reduced, and none emphasis are parsed. Emphasis is spoken
+plainly by default: it does not add automatic volume, rate, or pitch changes,
+and its metadata is preserved. Use ``--ssmd-emphasis approximate`` or the
+convenience flag ``--enable-ssmd-emphasis`` to opt into segment-level
+volume/rate approximation; use ``warn`` or ``error`` for stricter behavior.
+Explicit document prosody such as ``[fast words]{rate="fast"}`` remains active
+in plain mode. Language, voice, prosody, say-as, substitution, phoneme, break,
 mark, paragraph, heading, and supported audio attributes are passed to the
 renderer.
 
@@ -90,7 +94,9 @@ Useful conversion options include:
 
    --ssmd-unknown-header warn|error|ignore
    --ssmd-missing-voice error|use-default
-   --ssmd-emphasis approximate|warn|error
+   --ssmd-emphasis plain|approximate|warn|error
+   --enable-ssmd-emphasis
+   --detect-emphasis
    --ssmd-voice narrator=af_sarah
    --pause-voice-change 0.35
    --ssmd-audio-root ./audio
@@ -114,7 +120,9 @@ Intentional Kokoro limitations
 * SSMD voice language, gender, and variant hints are preserved as metadata but
   do not select a Kokoro voice.
 * SSMD extensions are rejected by default for the Kokoro profile.
-* Emphasis is approximated by default.
+* Emphasis is spoken plainly by default. EPUB styling detection and SSMD
+  rendering are independent; use ``--detect-emphasis`` to extract italic/bold
+  HTML and ``--enable-ssmd-emphasis`` to opt into approximation.
 * Remote audio is opt-in and bounded.
 * Marks are exported as ``chapter_NNN.markers.json`` and an aggregate output
   sidecar rather than embedded in every audiobook container.

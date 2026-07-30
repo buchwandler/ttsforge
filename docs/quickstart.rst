@@ -307,6 +307,24 @@ During conversion, ``.ssmd`` files are automatically generated for each chapter:
    **text**                           # Strong emphasis
    [Hermione]{ph="hɝmˈIni"}          # Custom pronunciation
 
+Emphasis is spoken plainly by default. To detect italic/bold EPUB styling and
+keep the resulting SSMD emphasis plain, use:
+
+.. code-block:: bash
+
+   ttsforge convert book.epub --detect-emphasis
+
+To opt into approximate segment-level volume/rate changes, enable it
+separately:
+
+.. code-block:: bash
+
+   ttsforge convert book.epub --detect-emphasis --enable-ssmd-emphasis
+
+The persistent policy can be set with ``ttsforge config --set
+ssmd_emphasis_mode plain``. Explicit SSMD prosody remains supported in plain
+emphasis mode.
+
 **Example SSMD file**:
 
 .. code-block:: ssmd

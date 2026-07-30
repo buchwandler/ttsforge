@@ -399,11 +399,22 @@ def convert_command(
         ),
     ] = "error",
     ssmd_emphasis: Annotated[
-        Literal["approximate", "warn", "error"],
+        Literal["plain", "approximate", "warn", "error"] | None,
         typer.Option(
-            "--ssmd-emphasis", help="Policy for Kokoro emphasis approximation."
+            "--ssmd-emphasis",
+            help="SSMD emphasis policy (default: configured value, normally plain).",
         ),
-    ] = "approximate",
+    ] = None,
+    enable_ssmd_emphasis: Annotated[
+        bool,
+        typer.Option(
+            "--enable-ssmd-emphasis",
+            help=(
+                "Opt in to approximate SSMD emphasis with segment-level "
+                "volume/rate changes. Use --detect-emphasis for EPUB HTML."
+            ),
+        ),
+    ] = False,
     ssmd_profile_validation: Annotated[
         bool | None,
         typer.Option(
@@ -534,6 +545,7 @@ def convert_command(
         ssmd_unknown_header=ssmd_unknown_header,
         ssmd_missing_voice=ssmd_missing_voice,
         ssmd_emphasis=ssmd_emphasis,
+        enable_ssmd_emphasis=enable_ssmd_emphasis,
         ssmd_profile_validation=ssmd_profile_validation,
         ssmd_fail_on_warning=ssmd_fail_on_warning,
         ssmd_voice=ssmd_voice or [],
