@@ -1,3 +1,4 @@
 sphinx
 sphinx_rtd_theme
 pillow
+myst-parser>=2.0.0

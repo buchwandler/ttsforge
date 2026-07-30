@@ -18,7 +18,6 @@ gitignore_allow = ["ttsforge/_version.py"]
 include = [
   "**/*.py",
   "**/*.toml",
-  "**/*.rst",
   "**/*.md",
   "**/*.json",
   "**/*.txt",

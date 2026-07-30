@@ -419,7 +419,7 @@ And he also happened to be a wizard. ...p
 - **Combine with phoneme dictionary**: Phoneme dictionary applied automatically to SSMD
 
 For detailed SSMD 0.8 syntax, validation, policy options, and Kokoro limitations, see
-[docs/ssmd.rst](docs/ssmd.rst).
+[docs/ssmd.md](docs/ssmd.md).
 
 ### Custom Phoneme Dictionary
 
@@ -655,8 +655,7 @@ Full documentation: https://ttsforge.readthedocs.io/
 Build locally:
 
 ```bash
-cd docs
-pip install sphinx sphinx-rtd-theme
+pip install -r docs/requirements.txt
 make html
 ```
 

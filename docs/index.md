@@ -1,31 +1,31 @@
-ttsforge Documentation
-======================
+# ttsforge Documentation
 
 **ttsforge** is a command-line tool for converting EPUB files to audiobooks using
 Kokoro ONNX TTS (Text-to-Speech).
 
-.. toctree::
-   :maxdepth: 2
-   :caption: User Guide
+```{toctree}
+:maxdepth: 2
+:caption: User Guide
 
-   installation
-   quickstart
-   cli
-   ssmd
-   configuration
-   filename_templates
-   voices
-   testing
+installation
+quickstart
+cli
+ssmd
+configuration
+filename_templates
+voices
+testing
+```
 
-.. toctree::
-   :maxdepth: 2
-   :caption: API Reference
+```{toctree}
+:maxdepth: 2
+:caption: API Reference
 
-   api/index
+api/index
+```
 
 
-Features
---------
+## Features
 
 - **EPUB to Audiobook Conversion**: Convert EPUB files to M4B, MP3, WAV, FLAC, or OPUS formats
 - **50+ High-Quality Voices**: Support for 9 languages with multiple voice options
@@ -37,32 +37,30 @@ Features
 - **GPU Acceleration**: Optional GPU support for faster processing
 - **Chapter Selection**: Convert specific chapters or chapter ranges
 - **Metadata Support**: Automatic language detection and metadata embedding
-- **Streaming Read**: Real-time playback with the ``read`` command (optional audio extra)
+- **Streaming Read**: Real-time playback with the `read` command (optional audio extra)
 
 
-Quick Example
--------------
+## Quick Example
 
-.. code-block:: bash
+```bash
+# Install ttsforge
+pip install ttsforge
 
-   # Install ttsforge
-   pip install ttsforge
+# Convert an EPUB to audiobook (M4B format with chapters)
+ttsforge convert book.epub
 
-   # Convert an EPUB to audiobook (M4B format with chapters)
-   ttsforge convert book.epub
+# Convert with a specific voice
+ttsforge convert book.epub -v am_adam
 
-   # Convert with a specific voice
-   ttsforge convert book.epub -v am_adam
+# Convert specific chapters
+ttsforge convert book.epub --chapters 1-5
 
-   # Convert specific chapters
-   ttsforge convert book.epub --chapters 1-5
-
-   # List available voices
-   ttsforge voices
+# List available voices
+ttsforge voices
+```
 
 
-Supported Languages
--------------------
+## Supported Languages
 
 ttsforge supports 9 languages with native TTS voices:
 
@@ -77,8 +75,7 @@ ttsforge supports 9 languages with native TTS voices:
 - **Mandarin Chinese** (z) - 8 voices
 
 
-Requirements
-------------
+## Requirements
 
 - Python 3.10 or later
 - ffmpeg (required for MP3/FLAC/OPUS/M4B output and chapter merging)
@@ -87,15 +84,13 @@ Requirements
 - sounddevice (optional, for playback features)
 
 
-License
--------
+## License
 
 ttsforge is released under the MIT License.
 
 
-Indices and tables
-==================
+## Indices and tables
 
-* :ref:`genindex`
-* :ref:`modindex`
-* :ref:`search`
+- {ref}`genindex`
+- {ref}`modindex`
+- {ref}`search`
