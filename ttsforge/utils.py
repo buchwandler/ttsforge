@@ -14,7 +14,7 @@ import sys
 import tempfile
 from collections.abc import Callable
 from pathlib import Path
-from threading import Thread
+from threading import Lock, Thread
 from typing import Any, Literal, overload
 
 from platformdirs import user_cache_dir
@@ -25,6 +25,7 @@ from .paths import get_user_config_path as _get_user_config_path
 _LEGACY_GPU_KEY_WARNED = False
 _PHONEME_DICT_WARNED_PATHS: set[str] = set()
 _LOGGER = logging.getLogger(__name__)
+_ATOMIC_WRITE_REPLACE_LOCK = Lock()
 
 _NUMERIC_CONFIG_RANGES: dict[str, tuple[float | None, float | None]] = {
     "default_speed": (0.5, 2.0),
@@ -295,7 +296,12 @@ def atomic_write_json(
             json.dump(data, f, indent=indent, ensure_ascii=ensure_ascii)
             f.flush()
             os.fsync(f.fileno())
-        os.replace(tmp_path, path)
+        # Windows can reject concurrent replacements of the same destination
+        # even after each writer has closed its temporary file.  Serialize
+        # only the final replacement so independent writers can still prepare
+        # their temporary files concurrently.
+        with _ATOMIC_WRITE_REPLACE_LOCK:
+            os.replace(tmp_path, path)
         # Persist the directory entry when the platform supports directory
         # descriptors. This is best-effort because Windows does not provide
         # the same fsync semantics for directories.

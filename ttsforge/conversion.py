@@ -9,7 +9,7 @@ import threading
 import time
 from collections.abc import Callable, Sequence
 from dataclasses import dataclass, field
-from pathlib import Path
+from pathlib import Path, PurePosixPath, PureWindowsPath
 from typing import TYPE_CHECKING, Any, Literal, Optional, cast
 
 import soundfile as sf
@@ -380,8 +380,13 @@ def resolve_saved_output_path(
     always a sibling of the final output, so for relative paths the output
     lives two directories up from the state file.
     """
-    saved = Path(state.output_file)
-    if saved.is_absolute():
+    saved_text = state.output_file
+    saved = Path(saved_text)
+    if (
+        saved.is_absolute()
+        or PurePosixPath(saved_text).is_absolute()
+        or PureWindowsPath(saved_text).is_absolute()
+    ):
         return saved
     # Workspace is <output_dir>/.<title>-<hash>_chapters; output is in
     # <output_dir>, so two parents up from state_file.
