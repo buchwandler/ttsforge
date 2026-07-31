@@ -738,13 +738,6 @@ def convert(  # noqa: C901
             else:
                 console.print(f"[dim]{message}[/dim]")
 
-    # Run conversion
-    converter = TTSConverter(
-        options=options,
-        progress_callback=progress_callback,
-        log_callback=log_callback,
-    )
-
     # Calculate total characters for progress
     total_chars = sum(
         ch.char_count
@@ -781,17 +774,22 @@ def convert(  # noqa: C901
             )
         )
 
-    with progress:
-        task_id = progress.add_task("Converting...", total=total_chars)
+    with TTSConverter(
+        options=options,
+        progress_callback=progress_callback,
+        log_callback=log_callback,
+    ) as converter:
+        with progress:
+            task_id = progress.add_task("Converting...", total=total_chars)
 
-        result = converter.convert_chapters_resumable(
-            chapters=chapters_to_convert,
-            output_path=output,
-            source_file=epub_file,
-            resume=resume,
-        )
+            result = converter.convert_chapters_resumable(
+                chapters=chapters_to_convert,
+                output_path=output,
+                source_file=epub_file,
+                resume=resume,
+            )
 
-        progress.update(task_id, completed=total_chars)
+            progress.update(task_id, completed=total_chars)
 
     # Show result
     if result.success:
@@ -1069,16 +1067,15 @@ def sample(
             console.print(f"[dim]Output:[/dim] {output}")
 
     try:
-        converter = TTSConverter(options)
-
-        with Progress(
-            SpinnerColumn(),
-            TextColumn("[progress.description]{task.description}"),
-            console=console,
-            transient=True,
-        ) as progress:
-            progress.add_task("Generating audio...", total=None)
-            result = converter.convert_text(sample_text, output)
+        with TTSConverter(options) as converter:
+            with Progress(
+                SpinnerColumn(),
+                TextColumn("[progress.description]{task.description}"),
+                console=console,
+                transient=True,
+            ) as progress:
+                progress.add_task("Generating audio...", total=None)
+                result = converter.convert_text(sample_text, output)
 
         if result.success:
             # Handle playback if requested
@@ -1715,6 +1712,8 @@ def read(  # noqa: C901
 
     # Initialize TTS pipeline
     console.print("[dim]Loading TTS model...[/dim]")
+    kokoro = None
+    pipeline = None
     try:
         kokoro = Kokoro(
             model_path=model_path,
@@ -1746,6 +1745,7 @@ def read(  # noqa: C901
             model_path=model_path,
             voices_path=voices_path,
             short_sentence_config=effective_short_sentence_config,
+            retain_segment_audio=False,
         )
         pipeline = KokoroPipeline(
             pipeline_config,
@@ -1754,6 +1754,12 @@ def read(  # noqa: C901
             audio_postprocessing=OnnxAudioPostprocessingAdapter(kokoro),
         )
     except Exception as e:
+        try:
+            if pipeline is not None:
+                pipeline.close()
+        finally:
+            if kokoro is not None:
+                kokoro.close()
         console.print(f"[red]Error initializing TTS:[/red] {e}")
         sys.exit(1)
 
@@ -1782,7 +1788,12 @@ def read(  # noqa: C901
         def generate_audio(text_segment: str) -> tuple[np.ndarray, int]:
             """Generate audio for a text segment."""
             result = pipeline.run(text_segment)
-            return result.audio, result.sample_rate
+            samples = result.audio
+            sample_rate = result.sample_rate
+            try:
+                return samples, sample_rate
+            finally:
+                result.release_audio()
 
         # Collect all segments across content items with their metadata
         all_segments: list[
@@ -1927,7 +1938,12 @@ def read(  # noqa: C901
     finally:
         # Restore original signal handler
         signal.signal(signal.SIGINT, original_handler)
-        kokoro.close()
+        try:
+            if pipeline is not None:
+                pipeline.close()
+        finally:
+            if kokoro is not None:
+                kokoro.close()
 
 
 def _split_text_into_segments(

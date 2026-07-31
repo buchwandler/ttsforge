@@ -3,7 +3,8 @@
 from pathlib import Path
 
 import numpy as np
-from pykokoro.short_sentence_handler import ShortSentenceConfig
+import pytest
+from pykokoro.short_sentence_handler import SHORT_SENTENCE_META_KEY, ShortSentenceConfig
 
 from ttsforge.kokoro_runner import KokoroRunner, KokoroRunOptions
 from ttsforge.ssmd_support import SSMDPauseOverrideOptions, SSMDPolicy
@@ -57,6 +58,53 @@ def test_kokoro_runner_passes_short_sentence_config_to_backend(monkeypatch):
     assert captured["short_sentence_config"] is short_sentence_config
 
 
+def test_kokoro_runner_close_is_ordered_and_idempotent():
+    events: list[str] = []
+
+    class FakePipeline:
+        def close(self):
+            events.append("pipeline")
+
+    class FakeKokoro:
+        def close(self):
+            events.append("kokoro")
+
+    runner = KokoroRunner(_runner_options(), log=lambda message, level="info": None)
+    runner._pipeline = FakePipeline()
+    runner._kokoro = FakeKokoro()
+    runner._voice_style = "af_bella"
+
+    runner.close()
+    runner.close()
+
+    assert events == ["pipeline", "kokoro"]
+    assert runner._pipeline is None
+    assert runner._kokoro is None
+    assert runner._voice_style is None
+
+
+def test_kokoro_runner_close_closes_backend_when_pipeline_close_fails():
+    events: list[str] = []
+
+    class FailingPipeline:
+        def close(self):
+            events.append("pipeline")
+            raise RuntimeError("pipeline close failed")
+
+    class FakeKokoro:
+        def close(self):
+            events.append("kokoro")
+
+    runner = KokoroRunner(_runner_options(), log=lambda message, level="info": None)
+    runner._pipeline = FailingPipeline()
+    runner._kokoro = FakeKokoro()
+
+    with pytest.raises(RuntimeError, match="pipeline close failed"):
+        runner.close()
+
+    assert events == ["pipeline", "kokoro"]
+
+
 def test_kokoro_runner_builds_ssmd_pipeline_config_and_returns_result(monkeypatch):
     captured: dict[str, object] = {}
 
@@ -103,6 +151,7 @@ def test_kokoro_runner_builds_ssmd_pipeline_config_and_returns_result(monkeypatc
     assert config.ssmd.voice_bindings == {"kokoro": {"narrator": "af_sarah"}}
     assert config.ssmd.pause_defaults.sentence == "250ms"
     assert config.return_trace is True
+    assert config.retain_segment_audio is False
 
 
 def test_kokoro_runner_passes_provider_to_backend(monkeypatch):
@@ -179,6 +228,26 @@ def test_kokoro_runner_forwards_random_seed():
     runner.synthesize("No.", lang_code="en-us", pause_mode="auto")
 
     assert captured["random_seed"] == 1234
+
+
+def test_short_sentence_stats_read_compact_segment_metadata() -> None:
+    class CompactSegment:
+        raw_audio = None
+        processed_audio = None
+        ssmd_metadata = {
+            SHORT_SENTENCE_META_KEY: {
+                "retry_attempts": 2,
+                "fallback_used": "wrap",
+            }
+        }
+
+    result = type("Result", (), {"phoneme_segments": [CompactSegment()]})()
+    runner = KokoroRunner(_runner_options(), log=lambda message, level="info": None)
+
+    runner.short_sentence_stats.add_audio_result(result)
+
+    stats = runner.get_short_sentence_stats()
+    assert (stats.total, stats.retries, stats.fallbacks) == (1, 2, 1)
 
 
 def _runner_options(**kwargs):

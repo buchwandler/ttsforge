@@ -4,6 +4,10 @@ import tempfile
 from pathlib import Path
 from unittest.mock import MagicMock
 
+import numpy as np
+import pytest
+import soundfile as sf
+
 from ttsforge.conversion import (
     SPLIT_MODES,
     Chapter,
@@ -12,6 +16,8 @@ from ttsforge.conversion import (
     ConversionProgress,
     ConversionResult,
     ConversionState,
+    RenderedChapter,
+    TTSConverter,
     _hash_content,
     _hash_file,
     detect_language_from_iso,
@@ -85,6 +91,22 @@ class TestConversionResult:
         result = ConversionResult(success=False, error_message="Something went wrong")
         assert result.success is False
         assert result.error_message == "Something went wrong"
+
+
+class TestRenderedChapter:
+    def test_has_only_lightweight_render_data(self, tmp_path):
+        rendered = RenderedChapter(
+            duration=1.0,
+            rendered_path=tmp_path / "chapter.wav",
+            sample_rate=24000,
+            diagnostics=(),
+            markers=[],
+            document_metadata={"title": "Chapter"},
+        )
+
+        assert rendered.duration == 1.0
+        assert not hasattr(rendered, "audio")
+        assert not hasattr(rendered, "result")
 
 
 class TestChapterState:
@@ -459,3 +481,148 @@ class TestTTSConverterInit:
         assert converter._cancelled is False
         converter.cancel()
         assert converter._cancelled is True
+
+    def test_close_is_idempotent_and_detaches_runner(self):
+        converter = TTSConverter(ConversionOptions())
+        runner = MagicMock()
+        converter._runner = runner
+
+        converter.close()
+        converter.close()
+
+        runner.close.assert_called_once_with()
+        assert converter._runner is None
+
+    def test_context_manager_closes_runner(self):
+        converter = TTSConverter(ConversionOptions())
+        runner = MagicMock()
+        converter._runner = runner
+
+        with converter as active:
+            assert active is converter
+
+        runner.close.assert_called_once_with()
+
+    def test_context_manager_closes_runner_on_exception(self):
+        converter = TTSConverter(ConversionOptions())
+        runner = MagicMock()
+        converter._runner = runner
+
+        with pytest.raises(RuntimeError, match="boom"):
+            with converter:
+                raise RuntimeError("boom")
+
+        runner.close.assert_called_once_with()
+
+
+class TestChapterRendering:
+    @staticmethod
+    def _converter(tmp_path):
+        return TTSConverter(ConversionOptions(), log_callback=lambda *_args: None)
+
+    @staticmethod
+    def _result(release_counter):
+        class Result:
+            audio = np.array([0.0, 0.25, -0.25], dtype=np.float32)
+            sample_rate = 16000
+            markers = [{"name": "start", "char_offset": 2, "sample_offset": 16000}]
+            trace = type("Trace", (), {"warnings": ["ssmd.warning: copied"]})()
+            document_metadata = {
+                "title": "Title",
+                "voice_bindings": {"narrator": "af_bella"},
+                "pause_defaults": {"sentence": "250ms"},
+                "ignored": "not retained",
+            }
+
+            def release_audio(self):
+                release_counter["count"] += 1
+
+        return Result()
+
+    def test_releases_after_successful_write_and_copies_data(self, tmp_path):
+        release_counter = {"count": 0}
+        converter = self._converter(tmp_path)
+        result = self._result(release_counter)
+        converter._runner = MagicMock()
+        converter._runner.synthesize.return_value = result
+
+        rendered = converter._render_chapter_wav(
+            Chapter("Chapter", "text"),
+            tmp_path / "chapter.wav",
+            "text",
+            tmp_path / "chapter.ssmd",
+        )
+
+        assert isinstance(rendered, RenderedChapter)
+        assert release_counter["count"] == 1
+        assert rendered.duration == pytest.approx(3 / 16000)
+        assert rendered.sample_rate == 16000
+        assert rendered.diagnostics[0].code == "ssmd.warning"
+        assert rendered.markers[0]["time_s"] == 1.0
+        assert rendered.document_metadata == {
+            "title": "Title",
+            "voice_bindings": {"narrator": "af_bella"},
+            "pause_defaults": {"sentence": "250ms"},
+        }
+        samples, sample_rate = sf.read(rendered.rendered_path)
+        assert sample_rate == 16000
+        assert np.allclose(samples, result.audio)
+
+    def test_releases_and_removes_temp_file_after_write_failure(
+        self, tmp_path, monkeypatch
+    ):
+        release_counter = {"count": 0}
+        converter = self._converter(tmp_path)
+        converter._runner = MagicMock()
+        converter._runner.synthesize.return_value = self._result(release_counter)
+
+        class FailingSoundFile:
+            def __init__(self, *_args, **_kwargs):
+                raise OSError("cannot write wav")
+
+        monkeypatch.setattr("ttsforge.conversion.sf.SoundFile", FailingSoundFile)
+
+        with pytest.raises(OSError, match="cannot write wav"):
+            converter._render_chapter_wav(
+                Chapter("Chapter", "text"),
+                tmp_path / "chapter.wav",
+                "text",
+                tmp_path / "chapter.ssmd",
+            )
+
+        assert release_counter["count"] == 1
+        assert not list(tmp_path.glob(".chapter.wav.*.tmp.wav"))
+
+    def test_previous_result_is_unreachable_before_next_synthesis(self, tmp_path):
+        import gc
+        import weakref
+
+        release_counter = {"count": 0}
+        first_ref = None
+
+        class Runner:
+            calls = 0
+
+            def synthesize(self, *_args, **_kwargs):
+                nonlocal first_ref
+                self.calls += 1
+                result = TestChapterRendering._result(release_counter)
+                if self.calls == 1:
+                    first_ref = weakref.ref(result)
+                elif first_ref is not None:
+                    gc.collect()
+                    assert first_ref() is None
+                return result
+
+        converter = self._converter(tmp_path)
+        converter._runner = Runner()
+        for index in range(2):
+            rendered = converter._render_chapter_wav(
+                Chapter(f"Chapter {index}", "text"),
+                tmp_path / f"chapter-{index}.wav",
+                "text",
+                tmp_path / f"chapter-{index}.ssmd",
+            )
+            rendered.rendered_path.unlink()
+
+        assert release_counter["count"] == 2

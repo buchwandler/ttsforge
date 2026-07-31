@@ -1,5 +1,7 @@
 """TTS conversion module for ttsforge - converts text/EPUB to audiobooks."""
 
+from __future__ import annotations
+
 import hashlib
 import json
 import os
@@ -10,7 +12,7 @@ import time
 from collections.abc import Callable, Sequence
 from dataclasses import dataclass, field
 from pathlib import Path, PurePosixPath, PureWindowsPath
-from typing import TYPE_CHECKING, Any, Literal, Optional, cast
+from typing import TYPE_CHECKING, Any, Literal, cast
 
 import soundfile as sf
 from pykokoro.config_types import (
@@ -30,6 +32,7 @@ from .constants import (
     VOICE_PREFIX_TO_LANG,
 )
 from .kokoro_lang import get_onnx_lang_code
+from .memory_diagnostics import log_snapshot
 from .short_sentence_config import resolve_short_sentence_config
 from .short_sentence_stats import ShortSentenceStats
 from .ssmd_audio import LocalSSMDAudioResolver
@@ -124,6 +127,18 @@ class ConversionResult:
     markers: list[dict[str, Any]] = field(default_factory=list)
 
 
+@dataclass(slots=True)
+class RenderedChapter:
+    """Lightweight data retained after a chapter waveform is written."""
+
+    duration: float
+    rendered_path: Path
+    sample_rate: int
+    diagnostics: tuple[SSMDIssue, ...]
+    markers: list[dict[str, Any]]
+    document_metadata: dict[str, Any]
+
+
 @dataclass
 class ChapterState:
     """State of a single chapter conversion."""
@@ -181,7 +196,7 @@ class ConversionState:
     last_updated: str = ""
 
     @classmethod
-    def load(cls, state_file: Path) -> Optional["ConversionState"]:
+    def load(cls, state_file: Path) -> ConversionState | None:
         """Load state from a JSON file."""
         if not state_file.exists():
             return None
@@ -566,13 +581,31 @@ def _marker_records(result: Any) -> list[dict[str, Any]]:
 def _write_marker_sidecar(path: Path, result: Any) -> list[dict[str, Any]]:
     markers = _marker_records(result)
     sample_rate = int(getattr(result, "sample_rate", SAMPLE_RATE) or SAMPLE_RATE)
+    _write_marker_records_sidecar(
+        path,
+        sample_rate=sample_rate,
+        markers=markers,
+    )
+    return markers
+
+
+def _write_marker_records_sidecar(
+    path: Path,
+    *,
+    sample_rate: int,
+    markers: list[dict[str, Any]],
+) -> None:
+    """Write marker records without retaining a PyKokoro result."""
     atomic_write_json(
         path,
-        {"schema_version": 1, "sample_rate": sample_rate, "markers": markers},
+        {
+            "schema_version": 1,
+            "sample_rate": sample_rate,
+            "markers": markers,
+        },
         indent=2,
         ensure_ascii=True,
     )
-    return markers
 
 
 # Split mode options
@@ -770,6 +803,23 @@ class TTSConverter:
         """Request cancellation of the conversion."""
         self._cancel_event.set()
 
+    def close(self) -> None:
+        """Close the lazily created TTS runner, if any."""
+        provider = self.options.effective_onnx_provider()
+        log_snapshot(self.log, "before converter close", provider=provider)
+        runner, self._runner = self._runner, None
+        try:
+            if runner is not None:
+                runner.close()
+        finally:
+            log_snapshot(self.log, "after converter close", provider=provider)
+
+    def __enter__(self) -> TTSConverter:
+        return self
+
+    def __exit__(self, exc_type: object, exc: object, tb: object) -> None:
+        self.close()
+
     def _init_runner(self) -> None:
         """Initialize the Kokoro runner."""
         if self._runner is not None:
@@ -923,7 +973,7 @@ class TTSConverter:
         output_file: Path,
         ssmd_content: str,
         ssmd_file: Path,
-    ) -> tuple[float, Any, Path]:
+    ) -> RenderedChapter:
         """Render SSMD content to a chapter WAV file."""
         effective_lang = (
             self.options.lang if self.options.lang else self.options.language
@@ -931,6 +981,8 @@ class TTSConverter:
         lang_code = get_onnx_lang_code(effective_lang)
 
         temp_path: Path | None = None
+        result: Any | None = None
+        samples: Any | None = None
         try:
             with tempfile.NamedTemporaryFile(
                 prefix=f".{output_file.name}.",
@@ -948,6 +1000,11 @@ class TTSConverter:
                 max_duration_s=self.options.ssmd_policy.audio_max_duration_s,
             )
             assert self._runner is not None
+            log_snapshot(
+                self.log,
+                "before chapter synthesis",
+                provider=self.options.effective_onnx_provider(),
+            )
             result = self._runner.synthesize(
                 ssmd_content,
                 lang_code=lang_code,
@@ -957,19 +1014,62 @@ class TTSConverter:
                 is_phonemes=False,
                 audio_resolver=resolver,
             )
-            samples = getattr(result, "audio", result)
+            log_snapshot(
+                self.log,
+                "after synthesis",
+                provider=self.options.effective_onnx_provider(),
+            )
+            samples = result.audio
+            sample_rate = int(result.sample_rate or SAMPLE_RATE)
+            duration = len(samples) / sample_rate
+            diagnostics = _result_issues(result)
+            markers = _marker_records(result)
+            document_metadata = {
+                key: value
+                for key, value in (
+                    getattr(result, "document_metadata", {}) or {}
+                ).items()
+                if key in {"title", "voice_bindings", "pause_defaults"}
+            }
             with sf.SoundFile(
                 str(temp_path),
                 "w",
-                samplerate=SAMPLE_RATE,
+                samplerate=sample_rate,
                 channels=1,
                 format="wav",
             ) as out_file:
                 out_file.write(samples)
+            log_snapshot(
+                self.log,
+                "after WAV write",
+                provider=self.options.effective_onnx_provider(),
+            )
             rendered_path = temp_path
             temp_path = None
-            return len(samples) / SAMPLE_RATE, result, rendered_path
+            return RenderedChapter(
+                duration=duration,
+                rendered_path=rendered_path,
+                sample_rate=sample_rate,
+                diagnostics=diagnostics,
+                markers=markers,
+                document_metadata=document_metadata,
+            )
         finally:
+            samples = None
+            if result is not None:
+                try:
+                    result.release_audio()
+                except Exception as exc:
+                    self.log(
+                        f"Failed to release PyKokoro audio buffers: {exc}",
+                        "warning",
+                    )
+                log_snapshot(
+                    self.log,
+                    "after result.release_audio()",
+                    provider=self.options.effective_onnx_provider(),
+                )
+            result = None
             if temp_path is not None:
                 temp_path.unlink(missing_ok=True)
 
@@ -1535,7 +1635,7 @@ class TTSConverter:
                 # SSMD-only conversion is backend-independent. Initialize the
                 # runner only when an audio artifact is actually rendered.
                 self._init_runner()
-                duration, audio_result, rendered_audio = self._render_chapter_wav(
+                rendered = self._render_chapter_wav(
                     chapter,
                     chapter_file,
                     ssmd_content,
@@ -1545,7 +1645,7 @@ class TTSConverter:
                 chapter_state.ssmd_diagnostics_file = ssmd_filename.replace(
                     ".ssmd", ".diagnostics.json"
                 )
-                diagnostics = tuple(document_info.issues) + _result_issues(audio_result)
+                diagnostics = tuple(document_info.issues) + rendered.diagnostics
                 try:
                     atomic_write_json(
                         work_dir / chapter_state.ssmd_diagnostics_file,
@@ -1568,13 +1668,16 @@ class TTSConverter:
                     chapter_state.ssmd_markers_file = ssmd_filename.replace(
                         ".ssmd", ".markers.json"
                     )
-                    chapter_markers = _write_marker_sidecar(
-                        work_dir / chapter_state.ssmd_markers_file, audio_result
+                    _write_marker_records_sidecar(
+                        work_dir / chapter_state.ssmd_markers_file,
+                        sample_rate=rendered.sample_rate,
+                        markers=rendered.markers,
                     )
-                    os.replace(rendered_audio, chapter_file)
+                    os.replace(rendered.rendered_path, chapter_file)
                 except Exception:
-                    rendered_audio.unlink(missing_ok=True)
+                    rendered.rendered_path.unlink(missing_ok=True)
                     raise
+                chapter_markers = rendered.markers
                 chapter_offset = sum(
                     saved.duration
                     + (
@@ -1593,15 +1696,7 @@ class TTSConverter:
                     for marker in chapter_markers
                 )
                 aggregate_issues.extend(diagnostics)
-                aggregate_metadata.update(
-                    {
-                        key: value
-                        for key, value in getattr(
-                            audio_result, "document_metadata", {}
-                        ).items()
-                        if key in {"title", "voice_bindings", "pause_defaults"}
-                    }
-                )
+                aggregate_metadata.update(rendered.document_metadata)
 
                 if self._cancel_event.is_set():
                     # Remove incomplete files
@@ -1620,8 +1715,13 @@ class TTSConverter:
                 chapter_state.ssmd_file = ssmd_filename
                 chapter_state.ssmd_hash = ssmd_hash
                 chapter_state.ssmd_document_title = document_info.title
-                chapter_state.duration = duration
+                chapter_state.duration = rendered.duration
                 state.save(state_file)
+                log_snapshot(
+                    self.log,
+                    "after state save",
+                    provider=self.options.effective_onnx_provider(),
+                )
 
                 # Update progress
                 chars_processed += chapter.char_count
@@ -1667,12 +1767,23 @@ class TTSConverter:
                 author=self.options.author,
                 cover_image=self.options.cover_image,
             )
+            log_snapshot(
+                self.log,
+                "before final merge",
+                provider=self.options.effective_onnx_provider(),
+            )
             self._merger.merge_chapter_wavs(
+                # The merger reads already released chapter WAV files.
                 chapter_files,
                 chapter_durations,
                 chapter_titles,
                 output_path,
                 meta,
+            )
+            log_snapshot(
+                self.log,
+                "after final merge",
+                provider=self.options.effective_onnx_provider(),
             )
 
             aggregate_marker_path = output_path.with_suffix(

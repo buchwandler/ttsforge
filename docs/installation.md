@@ -12,6 +12,13 @@ This guide covers the installation of ttsforge and its dependencies.
 
 ttsforge requires the following external tools:
 
+### PyKokoro memory API
+
+The package requires PyKokoro `>=0.7.5,<0.8`. This release provides the public
+memory-ownership API used by TTSForge to disable retained segment audio and release
+completed chapter results. Whole chapters are still synthesized into a buffered WAV;
+streaming is not part of this integration.
+
 ### ffmpeg (Required for MP3/FLAC/OPUS/M4B)
 
 ffmpeg is required for MP3/FLAC/OPUS/M4B output and chapter merging.
@@ -153,7 +160,7 @@ pip install "ttsforge[gpu]"
 ttsforge config --set onnx_provider cuda
 ```
 
-For Termux/Android with PyKokoro v0.7.1 and an ONNX Runtime build exposing NNAPI or
+For Termux/Android with PyKokoro v0.7.5 and an ONNX Runtime build exposing NNAPI or
 XNNPACK:
 
 ```bash
@@ -165,6 +172,14 @@ ttsforge sample "Termux provider test" --provider nnapi
 Use `--gpu` as a compatibility shortcut for `--provider auto` or `--no-gpu` for
 `--provider cpu`. Provider availability and the documented `ONNX_PROVIDER` environment
 override are handled by PyKokoro.
+
+## Memory diagnostics
+
+Set `TTSFORGE_MEMORY_DEBUG=1` to log RSS, peak RSS, available memory, and the effective
+ONNX provider before and after runner initialization, chapter synthesis, WAV writing,
+result release, state saves, final merging, and converter cleanup. Native allocators may
+retain pages at a high-water mark after audio release; this diagnostic does not claim a
+provider-native leak from RSS alone.
 
 ## Mixed-Language Support (Optional)
 

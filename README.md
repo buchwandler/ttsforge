@@ -26,6 +26,7 @@ with support for 54 neural voices across 9 languages.
 - **ONNX Runtime Providers**: CPU, CUDA, NNAPI, XNNPACK, and other PyKokoro providers
 - **Chapter Support**: M4B files include chapter markers from EPUB
 - **Streaming Read**: Listen to EPUB/text directly with the `read` command
+- **Reduced Memory Retention**: Release chapter audio buffers before the next synthesis
 
 ## Installation
 
@@ -49,6 +50,20 @@ pip install "ttsforge[static_ffmpeg]"
 # GPU acceleration (CUDA; use a fresh environment when replacing the CPU provider)
 pip install "ttsforge[gpu]"
 ```
+
+TTSForge requires PyKokoro 0.7.5 or newer within the 0.7 release line. It uses compact
+segment results and releases completed chapter audio before the next chapter starts.
+Whole-chapter synthesis remains buffered; streaming synthesis is future work.
+
+To log opt-in process-memory snapshots during conversion:
+
+```bash
+TTSFORGE_MEMORY_DEBUG=1 ttsforge convert book.epub
+```
+
+Diagnostics report RSS, peak RSS, available memory, and the effective ONNX provider at
+runner, chapter, merge, and cleanup phases. A stable high RSS after release can reflect
+native allocator high-water behavior and does not by itself prove a provider leak.
 
 ### Dependencies
 
@@ -605,7 +620,7 @@ ttsforge convert book.epub --gpu
 ttsforge convert book.epub --provider xnnpack
 ```
 
-For Termux/Android, install a PyKokoro v0.7.1-compatible ONNX Runtime build, then use
+For Termux/Android, install a PyKokoro v0.7.5-compatible ONNX Runtime build, then use
 `--provider nnapi` or `--provider xnnpack`. Configure GitHub model assets explicitly
 when using that source:
 

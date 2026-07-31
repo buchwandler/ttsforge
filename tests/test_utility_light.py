@@ -4,6 +4,7 @@ from dataclasses import dataclass
 from pathlib import Path
 
 from ttsforge.cli import utility_light
+from ttsforge.cli.commands_utility import _close_pipeline_and_backend
 
 
 @dataclass
@@ -97,3 +98,41 @@ def test_provider_probe_failure_does_not_hide_model_status(monkeypatch, capsys) 
     output = capsys.readouterr().out
     assert "ONNX Models" in output and "Downloaded" in output
     assert "ONNX Runtime Providers" in output and "Status unavailable" in output
+
+
+def test_direct_pipeline_cleanup_closes_pipeline_before_backend() -> None:
+    events: list[str] = []
+
+    class Pipeline:
+        def close(self) -> None:
+            events.append("pipeline")
+
+    class Backend:
+        def close(self) -> None:
+            events.append("backend")
+
+    _close_pipeline_and_backend(Pipeline(), Backend())
+
+    assert events == ["pipeline", "backend"]
+
+
+def test_direct_pipeline_cleanup_closes_backend_after_pipeline_failure() -> None:
+    events: list[str] = []
+
+    class Pipeline:
+        def close(self) -> None:
+            events.append("pipeline")
+            raise RuntimeError("pipeline failure")
+
+    class Backend:
+        def close(self) -> None:
+            events.append("backend")
+
+    try:
+        _close_pipeline_and_backend(Pipeline(), Backend())
+    except RuntimeError as exc:
+        assert str(exc) == "pipeline failure"
+    else:  # pragma: no cover - defensive assertion
+        raise AssertionError("pipeline failure was swallowed")
+
+    assert events == ["pipeline", "backend"]

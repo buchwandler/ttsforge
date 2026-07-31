@@ -61,6 +61,19 @@ ModelSource: TypeAlias = Literal["huggingface", "github"]
 ModelVariant: TypeAlias = Literal["v1.0", "v1.1-zh", "v1.1-de"]
 
 
+def _close_pipeline_and_backend(
+    pipeline: KokoroPipeline | None,
+    kokoro: Kokoro | None,
+) -> None:
+    """Close an externally owned pipeline and backend in dependency order."""
+    try:
+        if pipeline is not None:
+            pipeline.close()
+    finally:
+        if kokoro is not None:
+            kokoro.close()
+
+
 def _require_sounddevice() -> Any:
     try:
         import sounddevice as sd
@@ -188,6 +201,8 @@ def demo(  # noqa: C901
         console.print(f"[dim]ONNX Provider: {resolved_provider}[/dim]")
 
         # Initialize TTS pipeline
+        kokoro: Kokoro | None = None
+        pipeline: KokoroPipeline | None = None
         try:
             kokoro = Kokoro(
                 model_path=model_path,
@@ -200,6 +215,7 @@ def demo(  # noqa: C901
                 generation=generation,
                 model_path=model_path,
                 voices_path=voices_path,
+                retain_segment_audio=False,
             )
             pipeline = KokoroPipeline(
                 pipeline_config,
@@ -208,6 +224,7 @@ def demo(  # noqa: C901
                 audio_postprocessing=OnnxAudioPostprocessingAdapter(kokoro),
             )
         except Exception as e:
+            _close_pipeline_and_backend(pipeline, kokoro)
             console.print(f"[red]Error initializing TTS engine:[/red] {e}")
             sys.exit(1)
 
@@ -226,6 +243,7 @@ def demo(  # noqa: C901
             )
 
             for blend_str, description in blends_to_process:
+                result = None
                 try:
                     # Parse the blend
                     voice_blend = VoiceBlend.parse(blend_str)
@@ -273,6 +291,15 @@ def demo(  # noqa: C901
 
                 except Exception as e:
                     console.print(f"  [red]{blend_str}[/red]: Failed - {e}")
+                finally:
+                    if result is not None:
+                        try:
+                            result.release_audio()
+                        except Exception as e:
+                            console.print(
+                                f"  [yellow]{blend_str}[/yellow]: "
+                                f"Failed to release audio buffers - {e}"
+                            )
 
                 progress.advance(task)
 
@@ -287,6 +314,7 @@ def demo(  # noqa: C901
             "[dim]Short sentence handling: "
             f"{format_short_sentence_stats(short_sentence_stats)}[/dim]"
         )
+        _close_pipeline_and_backend(pipeline, kokoro)
         return
 
     # Regular voice demo mode (no blending)
@@ -334,6 +362,8 @@ def demo(  # noqa: C901
     console.print(f"[dim]ONNX Provider: {resolved_provider}[/dim]")
 
     # Initialize TTS pipeline
+    kokoro: Kokoro | None = None
+    pipeline: KokoroPipeline | None = None
     try:
         kokoro = Kokoro(
             model_path=model_path,
@@ -346,6 +376,7 @@ def demo(  # noqa: C901
             generation=generation,
             model_path=model_path,
             voices_path=voices_path,
+            retain_segment_audio=False,
         )
         pipeline = KokoroPipeline(
             pipeline_config,
@@ -354,6 +385,7 @@ def demo(  # noqa: C901
             audio_postprocessing=OnnxAudioPostprocessingAdapter(kokoro),
         )
     except Exception as e:
+        _close_pipeline_and_backend(pipeline, kokoro)
         console.print(f"[red]Error initializing TTS engine:[/red] {e}")
         sys.exit(1)
 
@@ -386,6 +418,7 @@ def demo(  # noqa: C901
             else:
                 demo_text = DEMO_TEXT.get(lang_code, DEMO_TEXT["a"]).format(voice=voice)
 
+            result = None
             try:
                 onnx_lang = LANG_CODE_TO_ONNX.get(lang_code, "en-us")
                 result = pipeline.run(demo_text, voice=voice, lang=onnx_lang)
@@ -407,6 +440,15 @@ def demo(  # noqa: C901
 
             except Exception as e:
                 console.print(f"  [red]{voice}[/red]: Failed - {e}")
+            finally:
+                if result is not None:
+                    try:
+                        result.release_audio()
+                    except Exception as e:
+                        console.print(
+                            f"  [yellow]{voice}[/yellow]: "
+                            f"Failed to release audio buffers - {e}"
+                        )
 
             progress.advance(task)
 
@@ -446,6 +488,8 @@ def demo(  # noqa: C901
             "[dim]Short sentence handling: "
             f"{format_short_sentence_stats(short_sentence_stats)}[/dim]"
         )
+
+    _close_pipeline_and_backend(pipeline, kokoro)
 
 
 def _resolve_model_source_and_variant(cfg: dict) -> tuple[ModelSource, ModelVariant]:

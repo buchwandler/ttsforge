@@ -25,6 +25,7 @@ from pykokoro.stages.audio_generation.onnx import OnnxAudioGenerationAdapter
 from pykokoro.stages.audio_postprocessing.onnx import OnnxAudioPostprocessingAdapter
 from pykokoro.stages.phoneme_processing.onnx import OnnxPhonemeProcessorAdapter
 
+from .memory_diagnostics import log_snapshot
 from .short_sentence_stats import ShortSentenceStats
 from .ssmd_support import SSMDPolicy, build_pykokoro_ssmd_config
 
@@ -74,6 +75,12 @@ class KokoroRunner:
     def ensure_ready(self) -> None:
         if self._pipeline is not None:
             return
+
+        log_snapshot(
+            self.log,
+            "before runner initialization",
+            provider=self.opts.effective_onnx_provider(),
+        )
 
         if self.opts.model_path is None or self.opts.voices_path is None:
             model_quality = self.opts.model_quality or DEFAULT_MODEL_QUALITY
@@ -149,6 +156,7 @@ class KokoroRunner:
             short_sentence_config=self.opts.short_sentence_config,
             ssmd=build_pykokoro_ssmd_config(self.opts.ssmd_policy),
             return_trace=True,
+            retain_segment_audio=False,
         )
 
         # Use the same adapters everywhere (text + phonemes)
@@ -158,6 +166,11 @@ class KokoroRunner:
             phoneme_processing=OnnxPhonemeProcessorAdapter(self._kokoro),
             audio_generation=OnnxAudioGenerationAdapter(self._kokoro),
             audio_postprocessing=OnnxAudioPostprocessingAdapter(self._kokoro),
+        )
+        log_snapshot(
+            self.log,
+            "after runner initialization",
+            provider=self.opts.effective_onnx_provider(),
         )
 
     def synthesize(
@@ -206,7 +219,12 @@ class KokoroRunner:
         ssmd_policy: SSMDPolicy | None = None,
         audio_resolver: object | None = None,
     ) -> np.ndarray:
-        """Compatibility helper returning only the audio samples."""
+        """Return caller-owned audio samples from a synthesized result.
+
+        The returned array remains valid after this method returns. The caller
+        owns that array and is responsible for releasing or replacing its
+        reference when it is no longer needed.
+        """
         result = self.synthesize(
             text_or_ssmd,
             lang_code=lang_code,
@@ -219,3 +237,23 @@ class KokoroRunner:
 
     def get_short_sentence_stats(self) -> ShortSentenceStats:
         return self.short_sentence_stats.copy()
+
+    def close(self) -> None:
+        """Close pipeline and backend resources, safely and idempotently."""
+        pipeline, self._pipeline = self._pipeline, None
+        kokoro, self._kokoro = self._kokoro, None
+        self._voice_style = None
+
+        try:
+            if pipeline is not None:
+                pipeline.close()
+        finally:
+            if kokoro is not None:
+                kokoro.close()
+
+    def __enter__(self) -> KokoroRunner:
+        self.ensure_ready()
+        return self
+
+    def __exit__(self, exc_type: object, exc: object, tb: object) -> None:
+        self.close()

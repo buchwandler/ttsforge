@@ -507,6 +507,17 @@ TTSForge configuration has no separate environment-variable file format. The PyK
 runtime may still honor its documented `ONNX_PROVIDER` environment override after
 TTSForge resolves the configured provider.
 
+Set `TTSFORGE_MEMORY_DEBUG=1` to enable dependency-free process-memory diagnostics
+during conversion. Logs include RSS, peak RSS, available memory, and the effective ONNX
+provider around runner initialization, chapter synthesis, WAV writing, result release,
+state saves, final merging, and converter cleanup. RSS may remain elevated because
+native allocators retain high-water pages; that alone is not evidence of a provider
+leak.
+
+TTSForge requires PyKokoro `>=0.7.5,<0.8`, uses compact segment results, and releases
+completed chapter audio before the next chapter synthesis. Whole-chapter synthesis
+remains buffered and streaming is future work.
+
 ## Model source status
 
 Set `model_source` to `github` when using the GitHub asset set. `ttsforge config --show`

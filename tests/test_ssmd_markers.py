@@ -2,7 +2,11 @@ from __future__ import annotations
 
 import json
 
-from ttsforge.conversion import _result_issues, _write_marker_sidecar
+from ttsforge.conversion import (
+    _result_issues,
+    _write_marker_records_sidecar,
+    _write_marker_sidecar,
+)
 
 
 def test_marker_offsets_are_exported_with_time(tmp_path) -> None:
@@ -36,3 +40,24 @@ def test_renderer_warning_codes_are_retained() -> None:
 
     assert issues[0].code == "ssmd.audio_fallback"
     assert issues[0].message == "missing"
+
+
+def test_marker_records_helper_preserves_sidecar_contract(tmp_path) -> None:
+    path = tmp_path / "chapter.markers.json"
+    markers = [
+        {
+            "name": "intro",
+            "char_offset": 1,
+            "sample_offset": 24000,
+            "time_s": 1.0,
+        }
+    ]
+
+    _write_marker_records_sidecar(path, sample_rate=24000, markers=markers)
+
+    payload = json.loads(path.read_text(encoding="utf-8"))
+    assert payload == {
+        "schema_version": 1,
+        "sample_rate": 24000,
+        "markers": markers,
+    }
