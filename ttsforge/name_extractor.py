@@ -171,14 +171,7 @@ def generate_phoneme_suggestions(
         language: Language code for phonemization (default: 'en-us')
 
     Returns:
-        Dictionary with phoneme suggestions and metadata:
-        {
-            "name": {
-                "phoneme": "phoneme",
-                "occurrences": count,
-                "suggestion_quality": "auto"
-            }
-        }
+        Dictionary mapping each name to its phoneme suggestion and metadata.
     """
     from kokorog2p import phonemize
 

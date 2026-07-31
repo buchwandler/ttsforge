@@ -28,7 +28,7 @@ class AudioMerger:
     class LogCallback(Protocol):
         def __call__(self, message: str, level: str = "info") -> None: ...
 
-    def __init__(self, log: LogCallback):
+    def __init__(self, log: AudioMerger.LogCallback):
         self.log = log
 
     @staticmethod

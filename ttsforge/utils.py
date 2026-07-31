@@ -600,6 +600,7 @@ def ensure_ffmpeg() -> bool:
     You may also point to a custom ffmpeg via env var:
       - TTSFORGE_FFMPEG=/full/path/to/ffmpeg   (or a directory containing
          ffmpeg)
+
     Returns:
         True if ffmpeg is available
     """

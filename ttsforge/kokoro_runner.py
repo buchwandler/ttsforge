@@ -63,7 +63,7 @@ class KokoroRunner:
     class LogCallback(Protocol):
         def __call__(self, message: str, level: str = "info") -> None: ...
 
-    def __init__(self, opts: KokoroRunOptions, log: LogCallback):
+    def __init__(self, opts: KokoroRunOptions, log: KokoroRunner.LogCallback):
         self.opts = opts
         self.log = log
         self._kokoro: Kokoro | None = None

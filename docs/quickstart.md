@@ -276,7 +276,7 @@ ttsforge convert book.epub
 
 **Common SSMD syntax**:
 
-```ssmd
+```text
 ...p                               # Paragraph break
 ...s                               # Sentence break
 *text*                             # Moderate emphasis
@@ -302,7 +302,7 @@ Explicit SSMD prosody remains supported in plain emphasis mode.
 
 **Example SSMD file**:
 
-```ssmd
+```text
 Chapter One ...p
 
 [Harry]{ph="hæɹi"} Potter was a *highly unusual* boy. ...s

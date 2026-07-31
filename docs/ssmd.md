@@ -19,7 +19,7 @@ valid synthesis and its sidecars succeed.
 
 ## Portable document example
 
-```ssmd
+```text
 ---
 title: Review podcast
 voice_bindings:
@@ -50,7 +50,7 @@ as a marker event and exported to marker sidecars.
 
 Canonical inline annotations use `[text]{key="value"}`:
 
-```ssmd
+```text
 [Hermione]{ph="hɝmˈIni"}
 [Bonjour]{lang="fr-FR"}
 [100]{as="cardinal"}

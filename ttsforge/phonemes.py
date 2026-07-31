@@ -68,13 +68,7 @@ FORMAT_VERSION = "1.0"
 
 @dataclass
 class PhonemeChapter:
-    """A chapter containing phoneme segments.
-
-    Attributes:
-        title: Chapter title
-        segments: List of phoneme segments
-        chapter_index: Chapter number (0-based)
-    """
+    """A chapter containing phoneme segments."""
 
     title: str
     segments: list[PhonemeSegment] = field(default_factory=list)
@@ -268,15 +262,7 @@ class PhonemeChapter:
 
 @dataclass
 class PhonemeBook:
-    """A book containing multiple chapters of phoneme data.
-
-    Attributes:
-        title: Book title
-        chapters: List of chapters
-        metadata: Additional metadata
-        vocab_version: Vocabulary version used for tokenization
-        lang: Default language code
-    """
+    """A book containing multiple chapters of phoneme data."""
 
     title: str
     chapters: list[PhonemeChapter] = field(default_factory=list)
