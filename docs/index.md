@@ -15,6 +15,7 @@ configuration
 filename_templates
 voices
 testing
+changelog
 ```
 
 ```{toctree}

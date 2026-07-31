@@ -1,0 +1,832 @@
+schema_version: 1
+object_type: commit_audit_sheet
+versioning:
+  schema_version: 1
+  revision: 3
+release_version: 0.2.0
+git_base_ref: v0.1.2
+git_base_sha: b31ed08988a066157772e19eba570a9e97fda580
+git_head_ref: HEAD
+git_head_sha: 266056286c4efa39be4ae54caa8d36a8f9c68776
+git_range: b31ed08988a066157772e19eba570a9e97fda580..266056286c4efa39be4ae54caa8d36a8f9c68776
+commit_count: 27
+rows:
+  - sha: c79736947d0d9bc83674bcb5c72aff1a3f219923
+    source_ref: git:c79736947d0d9bc83674bcb5c72aff1a3f219923
+    short_sha: c797369
+    changed_paths:
+      - tests/test_cli.py
+      - tests/test_constants.py
+      - tests/test_text_postprocessing.py
+      - ttsforge/cli/commands_conversion.py
+      - ttsforge/cli/commands_phonemes.py
+      - ttsforge/constants.py
+      - ttsforge/input_reader.py
+      - ttsforge/text_postprocessing.py
+    stats:
+      files_changed: 0
+      insertions: 226
+      deletions: 19
+    inspected: true
+    inspected_paths:
+      - ttsforge/text_postprocessing.py
+      - ttsforge/input_reader.py
+      - ttsforge/cli/commands_conversion.py
+    observed_behavior:
+      Configurable exact-line markers are converted to paragraph pauses during
+      extracted-text processing
+    public_impact: public
+    decision: accepted
+    evidence_subject: "feat: subchapter marker option"
+    target_entry_id: entry-0001
+  - sha: a49a2bf2d39ac892e897fb8047764280dc86db77
+    source_ref: git:a49a2bf2d39ac892e897fb8047764280dc86db77
+    short_sha: a49a2bf
+    changed_paths:
+      - README.md
+      - docs/installation.rst
+      - pyproject.toml
+      - tests/test_kokoro_runner.py
+      - ttsforge/conversion.py
+      - ttsforge/kokoro_runner.py
+      - ttsforge/phoneme_conversion.py
+    stats:
+      files_changed: 0
+      insertions: 47
+      deletions: 1
+    inspected: true
+    inspected_paths:
+      - ttsforge/conversion.py
+      - ttsforge/kokoro_runner.py
+      - ttsforge/phoneme_conversion.py
+      - README.md
+    observed_behavior:
+      Short-sentence enablement now reaches both text and phoneme synthesis, with
+      optional spaCy setup documented
+    public_impact: public
+    decision: accepted
+    evidence_subject:
+      "fix: broken enable_short_sentence option. Added missing spacy download to docs"
+    target_entry_id: entry-0002
+  - sha: dc860beb7ebcf5b5cedd6eafb37c5d6879ff2665
+    source_ref: git:dc860beb7ebcf5b5cedd6eafb37c5d6879ff2665
+    short_sha: dc860be
+    changed_paths:
+      - README.md
+      - docs/cli.rst
+      - tests/test_cli.py
+      - tests/test_constants.py
+      - tests/test_kokoro_runner.py
+      - tests/test_short_sentence_config.py
+      - tests/test_text_postprocessing.py
+      - ttsforge/cli/__init__.py
+      - ttsforge/cli/commands_conversion.py
+      - ttsforge/cli/commands_phonemes.py
+      - ttsforge/cli/commands_utility.py
+      - ttsforge/constants.py
+      - ttsforge/conversion.py
+      - ttsforge/input_reader.py
+      - ttsforge/kokoro_runner.py
+      - ttsforge/phoneme_conversion.py
+      - ttsforge/short_sentence_config.py
+      - ttsforge/short_sentence_stats.py
+      - ttsforge/text_postprocessing.py
+    stats:
+      files_changed: 0
+      insertions: 2008
+      deletions: 61
+    inspected: true
+    inspected_paths:
+      - ttsforge/short_sentence_config.py
+      - ttsforge/short_sentence_stats.py
+      - ttsforge/cli/commands_conversion.py
+      - README.md
+    observed_behavior:
+      Phrase-level short-sentence handling adds configurable strategies, statistics, and
+      CLI configuration support
+    public_impact: public
+    decision: accepted
+    evidence_subject: "feat: phrase short-sentence handling"
+    target_entry_id: entry-0003
+  - sha: e645177b6e89f42c3a88fdb04dc9688099aef257
+    source_ref: git:e645177b6e89f42c3a88fdb04dc9688099aef257
+    short_sha: e645177
+    changed_paths:
+      - tests/test_chapter_selection.py
+      - tests/test_cli.py
+      - ttsforge/chapter_selection.py
+      - ttsforge/cli/commands_conversion.py
+    stats:
+      files_changed: 0
+      insertions: 49
+      deletions: 4
+    inspected: true
+    inspected_paths:
+      - ttsforge/chapter_selection.py
+      - ttsforge/cli/commands_conversion.py
+    observed_behavior:
+      Chapter selection supports excluding ranges or individual chapters with a skip
+      option
+    public_impact: public
+    decision: accepted
+    evidence_subject: "feat: skip chapters option"
+    target_entry_id: entry-0004
+  - sha: 909f404b0ba4c6bd791f6d431b179d0925d5876c
+    source_ref: git:909f404b0ba4c6bd791f6d431b179d0925d5876c
+    short_sha: 909f404
+    changed_paths:
+      - .pre-commit-config.yaml
+      - examples/phoneme_export.py
+      - tests/test_chapter_selection.py
+      - tests/test_cli.py
+      - tests/test_constants.py
+      - tests/test_onnx_backend.py
+      - tests/test_tokenizer.py
+      - ttsforge/audio_merge.py
+      - ttsforge/cli/commands_conversion.py
+      - ttsforge/cli/commands_utility.py
+      - ttsforge/phoneme_conversion.py
+      - ttsforge/short_sentence_config.py
+      - ttsforge/short_sentence_stats.py
+      - ttsforge/text_postprocessing.py
+    stats:
+      files_changed: 0
+      insertions: 104
+      deletions: 55
+    inspected: true
+    inspected_paths:
+      - ttsforge/audio_merge.py
+      - ttsforge/cli/commands_conversion.py
+    observed_behavior:
+      WAV chapter merging avoids an external encoder and accepts legacy or timestamped
+      model-cache filenames
+    public_impact: public
+    decision: accepted
+    evidence_subject: "chore: fix pre-commit and fix merge"
+    target_entry_id: entry-0005
+  - sha: 5313d5bdc9c86ba73ada592d74f10f4aed721407
+    source_ref: git:5313d5bdc9c86ba73ada592d74f10f4aed721407
+    short_sha: 5313d5b
+    changed_paths:
+      - .codecrate.toml
+      - .coveragerc
+      - .gitignore
+      - .ruff.toml
+      - README.md
+      - docs/index.rst
+      - docs/installation.rst
+      - docs/testing.rst
+      - pyproject.toml
+      - tests/conftest.py
+      - tests/test_audio_merge.py
+      - tests/test_audio_player.py
+      - tests/test_cli_terminal_determinism.py
+      - tests/test_import_boundaries.py
+      - tests/test_numeric_ranges.py
+      - tests/test_packaging.py
+      - tests/test_phonemes_cli_smoke.py
+      - tests/test_resume_integrity.py
+      - tests/test_ssmd_backend_boundary.py
+      - tests/test_utils.py
+      - tests/test_warning_policy.py
+      - ttsforge/__init__.py
+      - ttsforge/audio_merge.py
+      - ttsforge/audio_player.py
+      - ttsforge/cli/__init__.py
+      - ttsforge/cli/backend_config.py
+      - ttsforge/cli/commands_conversion.py
+      - ttsforge/cli/commands_phonemes.py
+      - ttsforge/cli/commands_utility.py
+      - ttsforge/constants.py
+      - ttsforge/conversion.py
+      - ttsforge/phoneme_conversion.py
+      - ttsforge/short_sentence_config.py
+      - ttsforge/utils.py
+      - ttsforge/vocab/__init__.py
+    stats:
+      files_changed: 0
+      insertions: 1883
+      deletions: 452
+    inspected: true
+    inspected_paths:
+      - ttsforge/audio_merge.py
+      - ttsforge/conversion.py
+      - ttsforge/cli/backend_config.py
+    observed_behavior:
+      Chapter audio operations validate inputs, escape metadata safely, and replace
+      outputs atomically
+    public_impact: public
+    decision: accepted
+    evidence_subject: "feat: several improvements and fixes"
+    target_entry_id: entry-0006
+  - sha: 97938d0100c5af7cb23ddf35db108cb21da0f4b2
+    source_ref: git:97938d0100c5af7cb23ddf35db108cb21da0f4b2
+    short_sha: 97938d0
+    changed_paths:
+      - docs/api/index.rst
+      - docs/testing.rst
+      - pyproject.toml
+      - tests/test_cli.py
+      - tests/test_cli_smoke.py
+      - tests/test_cli_terminal_determinism.py
+      - tests/test_numeric_ranges.py
+      - tests/test_phonemes_cli_smoke.py
+      - tests/test_short_sentence_config.py
+      - tests/test_typer_cli_migration.py
+      - ttsforge/__main__.py
+      - ttsforge/cli/__init__.py
+      - ttsforge/cli/_command_specs.py
+      - ttsforge/cli/_registration.py
+      - ttsforge/cli/backend_config.py
+      - ttsforge/cli/commands_conversion.py
+      - ttsforge/cli/commands_phonemes.py
+      - ttsforge/cli/commands_utility.py
+      - ttsforge/constants.py
+      - ttsforge/launcher.py
+    stats:
+      files_changed: 0
+      insertions: 2307
+      deletions: 1174
+    inspected: true
+    inspected_paths:
+      - ttsforge/cli/_command_specs.py
+      - ttsforge/cli/_registration.py
+      - ttsforge/launcher.py
+    observed_behavior:
+      CLI registration moved to explicit typed command wrappers while keeping backend
+      imports lazy for help and version paths
+    public_impact: public
+    decision: accepted
+    evidence_subject: "feat: migrate to typer"
+    target_entry_id: entry-0007
+  - sha: 621cb7462cdbf444c0bd60fbf28a6c907b347cfb
+    source_ref: git:621cb7462cdbf444c0bd60fbf28a6c907b347cfb
+    short_sha: 621cb74
+    changed_paths:
+      - README.md
+      - docs/api/index.rst
+      - docs/cli.rst
+      - pyproject.toml
+      - tests/test_cli_contract.py
+      - tests/test_cli_terminal_determinism.py
+      - tests/test_config_cli.py
+      - ttsforge/cli/__init__.py
+      - ttsforge/cli/_command_specs.py
+      - ttsforge/cli/_registration.py
+      - ttsforge/cli/app.py
+      - ttsforge/cli/commands_utility.py
+      - ttsforge/cli/typer_conversion.py
+      - ttsforge/cli/typer_phonemes.py
+      - ttsforge/cli/typer_utility.py
+      - ttsforge/cli/utility_light.py
+      - ttsforge/paths.py
+      - ttsforge/utils.py
+    stats:
+      files_changed: 0
+      insertions: 2129
+      deletions: 2354
+    inspected: true
+    inspected_paths:
+      - ttsforge/cli/app.py
+      - ttsforge/cli/typer_conversion.py
+      - ttsforge/cli/typer_phonemes.py
+    observed_behavior:
+      Typed CLI wrappers became the active conversion and phoneme command surface with
+      contract coverage
+    public_impact: public
+    decision: accepted
+    evidence_subject: "feat: migrate to typer"
+    target_entry_id: entry-0007
+  - sha: d5356cb85b6ccbb1530b19b33c29c0a8e1265f4d
+    source_ref: git:d5356cb85b6ccbb1530b19b33c29c0a8e1265f4d
+    short_sha: d5356cb
+    changed_paths:
+      - tests/test_cli.py
+      - tests/test_cli_terminal_determinism.py
+      - tests/test_import_boundaries.py
+      - tests/test_short_sentence_config.py
+      - ttsforge/cli/app.py
+    stats:
+      files_changed: 0
+      insertions: 59
+      deletions: 9
+    inspected: true
+    inspected_paths:
+      - ttsforge/cli/app.py
+      - tests/test_cli_terminal_determinism.py
+    observed_behavior:
+      CLI startup and help behavior were corrected after the typed-command migration
+    public_impact: public
+    decision: accepted
+    evidence_subject: "feat: typer setup fixed"
+    target_entry_id: entry-0007
+  - sha: 5a29ad61cb73771f4f9242cdf63a4464193ee263
+    source_ref: git:5a29ad61cb73771f4f9242cdf63a4464193ee263
+    short_sha: 5a29ad6
+    changed_paths:
+      - README.md
+      - docs/cli.rst
+      - docs/configuration.rst
+      - tests/test_cli_contract.py
+      - tests/test_cli_terminal_determinism.py
+      - tests/test_config_cli.py
+      - tests/test_import_boundaries.py
+      - tests/test_short_sentence_config.py
+      - ttsforge/cli/typer_utility.py
+    stats:
+      files_changed: 0
+      insertions: 197
+      deletions: 27
+    inspected: true
+    inspected_paths:
+      - ttsforge/cli/typer_utility.py
+      - docs/configuration.rst
+      - tests/test_config_cli.py
+    observed_behavior:
+      Short-sentence configuration is available under the nested config command with
+      validation for conflicting options
+    public_impact: public
+    decision: accepted
+    evidence_subject: "feat: move command"
+    target_entry_id: entry-0008
+  - sha: 7fbe593896bcd17721fea1a0c466fa6c0f1b2204
+    source_ref: git:7fbe593896bcd17721fea1a0c466fa6c0f1b2204
+    short_sha: 7fbe593
+    changed_paths:
+      - README.md
+      - tests/test_cli.py
+      - tests/test_config_cli.py
+      - tests/test_phonemes_cli_smoke.py
+      - tests/test_utils.py
+      - ttsforge/cli/commands_conversion.py
+      - ttsforge/cli/commands_phonemes.py
+      - ttsforge/cli/utility_light.py
+      - ttsforge/utils.py
+    stats:
+      files_changed: 0
+      insertions: 399
+      deletions: 219
+    inspected: true
+    inspected_paths:
+      - ttsforge/cli/commands_conversion.py
+      - ttsforge/utils.py
+      - ttsforge/cli/utility_light.py
+    observed_behavior:
+      Persisted conversion settings are validated before execution and pause-related
+      configuration values retain their intended form
+    public_impact: public
+    decision: accepted
+    evidence_subject: "fix: pause variant fix"
+    target_entry_id: entry-0009
+  - sha: 471e6de454e6c73c6fb902aca291d6bf41c34ab7
+    source_ref: git:471e6de454e6c73c6fb902aca291d6bf41c34ab7
+    short_sha: 471e6de
+    changed_paths:
+      - README.md
+      - docs/api/index.rst
+      - docs/cli.rst
+      - docs/configuration.rst
+      - docs/installation.rst
+      - docs/quickstart.rst
+      - pyproject.toml
+      - tests/test_backend_config.py
+      - tests/test_cli_contract.py
+      - tests/test_config_cli.py
+      - tests/test_constants.py
+      - tests/test_conversion.py
+      - tests/test_kokoro_runner.py
+      - tests/test_packaging.py
+      - tests/test_phoneme_conversion.py
+      - tests/test_resume_integrity.py
+      - tests/test_utility_light.py
+      - tests/test_utils.py
+      - ttsforge/cli/backend_config.py
+      - ttsforge/cli/commands_conversion.py
+      - ttsforge/cli/commands_phonemes.py
+      - ttsforge/cli/commands_utility.py
+      - ttsforge/cli/typer_conversion.py
+      - ttsforge/cli/typer_phonemes.py
+      - ttsforge/cli/typer_utility.py
+      - ttsforge/cli/utility_light.py
+      - ttsforge/constants.py
+      - ttsforge/conversion.py
+      - ttsforge/kokoro_runner.py
+      - ttsforge/phoneme_conversion.py
+      - ttsforge/utils.py
+    stats:
+      files_changed: 0
+      insertions: 856
+      deletions: 105
+    inspected: true
+    inspected_paths:
+      - ttsforge/cli/backend_config.py
+      - ttsforge/cli/commands_conversion.py
+      - ttsforge/utility_light.py
+      - README.md
+    observed_behavior:
+      ONNX Runtime provider aliases and explicit provider selection are supported across
+      commands and configuration
+    public_impact: public
+    decision: accepted
+    evidence_subject: "feat: support more onnx provider"
+    target_entry_id: entry-0010
+  - sha: c8f89bb8422d1282cd761e6ec4b8eb51531f266b
+    source_ref: git:c8f89bb8422d1282cd761e6ec4b8eb51531f266b
+    short_sha: c8f89bb
+    changed_paths:
+      - README.md
+      - docs/api/index.rst
+      - docs/cli.rst
+      - docs/configuration.rst
+      - docs/quickstart.rst
+      - docs/ssmd.rst
+      - pyproject.toml
+      - tests/fixtures/ssmd_080_complete.ssmd
+      - tests/fixtures/ssmd_080_extension_unsupported.ssmd
+      - tests/test_cli_contract.py
+      - tests/test_kokoro_runner.py
+      - tests/test_packaging.py
+      - tests/test_ssmd_080_conformance.py
+      - tests/test_ssmd_audio.py
+      - tests/test_ssmd_cli.py
+      - tests/test_ssmd_input_reader.py
+      - tests/test_ssmd_markers.py
+      - tests/test_ssmd_support.py
+      - ttsforge/cli/app.py
+      - ttsforge/cli/commands_conversion.py
+      - ttsforge/cli/commands_ssmd.py
+      - ttsforge/cli/typer_conversion.py
+      - ttsforge/cli/typer_ssmd.py
+      - ttsforge/constants.py
+      - ttsforge/conversion.py
+      - ttsforge/input_reader.py
+      - ttsforge/kokoro_runner.py
+      - ttsforge/phoneme_conversion.py
+      - ttsforge/ssmd_audio.py
+      - ttsforge/ssmd_generator.py
+      - ttsforge/ssmd_support.py
+      - ttsforge/utils.py
+    stats:
+      files_changed: 0
+      insertions: 2004
+      deletions: 347
+    inspected: true
+    inspected_paths:
+      - ttsforge/ssmd_support.py
+      - ttsforge/ssmd_audio.py
+      - ttsforge/cli/commands_ssmd.py
+      - docs/ssmd.rst
+    observed_behavior:
+      SSMD 0.8 documents and validates headers, prosody, voices, audio references,
+      diagnostics, and marker sidecars
+    public_impact: public
+    decision: accepted
+    evidence_subject: "feat: support ssmd 0.8.0"
+    target_entry_id: entry-0011
+  - sha: 8775dd1a027a1b190c09bbbaea182af7a728ba65
+    source_ref: git:8775dd1a027a1b190c09bbbaea182af7a728ba65
+    short_sha: 8775dd1
+    changed_paths:
+      - README.md
+      - tests/test_backend_config.py
+      - tests/test_utility_light.py
+    stats:
+      files_changed: 0
+      insertions: 16
+      deletions: 8
+    inspected: true
+    inspected_paths:
+      - .pre-commit-config.yaml
+      - tests/test_backend_config.py
+      - tests/test_utility_light.py
+    observed_behavior:
+      Formatting and test fixtures were adjusted without an independent user-facing
+      feature
+    public_impact: internal
+    decision: internal
+    evidence_subject: "chore: pre-commit"
+    target_entry_id: entry-0016
+  - sha: b42f12d61210573020dfc1bb8674dc85b265d219
+    source_ref: git:b42f12d61210573020dfc1bb8674dc85b265d219
+    short_sha: b42f12d
+    changed_paths:
+      - tests/test_convert_resume_cli.py
+      - tests/test_resume_integrity.py
+      - ttsforge/cli/commands_conversion.py
+      - ttsforge/conversion.py
+    stats:
+      files_changed: 0
+      insertions: 1395
+      deletions: 51
+    inspected: true
+    inspected_paths:
+      - ttsforge/conversion.py
+      - ttsforge/cli/commands_conversion.py
+      - tests/test_convert_resume_cli.py
+    observed_behavior:
+      Interrupted book conversions can rediscover compatible state, restore selection
+      and output, and continue from the next incomplete chapter
+    public_impact: public
+    decision: accepted
+    evidence_subject: "feat: resume of book conversion has been added"
+    target_entry_id: entry-0012
+  - sha: 6797246353ebe5710aa4f3b6159f7369c70dfa22
+    source_ref: git:6797246353ebe5710aa4f3b6159f7369c70dfa22
+    short_sha: "6797246"
+    changed_paths:
+      - .ledger/ledger.toml
+      - .ledger/migrations/c269a5db06c64c5ca10f058b969625fc.toml
+      - .ledger/migrations/write.lock
+      - .ledger/taskledger/.ledger-project.toml
+      - .ledger/taskledger/config.toml
+    stats:
+      files_changed: 0
+      insertions: 106
+      deletions: 0
+    inspected: true
+    inspected_paths:
+      - .ledger/ledger.toml
+      - .ledger/taskledger/config.toml
+    observed_behavior:
+      Project ledger configuration was migrated without changing runtime behavior
+    public_impact: internal
+    decision: internal
+    evidence_subject: "chore: migrate taskledger"
+    target_entry_id: entry-0016
+  - sha: d81b5ebbb31051ffb231b613699f0e1d7e8e5390
+    source_ref: git:d81b5ebbb31051ffb231b613699f0e1d7e8e5390
+    short_sha: d81b5eb
+    changed_paths:
+      - .ledger/migrations/write.lock
+      - README.md
+      - docs/cli.rst
+      - docs/configuration.rst
+      - docs/quickstart.rst
+      - docs/ssmd.rst
+      - pyproject.toml
+      - tests/test_convert_resume_cli.py
+      - tests/test_packaging.py
+      - tests/test_ssmd_plain_default.py
+      - ttsforge/cli/commands_conversion.py
+      - ttsforge/cli/typer_conversion.py
+      - ttsforge/constants.py
+      - ttsforge/ssmd_support.py
+      - ttsforge/utils.py
+    stats:
+      files_changed: 0
+      insertions: 383
+      deletions: 81
+    inspected: true
+    inspected_paths:
+      - ttsforge/ssmd_support.py
+      - ttsforge/constants.py
+      - ttsforge/cli/commands_conversion.py
+    observed_behavior:
+      SSMD emphasis is plain by default, with explicit opt-in for approximate prosody
+      and policies for warnings or rejection
+    public_impact: public
+    decision: accepted
+    evidence_subject: "feat: ssmd emphasis is plain per default"
+    target_entry_id: entry-0013
+  - sha: b2e791cecfe5a24b06cee569d1495c145d9e5937
+    source_ref: git:b2e791cecfe5a24b06cee569d1495c145d9e5937
+    short_sha: b2e791c
+    changed_paths:
+      - README.md
+      - docs/installation.rst
+      - pyproject.toml
+    stats:
+      files_changed: 0
+      insertions: 4
+      deletions: 4
+    inspected: true
+    inspected_paths:
+      - README.md
+      - docs/installation.rst
+      - pyproject.toml
+    observed_behavior: Project links and installation documentation were updated
+    public_impact: docs
+    decision: accepted
+    evidence_subject: "doc: update project url"
+    target_entry_id: entry-0014
+  - sha: 08acf17fce250fa576a0bfb161722577db2351fa
+    source_ref: git:08acf17fce250fa576a0bfb161722577db2351fa
+    short_sha: 08acf17
+    changed_paths:
+      - .codecrate.toml
+      - .github/workflows/docs.yml
+      - .pre-commit-config.yaml
+      - README.md
+      - docs/api/index.md
+      - docs/api/index.rst
+      - docs/cli.md
+      - docs/cli.rst
+      - docs/conf.py
+      - docs/configuration.md
+      - docs/configuration.rst
+      - docs/filename_templates.md
+      - docs/filename_templates.rst
+      - docs/index.md
+      - docs/installation.md
+      - docs/installation.rst
+      - docs/quickstart.md
+      - docs/quickstart.rst
+      - docs/requirements.txt
+      - docs/ssmd.md
+      - docs/ssmd.rst
+      - docs/testing.md
+      - docs/testing.rst
+      - docs/voices.md
+      - docs/voices.rst
+      - tests/test_docs_markdown.py
+    stats:
+      files_changed: 0
+      insertions: 3460
+      deletions: 3545
+    inspected: true
+    inspected_paths:
+      - docs/index.md
+      - docs/cli.md
+      - docs/configuration.md
+      - docs/ssmd.md
+      - .github/workflows/docs.yml
+    observed_behavior:
+      Documentation was migrated from reStructuredText to Markdown with a documentation
+      build workflow and Markdown tests
+    public_impact: docs
+    decision: accepted
+    evidence_subject: "doc: migrate rst to md"
+    target_entry_id: entry-0014
+  - sha: 54ab9e8d4c54ee8672a8cbf74ee79c35c1f0d0f7
+    source_ref: git:54ab9e8d4c54ee8672a8cbf74ee79c35c1f0d0f7
+    short_sha: 54ab9e8
+    changed_paths:
+      - .ledger/ledger.toml
+      - .ledger/releaseledger/.ledger-project.toml
+      - .ledger/releaseledger/config.toml
+      - .ledger/releaseledger/data/.ledger-project.toml
+      - .ledger/releaseledger/data/ledgers/main/events/events.jsonl
+      - .ledger/releaseledger/data/ledgers/main/releases/0.1.0/audit/commit-audit.yaml
+      - .ledger/releaseledger/data/ledgers/main/releases/0.1.0/entries/entry-0001.md
+      - .ledger/releaseledger/data/ledgers/main/releases/0.1.0/entries/entry-0002.md
+      - .ledger/releaseledger/data/ledgers/main/releases/0.1.0/entries/entry-0003.md
+      - .ledger/releaseledger/data/ledgers/main/releases/0.1.0/entries/entry-0004.md
+      - .ledger/releaseledger/data/ledgers/main/releases/0.1.0/entries/entry-0005.md
+      - .ledger/releaseledger/data/ledgers/main/releases/0.1.0/entries/entry-0006.md
+      - .ledger/releaseledger/data/ledgers/main/releases/0.1.0/entries/entry-0007.md
+      - .ledger/releaseledger/data/ledgers/main/releases/0.1.0/entries/entry-0008.md
+      - .ledger/releaseledger/data/ledgers/main/releases/0.1.0/entries/entry-0009.md
+      - .ledger/releaseledger/data/ledgers/main/releases/0.1.0/entries/entry-0010.md
+      - .ledger/releaseledger/data/ledgers/main/releases/0.1.0/entries/entry-0011.md
+      - .ledger/releaseledger/data/ledgers/main/releases/0.1.0/entries/entry-0012.md
+      - .ledger/releaseledger/data/ledgers/main/releases/0.1.0/entries/entry-0013.md
+      - .ledger/releaseledger/data/ledgers/main/releases/0.1.0/entries/entry-0014.md
+      - .ledger/releaseledger/data/ledgers/main/releases/0.1.0/entries/entry-0015.md
+      - .ledger/releaseledger/data/ledgers/main/releases/0.1.0/entries/entry-0016.md
+      - .ledger/releaseledger/data/ledgers/main/releases/0.1.0/entries/entry-0017.md
+      - .ledger/releaseledger/data/ledgers/main/releases/0.1.0/entries/entry-0018.md
+      - .ledger/releaseledger/data/ledgers/main/releases/0.1.0/entries/entry-0019.md
+      - .ledger/releaseledger/data/ledgers/main/releases/0.1.0/entries/entry-0020.md
+      - .ledger/releaseledger/data/ledgers/main/releases/0.1.0/entries/entry-0021.md
+      - .ledger/releaseledger/data/ledgers/main/releases/0.1.0/entries/entry-0022.md
+      - .ledger/releaseledger/data/ledgers/main/releases/0.1.0/entries/entry-0023.md
+      - .ledger/releaseledger/data/ledgers/main/releases/0.1.0/entries/entry-0024.md
+      - .ledger/releaseledger/data/ledgers/main/releases/0.1.0/entries/entry-0025.md
+      - .ledger/releaseledger/data/ledgers/main/releases/0.1.0/entries/entry-0026.md
+      - .ledger/releaseledger/data/ledgers/main/releases/0.1.0/entries/entry-0027.md
+      - .ledger/releaseledger/data/ledgers/main/releases/0.1.0/entries/entry-0028.md
+      - .ledger/releaseledger/data/ledgers/main/releases/0.1.0/entries/entry-0029.md
+      - .ledger/releaseledger/data/ledgers/main/releases/0.1.0/entries/entry-0030.md
+      - .ledger/releaseledger/data/ledgers/main/releases/0.1.0/entries/entry-0031.md
+      - .ledger/releaseledger/data/ledgers/main/releases/0.1.0/entries/entry-0032.md
+      - .ledger/releaseledger/data/ledgers/main/releases/0.1.0/entries/entry-0033.md
+      - .ledger/releaseledger/data/ledgers/main/releases/0.1.0/entries/entry-0034.md
+      - .ledger/releaseledger/data/ledgers/main/releases/0.1.0/entries/entry-0035.md
+      - .ledger/releaseledger/data/ledgers/main/releases/0.1.0/entries/entry-0036.md
+      - .ledger/releaseledger/data/ledgers/main/releases/0.1.0/entries/entry-0037.md
+      - .ledger/releaseledger/data/ledgers/main/releases/0.1.0/entries/entry-0038.md
+      - .ledger/releaseledger/data/ledgers/main/releases/0.1.0/entries/entry-0039.md
+      - .ledger/releaseledger/data/ledgers/main/releases/0.1.0/entries/entry-0040.md
+      - .ledger/releaseledger/data/ledgers/main/releases/0.1.0/entries/entry-0041.md
+      - .ledger/releaseledger/data/ledgers/main/releases/0.1.0/entries/entry-0042.md
+      - .ledger/releaseledger/data/ledgers/main/releases/0.1.0/entries/entry-0043.md
+      - .ledger/releaseledger/data/ledgers/main/releases/0.1.0/entries/entry-0044.md
+      - .ledger/releaseledger/data/ledgers/main/releases/0.1.0/entries/entry-0045.md
+      - .ledger/releaseledger/data/ledgers/main/releases/0.1.0/entries/entry-0046.md
+      - .ledger/releaseledger/data/ledgers/main/releases/0.1.0/entries/entry-0047.md
+      - .ledger/releaseledger/data/ledgers/main/releases/0.1.0/entries/entry-0048.md
+      - .ledger/releaseledger/data/ledgers/main/releases/0.1.0/entries/entry-0049.md
+      - .ledger/releaseledger/data/ledgers/main/releases/0.1.0/entries/entry-0050.md
+      - .ledger/releaseledger/data/ledgers/main/releases/0.1.0/entries/entry-0051.md
+      - .ledger/releaseledger/data/ledgers/main/releases/0.1.0/entries/entry-0052.md
+      - .ledger/releaseledger/data/ledgers/main/releases/0.1.0/entries/entry-0053.md
+      - .ledger/releaseledger/data/ledgers/main/releases/0.1.0/entries/entry-0054.md
+      - .ledger/releaseledger/data/ledgers/main/releases/0.1.0/entries/entry-0055.md
+      - .ledger/releaseledger/data/ledgers/main/releases/0.1.0/entries/entry-0056.md
+      - .ledger/releaseledger/data/ledgers/main/releases/0.1.0/entries/entry-0057.md
+      - .ledger/releaseledger/data/ledgers/main/releases/0.1.0/entries/entry-0058.md
+      - .ledger/releaseledger/data/ledgers/main/releases/0.1.0/entries/entry-0059.md
+      - .ledger/releaseledger/data/ledgers/main/releases/0.1.0/entries/entry-0060.md
+      - .ledger/releaseledger/data/ledgers/main/releases/0.1.0/entries/entry-0061.md
+      - .ledger/releaseledger/data/ledgers/main/releases/0.1.0/entries/entry-0062.md
+      - .ledger/releaseledger/data/ledgers/main/releases/0.1.0/entries/entry-0063.md
+      - .ledger/releaseledger/data/ledgers/main/releases/0.1.0/entries/entry-0064.md
+      - .ledger/releaseledger/data/ledgers/main/releases/0.1.0/release.md
+      - .ledger/releaseledger/data/ledgers/main/releases/0.1.1/audit/commit-audit.yaml
+      - .ledger/releaseledger/data/ledgers/main/releases/0.1.1/entries/entry-0001.md
+      - .ledger/releaseledger/data/ledgers/main/releases/0.1.1/entries/entry-0002.md
+      - .ledger/releaseledger/data/ledgers/main/releases/0.1.1/entries/entry-0003.md
+      - .ledger/releaseledger/data/ledgers/main/releases/0.1.1/release.md
+      - .ledger/releaseledger/data/ledgers/main/releases/0.1.2/audit/commit-audit.yaml
+      - .ledger/releaseledger/data/ledgers/main/releases/0.1.2/entries/entry-0001.md
+      - .ledger/releaseledger/data/ledgers/main/releases/0.1.2/entries/entry-0002.md
+      - .ledger/releaseledger/data/ledgers/main/releases/0.1.2/release.md
+      - .ledger/releaseledger/write.lock
+      - docs/api/index.md
+      - docs/cli.md
+      - docs/configuration.md
+      - docs/filename_templates.md
+      - docs/index.md
+      - docs/installation.md
+      - docs/quickstart.md
+      - docs/ssmd.md
+      - docs/testing.md
+      - docs/voices.md
+      - tests/test_docs_markdown.py
+      - ttsforge/cli/utility_light.py
+    stats:
+      files_changed: 0
+      insertions: 4513
+      deletions: 781
+    inspected: true
+    inspected_paths:
+      - docs/api/index.md
+      - docs/cli.md
+      - docs/configuration.md
+      - docs/quickstart.md
+      - tests/test_docs_markdown.py
+    observed_behavior:
+      Markdown documentation was normalized and expanded with release documentation and
+      validation coverage
+    public_impact: docs
+    decision: accepted
+    evidence_subject: "doc: fix docs and prepare changelog"
+    target_entry_id: entry-0014
+  - sha: e13bffa85c72999b9d6ef6ca4587802a066efb70
+    source_ref: git:e13bffa85c72999b9d6ef6ca4587802a066efb70
+    short_sha: e13bffa
+    changed_paths:
+      - ttsforge/cli/app.py
+    stats:
+      files_changed: 0
+      insertions: 53
+      deletions: 2
+    inspected: true
+    inspected_paths:
+      - ttsforge/cli/app.py
+    observed_behavior:
+      Typer command dispatch and error handling were corrected for reliable CLI
+      execution
+    public_impact: public
+    decision: accepted
+    evidence_subject: "fix: typer"
+    target_entry_id: entry-0007
+  - sha: 985d5a1436a65c511b22ca6be47883e295040530
+    source_ref: git:985d5a1436a65c511b22ca6be47883e295040530
+    short_sha: 985d5a1
+    changed_paths:
+      - ttsforge/conversion.py
+      - ttsforge/utils.py
+    stats:
+      files_changed: 0
+      insertions: 16
+      deletions: 5
+    inspected: true
+    inspected_paths:
+      - ttsforge/conversion.py
+      - ttsforge/utils.py
+    observed_behavior:
+      Resume output paths recognize POSIX and Windows absolute paths and concurrent
+      atomic replacements are serialized
+    public_impact: public
+    decision: accepted
+    evidence_subject: "fix: pytest"
+    target_entry_id: entry-0015
+  - sha: 266056286c4efa39be4ae54caa8d36a8f9c68776
+    source_ref: git:266056286c4efa39be4ae54caa8d36a8f9c68776
+    short_sha: "2660562"
+    changed_paths:
+      - .github/workflows/pre-commit.yml
+    stats:
+      files_changed: 0
+      insertions: 21
+      deletions: 3
+    inspected: true
+    inspected_paths:
+      - .github/workflows/pre-commit.yml
+    observed_behavior:
+      CI workflow setup was updated without an independent runtime feature
+    public_impact: internal
+    decision: internal
+    evidence_subject: "core: update ci"
+    target_entry_id: entry-0016
