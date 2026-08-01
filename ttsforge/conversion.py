@@ -33,6 +33,7 @@ from .constants import (
 )
 from .kokoro_lang import get_onnx_lang_code
 from .memory_diagnostics import log_snapshot
+from .prosody_support import ProsodyPolicy, prosody_policy_payload
 from .short_sentence_config import resolve_short_sentence_config
 from .short_sentence_stats import ShortSentenceStats
 from .ssmd_audio import LocalSSMDAudioResolver
@@ -711,6 +712,7 @@ class ConversionOptions:
     # SSMD rendering policy.  Explicit CLI/API values are represented inside
     # this object; persistent config is translated separately by the CLI.
     ssmd_policy: SSMDPolicy = field(default_factory=SSMDPolicy)
+    prosody_policy: ProsodyPolicy = field(default_factory=ProsodyPolicy)
 
     def effective_onnx_provider(self) -> str:
         """Return the provider requested by this option set."""
@@ -731,6 +733,8 @@ class ConversionOptions:
         )
         if not isinstance(self.ssmd_policy, SSMDPolicy):
             raise TypeError("ssmd_policy must be an SSMDPolicy")
+        if not isinstance(self.prosody_policy, ProsodyPolicy):
+            raise TypeError("prosody_policy must be a ProsodyPolicy")
 
 
 # Pattern to detect chapter markers in text
@@ -866,6 +870,7 @@ class TTSConverter:
             voice_database=self.options.voice_database,
             tokenizer_config=tokenizer_config,
             ssmd_policy=self.options.ssmd_policy,
+            prosody_policy=self.options.prosody_policy,
         )
         self._runner = KokoroRunner(opts, log=self.log)
         self._runner.ensure_ready()
@@ -1114,6 +1119,7 @@ class TTSConverter:
             "detect_emphasis": options.detect_emphasis,
             "text_postprocess_options": vars(options.text_postprocess_options),
             "ssmd_policy": _ssmd_policy_payload(options.ssmd_policy),
+            "prosody_policy": prosody_policy_payload(options.prosody_policy),
         }
         return _canonical_fingerprint(payload)
 

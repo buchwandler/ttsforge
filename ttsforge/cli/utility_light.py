@@ -16,7 +16,13 @@ from ..constants import (
     VOICE_PREFIX_TO_LANG,
     VOICES,
 )
-from ..utils import load_config, reset_config, save_config, validate_config_value
+from ..utils import (
+    load_config,
+    parse_config_cli_value,
+    reset_config,
+    save_config,
+    validate_config_value,
+)
 from .helpers import console
 
 
@@ -154,18 +160,7 @@ def config(
                 continue
             try:
                 default = DEFAULT_CONFIG[key]
-                if isinstance(default, bool):
-                    typed: Any = value.lower() in ("true", "1", "yes")
-                elif isinstance(default, float):
-                    typed = float(value)
-                elif isinstance(default, int):
-                    typed = int(value)
-                elif isinstance(default, list):
-                    typed = json.loads(value)
-                    if not isinstance(typed, list):
-                        raise ValueError("must be a JSON list")
-                else:
-                    typed = value
+                typed = parse_config_cli_value(key, value, default)
                 validate_config_value(key, typed)
                 if key == "short_sentence":
                     short_sentence_errors = validate_short_sentence_config(str(typed))

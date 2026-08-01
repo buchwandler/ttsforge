@@ -30,6 +30,7 @@ from .constants import ISO_TO_LANG_CODE, SAMPLE_RATE, SUPPORTED_OUTPUT_FORMATS
 from .conversion import _canonical_fingerprint, validate_generation_ranges
 from .kokoro_lang import get_onnx_lang_code
 from .phonemes import PhonemeBook, PhonemeChapter, PhonemeSegment
+from .prosody_support import ProsodyPolicy, prosody_policy_payload
 from .short_sentence_config import resolve_short_sentence_config
 from .utils import (
     atomic_write_json,
@@ -298,6 +299,7 @@ class PhonemeConversionOptions:
     model_path: Path | None = None
     # Custom voices.bin path (None = use default downloaded voices)
     voices_path: Path | None = None
+    prosody_policy: ProsodyPolicy = field(default_factory=ProsodyPolicy)
 
     def effective_onnx_provider(self) -> str:
         """Return the provider requested by this option set."""
@@ -315,6 +317,8 @@ class PhonemeConversionOptions:
             pause_variance=self.pause_variance,
             chapter_pause_after_title=self.chapter_pause_after_title,
         )
+        if not isinstance(self.prosody_policy, ProsodyPolicy):
+            raise TypeError("prosody_policy must be a ProsodyPolicy")
 
 
 class PhonemeConverter:
@@ -638,6 +642,7 @@ class PhonemeConverter:
                 "random_seed": options.random_seed,
                 "pause_mode": options.pause_mode,
                 "enable_short_sentence": options.enable_short_sentence,
+                "prosody_policy": prosody_policy_payload(options.prosody_policy),
                 "short_sentence": options.short_sentence,
                 "announce_chapters": options.announce_chapters,
                 "chapter_pause_after_title": options.chapter_pause_after_title,
@@ -859,6 +864,7 @@ class PhonemeConverter:
                 voices_path=self.options.voices_path,
                 voice_blend=self.options.voice_blend,
                 voice_database=self.options.voice_database,
+                prosody_policy=self.options.prosody_policy,
             )
             self._runner = runner_type(opts, log=self.log)
             self._runner.ensure_ready()
@@ -1079,6 +1085,7 @@ class PhonemeConverter:
                 voices_path=self.options.voices_path,
                 voice_blend=self.options.voice_blend,
                 voice_database=self.options.voice_database,
+                prosody_policy=self.options.prosody_policy,
             )
             self._runner = runner_type(opts, log=self.log)
             self._runner.ensure_ready()

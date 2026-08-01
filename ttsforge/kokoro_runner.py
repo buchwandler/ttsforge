@@ -26,6 +26,7 @@ from pykokoro.stages.audio_postprocessing.onnx import OnnxAudioPostprocessingAda
 from pykokoro.stages.phoneme_processing.onnx import OnnxPhonemeProcessorAdapter
 
 from .memory_diagnostics import log_snapshot
+from .prosody_support import ProsodyPolicy, build_pykokoro_prosody_config
 from .short_sentence_stats import ShortSentenceStats
 from .ssmd_support import SSMDPolicy, build_pykokoro_ssmd_config
 
@@ -52,6 +53,7 @@ class KokoroRunOptions:
     short_sentence_config: ShortSentenceConfig | None = None
     onnx_provider: str | None = None
     ssmd_policy: SSMDPolicy = field(default_factory=SSMDPolicy)
+    prosody_policy: ProsodyPolicy = field(default_factory=ProsodyPolicy)
 
     def effective_onnx_provider(self) -> str:
         """Return the provider requested by this runner option set."""
@@ -155,6 +157,7 @@ class KokoroRunner:
             tokenizer_config=self.opts.tokenizer_config,
             short_sentence_config=self.opts.short_sentence_config,
             ssmd=build_pykokoro_ssmd_config(self.opts.ssmd_policy),
+            prosody=build_pykokoro_prosody_config(self.opts.prosody_policy),
             return_trace=True,
             retain_segment_audio=False,
         )

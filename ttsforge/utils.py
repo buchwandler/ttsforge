@@ -54,6 +54,71 @@ _ONNX_PROVIDER_ALIASES = {
 }
 _FULL_ONNX_PROVIDER_RE = re.compile(r"^[A-Za-z0-9_]+ExecutionProvider$")
 
+_PROSODY_METHODS = {"phase_vocoder", "wsola", "esola", "td_psola", "psola"}
+
+
+def parse_config_cli_value(key: str, raw: str, default: object) -> object:
+    """Parse a repeated ``config --set`` value according to its schema.
+
+    The default value supplies the expected scalar/container type, while
+    nullable prosody hop length is handled explicitly because its default is
+    ``None``.
+    """
+    if isinstance(default, bool):
+        normalized = raw.strip().lower()
+        boolean_values = {
+            "true": True,
+            "1": True,
+            "yes": True,
+            "on": True,
+            "false": False,
+            "0": False,
+            "no": False,
+            "off": False,
+        }
+        if normalized not in boolean_values:
+            raise ValueError("must be true, false, 1, 0, yes, no, on, or off")
+        return boolean_values[normalized]
+
+    if key == "prosody_hop_length":
+        normalized = raw.strip().lower()
+        if normalized in {"null", "none"}:
+            return None
+        try:
+            value = int(raw)
+        except ValueError as exc:
+            raise ValueError("must be null or an integer") from exc
+        return value
+
+    if isinstance(default, int) and not isinstance(default, bool):
+        try:
+            return int(raw)
+        except ValueError as exc:
+            raise ValueError("must be an integer") from exc
+
+    if isinstance(default, float):
+        try:
+            parsed_float = float(raw)
+        except ValueError as exc:
+            raise ValueError("must be a number") from exc
+        if not math.isfinite(parsed_float):
+            raise ValueError("must be finite")
+        return parsed_float
+
+    if isinstance(default, (list, dict)):
+        try:
+            value = json.loads(raw)
+        except json.JSONDecodeError as exc:
+            expected = "JSON list" if isinstance(default, list) else "JSON object"
+            raise ValueError(f"must be valid {expected}") from exc
+        expected_type = list if isinstance(default, list) else dict
+        if not isinstance(value, expected_type):
+            expected = "JSON list" if expected_type is list else "JSON object"
+            raise ValueError(f"must be a {expected}")
+        return value
+
+    return raw
+
 
 def validate_config_value(key: str, value: Any) -> None:
     """Validate configuration values that have numeric runtime constraints."""
@@ -75,6 +140,9 @@ def validate_config_value(key: str, value: Any) -> None:
         return
 
     if key in {
+        "detect_emphasis",
+        "prosody_strict",
+        "prosody_clip",
         "ssmd_parse_header",
         "ssmd_validate_profile",
         "ssmd_fail_on_warning",
@@ -84,6 +152,46 @@ def validate_config_value(key: str, value: Any) -> None:
     }:
         if not isinstance(value, bool):
             raise ValueError("must be a boolean")
+        return
+    if key == "prosody_method":
+        if value not in _PROSODY_METHODS:
+            raise ValueError(
+                "must be phase_vocoder, wsola, esola, td_psola, or psola"
+            )
+        return
+    if key == "prosody_fallback_methods":
+        if not isinstance(value, list):
+            raise ValueError("must be a list of prosody methods")
+        for method in value:
+            if method not in _PROSODY_METHODS:
+                raise ValueError(
+                    "must contain only phase_vocoder, wsola, esola, td_psola, or psola"
+                )
+        return
+    if key == "prosody_n_fft":
+        if isinstance(value, bool) or not isinstance(value, int) or value < 2:
+            raise ValueError("must be an integer >= 2")
+        return
+    if key == "prosody_hop_length":
+        if value is not None and (
+            isinstance(value, bool) or not isinstance(value, int) or value <= 0
+        ):
+            raise ValueError("must be null or an integer > 0")
+        return
+    if key == "prosody_filter_width":
+        if isinstance(value, bool) or not isinstance(value, int) or value <= 0:
+            raise ValueError("must be an integer > 0")
+        return
+    if key in {"prosody_rolloff", "prosody_boundary_blend_ms"}:
+        if isinstance(value, bool) or not isinstance(value, (int, float)):
+            raise ValueError("must be a finite number")
+        numeric = float(value)
+        if not math.isfinite(numeric):
+            raise ValueError("must be finite")
+        if key == "prosody_rolloff" and not 0 < numeric <= 1:
+            raise ValueError("must be greater than 0 and at most 1")
+        if key == "prosody_boundary_blend_ms" and numeric < 0:
+            raise ValueError("must be non-negative")
         return
     if key == "ssmd_unknown_header" and value not in {"warn", "error", "ignore"}:
         raise ValueError("must be warn, error, or ignore")
@@ -194,6 +302,24 @@ def load_config() -> dict[str, Any]:
                             f"{key}={value!r}: {exc}; using default {default!r}.",
                             file=sys.stderr,
                         )
+                configured_n_fft = sanitized.get(
+                    "prosody_n_fft", DEFAULT_CONFIG["prosody_n_fft"]
+                )
+                configured_hop = sanitized.get("prosody_hop_length")
+                if (
+                    isinstance(configured_n_fft, int)
+                    and not isinstance(configured_n_fft, bool)
+                    and isinstance(configured_hop, int)
+                    and not isinstance(configured_hop, bool)
+                    and configured_hop > configured_n_fft
+                ):
+                    sanitized.pop("prosody_hop_length", None)
+                    print(
+                        "Warning: ignoring invalid config value "
+                        f"prosody_hop_length={configured_hop!r}: must be less than "
+                        f"or equal to prosody_n_fft={configured_n_fft}; using default None.",
+                        file=sys.stderr,
+                    )
                 # Merge with defaults to ensure all keys exist.
                 return {**DEFAULT_CONFIG, **sanitized}
     except (OSError, json.JSONDecodeError, ValueError) as exc:

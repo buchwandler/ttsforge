@@ -213,7 +213,11 @@ def config_command(
     ] = None,
 ) -> None:
     "Manage ttsforge configuration.\n\nConfiguration is stored in ~/.config/ttsforge/config.json"
-    has_legacy_action = show or reset or bool(set_option)
+    # Typer's nested group invokes the callback with a stale converted value
+    # when a repeated tuple option appears more than twice.  The parsed Click
+    # parameters retain the complete repeated sequence, so prefer them here.
+    parsed_set_option = ctx.params.get("set_option", set_option)
+    has_legacy_action = show or reset or bool(parsed_set_option)
 
     if ctx.invoked_subcommand is not None:
         if has_legacy_action:
@@ -229,7 +233,7 @@ def config_command(
     config(
         show=show,
         reset=reset,
-        set_option=cast(tuple[tuple[str, str], ...], set_option or ()),
+        set_option=cast(tuple[tuple[str, str], ...], parsed_set_option or ()),
     )
 
 

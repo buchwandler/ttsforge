@@ -53,6 +53,7 @@ from ..constants import (
     VOICE_PREFIX_TO_LANG,
     VOICES,
 )
+from ..prosody_support import ProsodyPolicy, build_pykokoro_prosody_config
 from ..short_sentence_stats import ShortSentenceStats, format_short_sentence_stats
 from ..utils import format_size, load_config
 from .backend_config import resolve_onnx_provider
@@ -216,6 +217,7 @@ def demo(  # noqa: C901
                 generation=generation,
                 model_path=model_path,
                 voices_path=voices_path,
+                prosody=build_pykokoro_prosody_config(ProsodyPolicy()),
                 retain_segment_audio=False,
             )
             pipeline = KokoroPipeline(
@@ -363,10 +365,10 @@ def demo(  # noqa: C901
     console.print(f"[dim]ONNX Provider: {resolved_provider}[/dim]")
 
     # Initialize TTS pipeline
-    kokoro: Kokoro | None = None
-    pipeline: KokoroPipeline | None = None
+    demo_kokoro: Kokoro | None = None
+    demo_pipeline: KokoroPipeline | None = None
     try:
-        kokoro = Kokoro(
+        demo_kokoro = Kokoro(
             model_path=model_path,
             voices_path=voices_path,
             provider=resolved_provider,
@@ -377,16 +379,17 @@ def demo(  # noqa: C901
             generation=generation,
             model_path=model_path,
             voices_path=voices_path,
+            prosody=build_pykokoro_prosody_config(ProsodyPolicy()),
             retain_segment_audio=False,
         )
-        pipeline = KokoroPipeline(
+        demo_pipeline = KokoroPipeline(
             pipeline_config,
-            phoneme_processing=OnnxPhonemeProcessorAdapter(kokoro),
-            audio_generation=OnnxAudioGenerationAdapter(kokoro),
-            audio_postprocessing=OnnxAudioPostprocessingAdapter(kokoro),
+            phoneme_processing=OnnxPhonemeProcessorAdapter(demo_kokoro),
+            audio_generation=OnnxAudioGenerationAdapter(demo_kokoro),
+            audio_postprocessing=OnnxAudioPostprocessingAdapter(demo_kokoro),
         )
     except Exception as e:
-        _close_pipeline_and_backend(pipeline, kokoro)
+        _close_pipeline_and_backend(demo_pipeline, demo_kokoro)
         console.print(f"[red]Error initializing TTS engine:[/red] {e}")
         sys.exit(1)
 
@@ -422,7 +425,7 @@ def demo(  # noqa: C901
             result = None
             try:
                 onnx_lang = LANG_CODE_TO_ONNX.get(lang_code, "en-us")
-                result = pipeline.run(demo_text, voice=voice, lang=onnx_lang)
+                result = demo_pipeline.run(demo_text, voice=voice, lang=onnx_lang)
                 short_sentence_stats.add_audio_result(result)
                 samples = result.audio
                 sr = result.sample_rate
@@ -490,7 +493,7 @@ def demo(  # noqa: C901
             f"{format_short_sentence_stats(short_sentence_stats)}[/dim]"
         )
 
-    _close_pipeline_and_backend(pipeline, kokoro)
+    _close_pipeline_and_backend(demo_pipeline, demo_kokoro)
 
 
 def _resolve_model_source_and_variant(cfg: dict) -> tuple[ModelSource, ModelVariant]:

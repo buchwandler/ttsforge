@@ -282,12 +282,36 @@ def convert_command(
         ),
     ] = False,
     detect_emphasis: Annotated[
-        bool,
+        bool | None,
         typer.Option(
             "--detect-emphasis/--no-detect-emphasis",
-            help="Detect emphasis (italic/bold) from HTML tags in EPUB files (default: disabled).",
+            help="Detect EPUB italic/bold markup; omitted uses persistent configuration.",
         ),
-    ] = False,
+    ] = None,
+    prosody_method: Annotated[
+        Literal[
+            "phase_vocoder",
+            "wsola",
+            "esola",
+            "td_psola",
+            "psola",
+        ]
+        | None,
+        typer.Option(
+            "--prosody-method",
+            help=(
+                "Override the configured SSMD prosody algorithm. "
+                "'psola' is an alias for AudioSig 'td_psola'."
+            ),
+        ),
+    ] = None,
+    prosody_strict: Annotated[
+        bool | None,
+        typer.Option(
+            "--prosody-strict/--no-prosody-strict",
+            help="Override whether SSMD prosody processing rejects fallback.",
+        ),
+    ] = None,
     fresh: Annotated[
         bool,
         typer.Option(
@@ -387,17 +411,17 @@ def convert_command(
         ),
     ] = None,
     ssmd_unknown_header: Annotated[
-        Literal["warn", "error", "ignore"],
+        Literal["warn", "error", "ignore"] | None,
         typer.Option(
             "--ssmd-unknown-header", help="Policy for unknown SSMD header keys."
         ),
-    ] = "warn",
+    ] = None,
     ssmd_missing_voice: Annotated[
-        Literal["error", "use-default"],
+        Literal["error", "use-default"] | None,
         typer.Option(
             "--ssmd-missing-voice", help="Policy for unresolved logical voices."
         ),
-    ] = "error",
+    ] = None,
     ssmd_emphasis: Annotated[
         Literal["plain", "approximate", "warn", "error"] | None,
         typer.Option(
@@ -530,6 +554,8 @@ def convert_command(
         resume=resume,
         generate_ssmd_only=generate_ssmd_only,
         detect_emphasis=detect_emphasis,
+        prosody_method=prosody_method,
+        prosody_strict=prosody_strict,
         fresh=fresh,
         keep_chapter_files=keep_chapter_files,
         voice_blend=voice_blend,

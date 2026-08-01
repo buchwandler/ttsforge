@@ -14,6 +14,7 @@ from .utils import (
     load_config,
     save_config,
 )
+from .prosody_support import ProsodyPolicy
 from .cli.helpers import DEFAULT_SAMPLE_TEXT
 
 from importlib import import_module
@@ -101,6 +102,7 @@ __all__ = [
     # Utils
     "load_config",
     "save_config",
+    "ProsodyPolicy",
     # herlpers
     "DEFAULT_SAMPLE_TEXT",
 ]

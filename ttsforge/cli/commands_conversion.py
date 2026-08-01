@@ -14,6 +14,7 @@ import sys
 import tempfile
 from pathlib import Path
 from types import FrameType
+from collections.abc import Mapping
 from typing import Literal, TypedDict, cast
 
 import numpy as np
@@ -36,6 +37,7 @@ from typing_extensions import NotRequired
 
 from ..chapter_selection import parse_chapter_selection, resolve_chapter_selection
 from ..constants import (
+    DEFAULT_CONFIG,
     LANGUAGE_DESCRIPTIONS,
     VOICE_PREFIX_TO_LANG,
 )
@@ -54,6 +56,10 @@ from ..short_sentence_config import (
     validate_short_sentence_config,
 )
 from ..short_sentence_stats import format_short_sentence_stats
+from ..prosody_support import (
+    ProsodyPolicy,
+    build_pykokoro_prosody_config,
+)
 from ..ssmd_support import SSMDPauseOverrideOptions, SSMDPolicy
 from ..text_postprocessing import (
     postprocess_extracted_text,
@@ -96,6 +102,57 @@ def _resolve_ssmd_emphasis_mode(
     if explicit is not None:
         return explicit
     return str(configured or "plain")
+
+
+def _resolve_prosody_policy(
+    config: Mapping[str, object],
+    *,
+    method_override: str | None = None,
+    strict_override: bool | None = None,
+) -> ProsodyPolicy:
+    """Resolve explicit CLI prosody overrides over config and defaults."""
+    method = method_override
+    if method is None:
+        method = str(config.get("prosody_method", DEFAULT_CONFIG["prosody_method"]))
+    fallback_value = config.get(
+        "prosody_fallback_methods", DEFAULT_CONFIG["prosody_fallback_methods"]
+    )
+    if not isinstance(fallback_value, (list, tuple)):
+        raise ValueError("prosody_fallback_methods must be a list")
+    strict_value = (
+        strict_override
+        if strict_override is not None
+        else bool(config.get("prosody_strict", DEFAULT_CONFIG["prosody_strict"]))
+    )
+    return ProsodyPolicy(
+        method=cast(Literal["phase_vocoder", "wsola", "esola", "td_psola", "psola"], method),
+        fallback_methods=cast(
+            tuple[Literal["phase_vocoder", "wsola", "esola", "td_psola", "psola"], ...],
+            tuple(fallback_value),
+        ),
+        strict=strict_value,
+        clip=bool(config.get("prosody_clip", DEFAULT_CONFIG["prosody_clip"])),
+        n_fft=cast(int, config.get("prosody_n_fft", DEFAULT_CONFIG["prosody_n_fft"])),
+        hop_length=(
+            cast(int, config["prosody_hop_length"])
+            if config.get("prosody_hop_length") is not None
+            else None
+        ),
+        filter_width=cast(
+            int,
+            config.get("prosody_filter_width", DEFAULT_CONFIG["prosody_filter_width"]),
+        ),
+        rolloff=cast(
+            float, config.get("prosody_rolloff", DEFAULT_CONFIG["prosody_rolloff"])
+        ),
+        boundary_blend_ms=cast(
+            float,
+            config.get(
+                "prosody_boundary_blend_ms",
+                DEFAULT_CONFIG["prosody_boundary_blend_ms"],
+            ),
+        ),
+    )
 
 
 class ContentItem(TypedDict):
@@ -145,7 +202,9 @@ def convert(  # noqa: C901
     split_mode: str | None,
     resume: bool,
     generate_ssmd_only: bool,
-    detect_emphasis: bool,
+    detect_emphasis: bool | None,
+    prosody_method: str | None,
+    prosody_strict: bool | None,
     fresh: bool,
     keep_chapter_files: bool,
     voice_blend: str | None,
@@ -158,8 +217,8 @@ def convert(  # noqa: C901
     phoneme_dict_case_sensitive: bool | None,
     subchapter_markers: tuple[str, ...],
     ssmd_header: bool | None = None,
-    ssmd_unknown_header: str = "warn",
-    ssmd_missing_voice: str = "error",
+    ssmd_unknown_header: str | None = None,
+    ssmd_missing_voice: str | None = None,
     ssmd_emphasis: str | None = None,
     enable_ssmd_emphasis: bool = False,
     ssmd_profile_validation: bool | None = None,
@@ -185,6 +244,19 @@ def convert(  # noqa: C901
         )
 
     config = load_config()
+    effective_detect_emphasis = (
+        detect_emphasis
+        if detect_emphasis is not None
+        else bool(config.get("detect_emphasis", DEFAULT_CONFIG["detect_emphasis"])))
+    try:
+        effective_prosody_policy = _resolve_prosody_policy(
+            config,
+            method_override=prosody_method,
+            strict_override=prosody_strict,
+        )
+    except (TypeError, ValueError) as exc:
+        console.print(f"[red]Invalid prosody configuration:[/red] {exc}")
+        raise typer.Exit(code=2) from exc
     try:
         resolved_provider = resolve_onnx_provider(
             config, provider_override=provider, use_gpu_override=use_gpu
@@ -263,7 +335,7 @@ def convert(  # noqa: C901
 
     # Extract chapters
     with console.status("Extracting chapters..."):
-        if detect_emphasis and reader.file_type == "epub":
+        if effective_detect_emphasis and reader.file_type == "epub":
             # Get chapters with HTML for emphasis detection
             chapters_with_html = reader.get_chapters_with_html()
             epub_chapters = [ch for ch, _ in chapters_with_html]
@@ -426,7 +498,7 @@ def convert(  # noqa: C901
         if role in ssmd_bindings and ssmd_bindings[role] != target:
             raise typer.BadParameter(f"conflicting --ssmd-voice binding for {role!r}")
         ssmd_bindings[role] = target
-    explicit_pause = SSMDPauseOverrideOptions(
+    explicit_pause_options = SSMDPauseOverrideOptions(
         enabled=ssmd_pause_defaults,
         sentence=(f"{pause_sentence}s" if pause_sentence is not None else None),
         paragraph=(f"{pause_paragraph}s" if pause_paragraph is not None else None),
@@ -437,31 +509,42 @@ def convert(  # noqa: C901
     if all(
         value is None
         for value in (
-            explicit_pause.enabled,
-            explicit_pause.sentence,
-            explicit_pause.paragraph,
-            explicit_pause.voice_change,
+            explicit_pause_options.enabled,
+            explicit_pause_options.sentence,
+            explicit_pause_options.paragraph,
+            explicit_pause_options.voice_change,
         )
     ):
-        explicit_pause = None
+        explicit_pause: SSMDPauseOverrideOptions | None = None
+    else:
+        explicit_pause = explicit_pause_options
     ssmd_policy = SSMDPolicy(
         parse_header=(
             ssmd_header
             if ssmd_header is not None
             else bool(config.get("ssmd_parse_header", True))
         ),
-        unknown_header=ssmd_unknown_header
-        if ssmd_unknown_header is not None
-        else config.get("ssmd_unknown_header", "warn"),
-        missing_voice=ssmd_missing_voice
-        if ssmd_missing_voice is not None
-        else config.get("ssmd_missing_voice", "error"),
+        unknown_header=cast(
+            Literal["warn", "error", "ignore"],
+            ssmd_unknown_header
+            if ssmd_unknown_header is not None
+            else config.get("ssmd_unknown_header", "warn"),
+        ),
+        missing_voice=cast(
+            Literal["error", "use-default"],
+            ssmd_missing_voice
+            if ssmd_missing_voice is not None
+            else config.get("ssmd_missing_voice", "error"),
+        ),
         validate_profile=(
             ssmd_profile_validation
             if ssmd_profile_validation is not None
             else bool(config.get("ssmd_validate_profile", True))
         ),
-        emphasis_mode=effective_ssmd_emphasis,
+        emphasis_mode=cast(
+            Literal["plain", "approximate", "warn", "error"],
+            effective_ssmd_emphasis,
+        ),
         fail_on_warning=(
             ssmd_fail_on_warning
             if ssmd_fail_on_warning is not None
@@ -602,9 +685,10 @@ def convert(  # noqa: C901
             model_path=model_path,
             voices_path=voices_path,
             generate_ssmd_only=generate_ssmd_only,
-            detect_emphasis=detect_emphasis,
+            detect_emphasis=effective_detect_emphasis,
             text_postprocess_options=text_postprocess_options,
             ssmd_policy=ssmd_policy,
+            prosody_policy=effective_prosody_policy,
         )
     except ValueError as exc:
         console.print(f"[red]Invalid conversion configuration:[/red] {exc}.")
@@ -661,8 +745,9 @@ def convert(  # noqa: C901
         mixed_language_allowed=options.mixed_language_allowed,
         mixed_language_confidence=options.mixed_language_confidence,
         random_seed=random_seed,
-        detect_emphasis=detect_emphasis,
+        detect_emphasis=effective_detect_emphasis,
         ssmd_emphasis_mode=ssmd_policy.emphasis_mode,
+        prosody_policy=effective_prosody_policy,
         short_sentence=_format_short_sentence_summary(
             effective_short_sentence,
             effective_enable_short_sentence,
@@ -1170,6 +1255,7 @@ def _show_conversion_summary(
     random_seed: int | None = None,
     detect_emphasis: bool = False,
     ssmd_emphasis_mode: str = "plain",
+    prosody_policy: ProsodyPolicy = ProsodyPolicy(),
     short_sentence: str = DEFAULT_SHORT_SENTENCE,
     short_sentence_note: str | None = None,
     short_sentence_hint: str | None = None,
@@ -1204,14 +1290,46 @@ def _show_conversion_summary(
         "EPUB Emphasis Detection", "Enabled" if detect_emphasis else "Disabled"
     )
     emphasis_labels = {
-        "plain": "Plain (no prosody)",
-        "approximate": "Approximate (volume/rate)",
+        "plain": "Plain (emphasis unchanged)",
+        "approximate": "Approximate (gain-only)",
         "warn": "Plain + warnings",
         "error": "Reject emphasis",
     }
     table.add_row(
         "SSMD Emphasis",
         emphasis_labels.get(ssmd_emphasis_mode, ssmd_emphasis_mode),
+    )
+    method_labels = {
+        "phase_vocoder": "Phase vocoder",
+        "wsola": "WSOLA",
+        "esola": "ESOLA",
+        "td_psola": "TD-PSOLA",
+        "psola": "PSOLA (AudioSig: td_psola)",
+    }
+    table.add_row(
+        "SSMD Prosody Method",
+        method_labels.get(prosody_policy.method, prosody_policy.method),
+    )
+    table.add_row(
+        "Prosody Fallbacks",
+        " -> ".join(
+            method_labels.get(method, method)
+            for method in prosody_policy.fallback_methods
+        )
+        or "None",
+    )
+    table.add_row("Prosody Strict Mode", "Enabled" if prosody_policy.strict else "Disabled")
+    table.add_row("Prosody Clipping", "Enabled" if prosody_policy.clip else "Disabled")
+    table.add_row("Prosody FFT Size", str(prosody_policy.n_fft))
+    table.add_row(
+        "Prosody Hop Length",
+        "Automatic" if prosody_policy.hop_length is None else str(prosody_policy.hop_length),
+    )
+    table.add_row("Prosody Filter Width", str(prosody_policy.filter_width))
+    table.add_row("Prosody Rolloff", str(prosody_policy.rolloff))
+    table.add_row(
+        "Boundary Blend",
+        f"{prosody_policy.boundary_blend_ms} ms",
     )
     if random_seed is not None:
         table.add_row("Seed", str(random_seed))
@@ -1225,6 +1343,11 @@ def _show_conversion_summary(
     console.print(table)
     if short_sentence_hint:
         console.print(f"[yellow]Hint: {short_sentence_hint}[/yellow]")
+    if ssmd_emphasis_mode == "approximate":
+        console.print(
+            "[dim]The current emphasis approximation changes gain only, so the "
+            "selected prosody method is used only for SSMD rate or pitch annotations.[/dim]"
+        )
     console.print()
 
 
@@ -1388,6 +1511,11 @@ def read(  # noqa: C901
 
     # Load config for defaults
     config = load_config()
+    try:
+        effective_read_prosody_policy = _resolve_prosody_policy(config)
+    except (TypeError, ValueError) as exc:
+        console.print(f"[red]Invalid prosody configuration:[/red] {exc}")
+        raise typer.Exit(code=2) from exc
     try:
         resolved_provider = resolve_onnx_provider(
             config, provider_override=provider, use_gpu_override=use_gpu
@@ -1745,6 +1873,7 @@ def read(  # noqa: C901
             model_path=model_path,
             voices_path=voices_path,
             short_sentence_config=effective_short_sentence_config,
+            prosody=build_pykokoro_prosody_config(effective_read_prosody_policy),
             retain_segment_audio=False,
         )
         pipeline = KokoroPipeline(
