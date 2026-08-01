@@ -31,3 +31,4 @@
 {"data":{"status":"planned"},"event":"release.created","event_id":"event-0031","record_revisions":{"release:0.2.1":1},"release_version":"0.2.1","schema_version":2}
 {"data":{"kind":"changed","status":"accepted"},"entry_id":"entry-0001","event":"entry.added","event_id":"event-0032","record_revisions":{"entry:0.2.1/entry-0001":1,"release:0.2.1":2},"release_version":"0.2.1","schema_version":2}
 {"data":{"fields":["body","summary"]},"entry_id":"entry-0001","event":"entry.updated","event_id":"event-0033","record_revisions":{"entry:0.2.1/entry-0001":2},"release_version":"0.2.1","schema_version":2}
+{"data":{"old_release_version":"0.2.1","rewrote_successors":false},"event":"release.renamed","event_id":"event-0034","record_revisions":{"entry:v0.3.0/entry-0001":3,"release:v0.3.0":3},"release_version":"v0.3.0","schema_version":2}

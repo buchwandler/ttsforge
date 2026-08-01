@@ -100,9 +100,7 @@ def test_silence_wav_writes_fractional_duration_in_bounded_chunks(
 
     monkeypatch.setattr("ttsforge.audio_merge.np.zeros", track_zeros)
     output = tmp_path / "silence.wav"
-    AudioMerger(lambda message, level="info": None)._write_silence_wav(
-        output, 3.5
-    )
+    AudioMerger(lambda message, level="info": None)._write_silence_wav(output, 3.5)
 
     data, rate = sf.read(output, dtype="float32")
     assert rate == 24000
