@@ -3,16 +3,16 @@ schema_version: 2
 object_type: release_entry
 versioning:
   schema_version: 1
-  revision: 3
+  revision: 5
 entry_id: entry-0001
-release_version: v0.3.0
+release_version: 0.3.0
 kind: changed
 summary: Changed TTSForge to delegate silence generation and SSMD downmixing to AudioSig
 status: accepted
 audience: null
 scopes: []
 source_refs:
-  - tl:task-0014
+  - git:e26bed3c15fce6b81be6a9e18fd3535e325051ca
 paths:
   - pyproject.toml
   - ttsforge/ssmd_audio.py

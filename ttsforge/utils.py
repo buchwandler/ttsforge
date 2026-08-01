@@ -120,43 +120,12 @@ def parse_config_cli_value(key: str, raw: str, default: object) -> object:
     return raw
 
 
-def validate_config_value(key: str, value: Any) -> None:
-    """Validate configuration values that have numeric runtime constraints."""
-    if key == "onnx_provider":
-        if not isinstance(value, str) or not value.strip():
-            raise ValueError(
-                "must be an ONNX provider alias such as auto, cpu, nnapi, or xnnpack, "
-                "or a full *ExecutionProvider name"
-            )
-        provider = value.strip()
-        if (
-            provider.lower() not in _ONNX_PROVIDER_ALIASES
-            and not _FULL_ONNX_PROVIDER_RE.fullmatch(provider)
-        ):
-            raise ValueError(
-                "must be an ONNX provider alias such as auto, cpu, nnapi, or xnnpack, "
-                "or a full *ExecutionProvider name"
-            )
-        return
-
-    if key in {
-        "detect_emphasis",
-        "prosody_strict",
-        "prosody_clip",
-        "ssmd_parse_header",
-        "ssmd_validate_profile",
-        "ssmd_fail_on_warning",
-        "ssmd_audio_allow_remote",
-        "embed_ssmd_voice_bindings",
-        "embed_ssmd_pause_defaults",
-    }:
-        if not isinstance(value, bool):
-            raise ValueError("must be a boolean")
-        return
+def _validate_prosody_config(key: str, value: Any) -> bool:
+    """Validate prosody-related config keys. Returns True if handled."""
     if key == "prosody_method":
         if value not in _PROSODY_METHODS:
             raise ValueError("must be phase_vocoder, wsola, esola, td_psola, or psola")
-        return
+        return True
     if key == "prosody_fallback_methods":
         if not isinstance(value, list):
             raise ValueError("must be a list of prosody methods")
@@ -165,21 +134,21 @@ def validate_config_value(key: str, value: Any) -> None:
                 raise ValueError(
                     "must contain only phase_vocoder, wsola, esola, td_psola, or psola"
                 )
-        return
+        return True
     if key == "prosody_n_fft":
         if isinstance(value, bool) or not isinstance(value, int) or value < 2:
             raise ValueError("must be an integer >= 2")
-        return
+        return True
     if key == "prosody_hop_length":
         if value is not None and (
             isinstance(value, bool) or not isinstance(value, int) or value <= 0
         ):
             raise ValueError("must be null or an integer > 0")
-        return
+        return True
     if key == "prosody_filter_width":
         if isinstance(value, bool) or not isinstance(value, int) or value <= 0:
             raise ValueError("must be an integer > 0")
-        return
+        return True
     if key in {"prosody_rolloff", "prosody_boundary_blend_ms"}:
         if isinstance(value, bool) or not isinstance(value, (int, float)):
             raise ValueError("must be a finite number")
@@ -190,7 +159,12 @@ def validate_config_value(key: str, value: Any) -> None:
             raise ValueError("must be greater than 0 and at most 1")
         if key == "prosody_boundary_blend_ms" and numeric < 0:
             raise ValueError("must be non-negative")
-        return
+        return True
+    return False
+
+
+def _validate_ssmd_config(key: str, value: Any) -> bool:
+    """Validate SSMD-related config keys. Returns True if handled."""
     if key == "ssmd_unknown_header" and value not in {"warn", "error", "ignore"}:
         raise ValueError("must be warn, error, or ignore")
     if key == "ssmd_missing_voice" and value not in {"error", "use-default"}:
@@ -213,9 +187,56 @@ def validate_config_value(key: str, value: Any) -> None:
                 or not voice
             ):
                 raise ValueError("must contain non-empty role and voice strings")
-        return
+        return True
     if key == "ssmd_audio_root" and value is not None and not isinstance(value, str):
         raise ValueError("must be a path string or null")
+    return False
+
+
+_BOOLEAN_CONFIG_KEYS: frozenset[str] = frozenset(
+    {
+        "detect_emphasis",
+        "prosody_strict",
+        "prosody_clip",
+        "ssmd_parse_header",
+        "ssmd_validate_profile",
+        "ssmd_fail_on_warning",
+        "ssmd_audio_allow_remote",
+        "embed_ssmd_voice_bindings",
+        "embed_ssmd_pause_defaults",
+    }
+)
+
+
+def validate_config_value(key: str, value: Any) -> None:
+    """Validate configuration values that have numeric runtime constraints."""
+    if key == "onnx_provider":
+        if not isinstance(value, str) or not value.strip():
+            raise ValueError(
+                "must be an ONNX provider alias such as auto, cpu, nnapi, or xnnpack, "
+                "or a full *ExecutionProvider name"
+            )
+        provider = value.strip()
+        if (
+            provider.lower() not in _ONNX_PROVIDER_ALIASES
+            and not _FULL_ONNX_PROVIDER_RE.fullmatch(provider)
+        ):
+            raise ValueError(
+                "must be an ONNX provider alias such as auto, cpu, nnapi, or xnnpack, "
+                "or a full *ExecutionProvider name"
+            )
+        return
+
+    if key in _BOOLEAN_CONFIG_KEYS:
+        if not isinstance(value, bool):
+            raise ValueError("must be a boolean")
+        return
+
+    if _validate_prosody_config(key, value):
+        return
+
+    if _validate_ssmd_config(key, value):
+        return
 
     bounds = _NUMERIC_CONFIG_RANGES.get(key)
     if bounds is None:
@@ -314,8 +335,9 @@ def load_config() -> dict[str, Any]:
                     sanitized.pop("prosody_hop_length", None)
                     print(
                         "Warning: ignoring invalid config value "
-                        f"prosody_hop_length={configured_hop!r}: must be less than "
-                        f"or equal to prosody_n_fft={configured_n_fft}; using default None.",
+                        f"prosody_hop_length={configured_hop!r}: must be "
+                        f"less than or equal to prosody_n_fft={configured_n_fft}; "
+                        "using default None.",
                         file=sys.stderr,
                     )
                 # Merge with defaults to ensure all keys exist.

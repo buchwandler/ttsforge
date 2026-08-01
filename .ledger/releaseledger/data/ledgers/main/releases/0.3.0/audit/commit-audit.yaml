@@ -1,0 +1,238 @@
+schema_version: 1
+object_type: commit_audit_sheet
+versioning:
+  schema_version: 1
+  revision: 5
+release_version: v0.3.0
+git_base_ref: v0.2.0
+git_base_sha: 3b1290eafe2c3a454283d6aa1d3e8ea06ec81d0b
+git_head_ref: HEAD
+git_head_sha: ef704964e4f8b4d6f228393ea715d2e9c5f52471
+git_range: 3b1290eafe2c3a454283d6aa1d3e8ea06ec81d0b..ef704964e4f8b4d6f228393ea715d2e9c5f52471
+commit_count: 5
+rows:
+  - sha: e26bed3c15fce6b81be6a9e18fd3535e325051ca
+    source_ref: git:e26bed3c15fce6b81be6a9e18fd3535e325051ca
+    short_sha: e26bed3
+    changed_paths:
+      - .ledger/releaseledger/data/ledgers/main/events/events.jsonl
+      - .ledger/releaseledger/data/ledgers/main/releases/0.2.1/entries/entry-0001.md
+      - .ledger/releaseledger/data/ledgers/main/releases/0.2.1/release.md
+      - docs/changelog.md
+      - docs/installation.md
+      - docs/ssmd.md
+      - pyproject.toml
+      - tests/test_audio_merge.py
+      - tests/test_packaging.py
+      - tests/test_phoneme_conversion.py
+      - tests/test_ssmd_audio.py
+      - tests/test_utility_light.py
+      - ttsforge/audio_merge.py
+      - ttsforge/cli/commands_utility.py
+      - ttsforge/phoneme_conversion.py
+      - ttsforge/ssmd_audio.py
+    stats:
+      files_changed: 0
+      insertions: 276
+      deletions: 27
+    inspected: true
+    inspected_paths:
+      - docs/installation.md
+      - docs/ssmd.md
+      - pyproject.toml
+      - tests/test_audio_merge.py
+      - tests/test_packaging.py
+      - tests/test_phoneme_conversion.py
+      - tests/test_ssmd_audio.py
+      - tests/test_utility_light.py
+      - ttsforge/audio_merge.py
+      - ttsforge/cli/commands_utility.py
+      - ttsforge/phoneme_conversion.py
+      - ttsforge/ssmd_audio.py
+    observed_behavior: "Delegated silence generation to AudioSig generate_silence and
+      SSMD
+
+      channel downmixing to AudioSig downmix_to_mono. Retained TTSForge
+
+      source resolution, SoundFile decoding, WAV merging, and FFmpeg integration.
+
+      "
+    public_impact: public
+    decision: accepted
+    evidence_subject: "feat: support audiosig"
+    target_entry_id: entry-0001
+  - sha: a59a59682dc66a7c3537616e7cfe0944d866f005
+    source_ref: git:a59a59682dc66a7c3537616e7cfe0944d866f005
+    short_sha: a59a596
+    changed_paths:
+      - .ledger/releaseledger/data/ledgers/main/events/events.jsonl
+      - .ledger/releaseledger/data/ledgers/main/releases/0.2.1/entries/entry-0001.md
+      - .ledger/releaseledger/data/ledgers/main/releases/v0.3.0/entries/entry-0001.md
+      - .ledger/releaseledger/data/ledgers/main/releases/v0.3.0/release.md
+      - docs/changelog.md
+      - pyproject.toml
+      - tests/test_audio_merge.py
+    stats:
+      files_changed: 0
+      insertions: 43
+      deletions: 39
+    inspected: true
+    inspected_paths:
+      - docs/changelog.md
+      - pyproject.toml
+      - tests/test_audio_merge.py
+    observed_behavior: "Moved v0.2.1 entry to v0.3.0, updated pyproject.toml version and
+      test fixtures.
+
+      "
+    public_impact: internal
+    decision: internal
+    evidence_subject: "chore: update next version and dep"
+    target_entry_id: entry-0004
+  - sha: 5fdb48c08a1edbe4fd3c626ee965685e4cc23bda
+    source_ref: git:5fdb48c08a1edbe4fd3c626ee965685e4cc23bda
+    short_sha: 5fdb48c
+    changed_paths:
+      - README.md
+      - docs/changelog.md
+      - docs/cli.md
+      - docs/configuration.md
+      - docs/quickstart.md
+      - docs/ssmd.md
+      - pyproject.toml
+      - tests/fixtures/prosody_rate_pitch.ssmd
+      - tests/test_audiosig_contract.py
+      - tests/test_constants.py
+      - tests/test_packaging.py
+      - tests/test_prosody_cli.py
+      - tests/test_prosody_config.py
+      - tests/test_resume_integrity.py
+      - tests/test_ssmd_plain_default.py
+    stats:
+      files_changed: 0
+      insertions: 333
+      deletions: 7
+    inspected: true
+    inspected_paths:
+      - README.md
+      - docs/cli.md
+      - docs/configuration.md
+      - docs/quickstart.md
+      - docs/ssmd.md
+      - pyproject.toml
+      - tests/fixtures/prosody_rate_pitch.ssmd
+      - tests/test_audiosig_contract.py
+      - tests/test_constants.py
+      - tests/test_packaging.py
+      - tests/test_prosody_cli.py
+      - tests/test_prosody_config.py
+      - tests/test_resume_integrity.py
+      - tests/test_ssmd_plain_default.py
+    observed_behavior: "Added prosody_method, prosody_fallback_methods, prosody_strict,
+      prosody_clip,
+
+      prosody_n_fft, prosody_hop_length, prosody_filter_width, prosody_rolloff, and
+
+      prosody_boundary_blend_ms to persistent configuration and CLI overrides.
+
+      Documented the distinction between detect_emphasis, ssmd_emphasis_mode, and
+
+      prosody_method. Added comprehensive tests for prosody CLI, config, resume
+
+      integrity, and AudioSig contract.
+
+      "
+    public_impact: public
+    decision: accepted
+    evidence_subject: "feat: new prosody settings, supporting new methods from audiosig"
+    target_entry_id: entry-0002
+  - sha: fc2a81c775b6208fcc91cf09ab734e35d0dd7c83
+    source_ref: git:fc2a81c775b6208fcc91cf09ab734e35d0dd7c83
+    short_sha: fc2a81c
+    changed_paths:
+      - ttsforge/__init__.py
+      - ttsforge/cli/commands_conversion.py
+      - ttsforge/cli/commands_utility.py
+      - ttsforge/cli/typer_conversion.py
+      - ttsforge/cli/typer_utility.py
+      - ttsforge/cli/utility_light.py
+      - ttsforge/constants.py
+      - ttsforge/conversion.py
+      - ttsforge/kokoro_runner.py
+      - ttsforge/phoneme_conversion.py
+      - ttsforge/prosody_support.py
+      - ttsforge/utils.py
+    stats:
+      files_changed: 0
+      insertions: 504
+      deletions: 53
+    inspected: true
+    inspected_paths:
+      - ttsforge/__init__.py
+      - ttsforge/cli/commands_conversion.py
+      - ttsforge/cli/commands_utility.py
+      - ttsforge/cli/typer_conversion.py
+      - ttsforge/cli/typer_utility.py
+      - ttsforge/cli/utility_light.py
+      - ttsforge/constants.py
+      - ttsforge/conversion.py
+      - ttsforge/kokoro_runner.py
+      - ttsforge/phoneme_conversion.py
+      - ttsforge/prosody_support.py
+      - ttsforge/utils.py
+    observed_behavior: "Implemented ProsodyPolicy dataclass with validation, config
+      resolution,
+
+      and PyKokoro ProsodyConfig translation. Added --prosody-method and
+
+      --prosody-strict CLI options. Extended conversion summary with prosody
+
+      method, fallbacks, strict mode, clipping, FFT/hop, and boundary blend
+
+      display. Added persistent config --set support for all prosody keys.
+
+      "
+    public_impact: public
+    decision: accepted
+    evidence_subject: "feat: new prosody config settingsnfrom audiosig"
+    target_entry_id: entry-0002
+  - sha: ef704964e4f8b4d6f228393ea715d2e9c5f52471
+    source_ref: git:ef704964e4f8b4d6f228393ea715d2e9c5f52471
+    short_sha: ef70496
+    changed_paths:
+      - README.md
+      - docs/changelog.md
+      - docs/cli.md
+      - docs/configuration.md
+      - docs/quickstart.md
+      - docs/ssmd.md
+      - tests/test_prosody_config.py
+      - tests/test_resume_integrity.py
+      - ttsforge/cli/commands_conversion.py
+      - ttsforge/prosody_support.py
+      - ttsforge/utils.py
+    stats:
+      files_changed: 0
+      insertions: 48
+      deletions: 38
+    inspected: true
+    inspected_paths:
+      - README.md
+      - docs/cli.md
+      - docs/configuration.md
+      - docs/quickstart.md
+      - docs/ssmd.md
+      - tests/test_prosody_config.py
+      - tests/test_resume_integrity.py
+      - ttsforge/cli/commands_conversion.py
+      - ttsforge/prosody_support.py
+      - ttsforge/utils.py
+    observed_behavior: "Applied pre-commit formatting to prosody_support.py, utils.py,
+
+      commands_conversion.py, documentation files, and tests.
+
+      "
+    public_impact: internal
+    decision: internal
+    evidence_subject: "chore: pre-commit"
+    target_entry_id: entry-0005

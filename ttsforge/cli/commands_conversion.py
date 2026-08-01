@@ -84,6 +84,7 @@ from .backend_config import (
 from .helpers import DEFAULT_SAMPLE_TEXT, console, parse_voice_parameter
 
 DEFAULT_MODEL_QUALITY: ModelQuality = "fp32"
+_DEFAULT_PROSODY_POLICY = ProsodyPolicy()
 
 
 def _resolve_ssmd_emphasis_mode(
@@ -1258,7 +1259,7 @@ def _show_conversion_summary(
     random_seed: int | None = None,
     detect_emphasis: bool = False,
     ssmd_emphasis_mode: str = "plain",
-    prosody_policy: ProsodyPolicy = ProsodyPolicy(),
+    prosody_policy: ProsodyPolicy = _DEFAULT_PROSODY_POLICY,
     short_sentence: str = DEFAULT_SHORT_SENTENCE,
     short_sentence_note: str | None = None,
     short_sentence_hint: str | None = None,
@@ -1352,8 +1353,9 @@ def _show_conversion_summary(
         console.print(f"[yellow]Hint: {short_sentence_hint}[/yellow]")
     if ssmd_emphasis_mode == "approximate":
         console.print(
-            "[dim]The current emphasis approximation changes gain only, so the "
-            "selected prosody method is used only for SSMD rate or pitch annotations.[/dim]"
+            "[dim]The current emphasis approximation changes gain only, so "
+            "the selected prosody method is used only for "
+            "SSMD rate or pitch annotations.[/dim]"
         )
     console.print()
 
