@@ -79,6 +79,6 @@ def test_policy_rejects_invalid_values(kwargs: dict[str, object]) -> None:
 
 
 def test_psola_and_td_psola_have_equal_canonical_payloads() -> None:
-    assert prosody_policy_payload(ProsodyPolicy(method="psola")) == prosody_policy_payload(
-        ProsodyPolicy(method="td_psola")
-    )
+    assert prosody_policy_payload(
+        ProsodyPolicy(method="psola")
+    ) == prosody_policy_payload(ProsodyPolicy(method="td_psola"))

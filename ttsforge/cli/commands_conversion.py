@@ -12,9 +12,9 @@ import logging
 import re
 import sys
 import tempfile
+from collections.abc import Mapping
 from pathlib import Path
 from types import FrameType
-from collections.abc import Mapping
 from typing import Literal, TypedDict, cast
 
 import numpy as np
@@ -49,6 +49,10 @@ from ..conversion import (
     detect_language_from_iso,
     get_default_voice_for_language,
 )
+from ..prosody_support import (
+    ProsodyPolicy,
+    build_pykokoro_prosody_config,
+)
 from ..short_sentence_config import (
     DEFAULT_SHORT_SENTENCE,
     resolve_short_sentence_config,
@@ -56,10 +60,6 @@ from ..short_sentence_config import (
     validate_short_sentence_config,
 )
 from ..short_sentence_stats import format_short_sentence_stats
-from ..prosody_support import (
-    ProsodyPolicy,
-    build_pykokoro_prosody_config,
-)
 from ..ssmd_support import SSMDPauseOverrideOptions, SSMDPolicy
 from ..text_postprocessing import (
     postprocess_extracted_text,
@@ -125,7 +125,9 @@ def _resolve_prosody_policy(
         else bool(config.get("prosody_strict", DEFAULT_CONFIG["prosody_strict"]))
     )
     return ProsodyPolicy(
-        method=cast(Literal["phase_vocoder", "wsola", "esola", "td_psola", "psola"], method),
+        method=cast(
+            Literal["phase_vocoder", "wsola", "esola", "td_psola", "psola"], method
+        ),
         fallback_methods=cast(
             tuple[Literal["phase_vocoder", "wsola", "esola", "td_psola", "psola"], ...],
             tuple(fallback_value),
@@ -247,7 +249,8 @@ def convert(  # noqa: C901
     effective_detect_emphasis = (
         detect_emphasis
         if detect_emphasis is not None
-        else bool(config.get("detect_emphasis", DEFAULT_CONFIG["detect_emphasis"])))
+        else bool(config.get("detect_emphasis", DEFAULT_CONFIG["detect_emphasis"]))
+    )
     try:
         effective_prosody_policy = _resolve_prosody_policy(
             config,
@@ -1318,12 +1321,16 @@ def _show_conversion_summary(
         )
         or "None",
     )
-    table.add_row("Prosody Strict Mode", "Enabled" if prosody_policy.strict else "Disabled")
+    table.add_row(
+        "Prosody Strict Mode", "Enabled" if prosody_policy.strict else "Disabled"
+    )
     table.add_row("Prosody Clipping", "Enabled" if prosody_policy.clip else "Disabled")
     table.add_row("Prosody FFT Size", str(prosody_policy.n_fft))
     table.add_row(
         "Prosody Hop Length",
-        "Automatic" if prosody_policy.hop_length is None else str(prosody_policy.hop_length),
+        "Automatic"
+        if prosody_policy.hop_length is None
+        else str(prosody_policy.hop_length),
     )
     table.add_row("Prosody Filter Width", str(prosody_policy.filter_width))
     table.add_row("Prosody Rolloff", str(prosody_policy.rolloff))

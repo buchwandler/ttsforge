@@ -401,10 +401,10 @@ ttsforge config --set prosody_method esola
 ttsforge convert book.epub --prosody-method psola
 ```
 
-`detect_emphasis`, `ssmd_emphasis_mode`, and `prosody_method` are separate settings:
-the first extracts EPUB italic/bold markup, the second controls SSMD emphasis policy,
-and the third selects AudioSig processing for explicit rate and pitch annotations.
-The current approximate emphasis profile changes gain only and does not expose custom
+`detect_emphasis`, `ssmd_emphasis_mode`, and `prosody_method` are separate settings: the
+first extracts EPUB italic/bold markup, the second controls SSMD emphasis policy, and
+the third selects AudioSig processing for explicit rate and pitch annotations. The
+current approximate emphasis profile changes gain only and does not expose custom
 strength values. `psola` is accepted as an alias for AudioSig's canonical `td_psola`.
 
 The available policies are `plain`, `approximate`, `warn`, and `error`. Explicit SSMD

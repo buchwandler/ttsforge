@@ -4,8 +4,8 @@ from dataclasses import replace
 from pathlib import Path
 
 import numpy as np
-import soundfile as sf
 import pytest
+import soundfile as sf
 
 from ttsforge.conversion import (
     Chapter,

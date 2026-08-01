@@ -104,9 +104,9 @@ Diagnostics have stable codes and source locations. Inspect without loading ONNX
 `prosody_method` is independent of `detect_emphasis` and `ssmd_emphasis_mode`. It
 chooses the AudioSig algorithm used when an SSMD segment contains `rate` or `pitch`
 metadata. `wsola` is the default speech-oriented audiobook choice; `esola` is an
-experimental speech-oriented alternative; `psola` is accepted as an alias for
-AudioSig's canonical `td_psola`; and `phase_vocoder` is a generic reference/fallback
-path. Keep fallbacks enabled unless testing strict behavior.
+experimental speech-oriented alternative; `psola` is accepted as an alias for AudioSig's
+canonical `td_psola`; and `phase_vocoder` is a generic reference/fallback path. Keep
+fallbacks enabled unless testing strict behavior.
 
 The current `ssmd_emphasis_mode=approximate` profile changes gain only. Selecting ESOLA,
 WSOLA, or PSOLA does not change those fixed emphasis gains; the selected prosody method

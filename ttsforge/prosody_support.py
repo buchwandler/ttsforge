@@ -99,10 +99,15 @@ class ProsodyPolicy:
             self.boundary_blend_ms, (int, float)
         ):
             raise ValueError("boundary_blend_ms must be finite and non-negative")
-        if not math.isfinite(float(self.boundary_blend_ms)) or self.boundary_blend_ms < 0:
+        if (
+            not math.isfinite(float(self.boundary_blend_ms))
+            or self.boundary_blend_ms < 0
+        ):
             raise ValueError("boundary_blend_ms must be finite and non-negative")
 
-        normalized_fallbacks = _normalize_fallback_methods(method, self.fallback_methods)
+        normalized_fallbacks = _normalize_fallback_methods(
+            method, self.fallback_methods
+        )
         object.__setattr__(self, "fallback_methods", normalized_fallbacks)
 
 

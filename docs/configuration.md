@@ -86,16 +86,16 @@ rendered.
 gain-only approximation, and `warn`/`error` report or reject emphasis metadata. The
 approximation does not provide configurable strength profiles.
 
-`prosody_method` (default `wsola`) selects the AudioSig algorithm for explicit SSMD
-rate and pitch annotations. Supported methods are `wsola`, `esola`, `td_psola`,
-`psola` (an alias for `td_psola`), and `phase_vocoder`.
+`prosody_method` (default `wsola`) selects the AudioSig algorithm for explicit SSMD rate
+and pitch annotations. Supported methods are `wsola`, `esola`, `td_psola`, `psola` (an
+alias for `td_psola`), and `phase_vocoder`.
 
 Additional persistent prosody settings are `prosody_fallback_methods` (JSON list,
 default `["wsola", "phase_vocoder"]`), `prosody_strict`, `prosody_clip`,
 `prosody_n_fft`, nullable `prosody_hop_length`, `prosody_filter_width`,
 `prosody_rolloff`, and `prosody_boundary_blend_ms`. The default WSOLA path is the
-general audiobook choice; ESOLA and PSOLA are speech-oriented alternatives, while
-phase vocoder is primarily a reference or fallback path.
+general audiobook choice; ESOLA and PSOLA are speech-oriented alternatives, while phase
+vocoder is primarily a reference or fallback path.
 
 Examples:
 

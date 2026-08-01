@@ -155,9 +155,7 @@ def validate_config_value(key: str, value: Any) -> None:
         return
     if key == "prosody_method":
         if value not in _PROSODY_METHODS:
-            raise ValueError(
-                "must be phase_vocoder, wsola, esola, td_psola, or psola"
-            )
+            raise ValueError("must be phase_vocoder, wsola, esola, td_psola, or psola")
         return
     if key == "prosody_fallback_methods":
         if not isinstance(value, list):

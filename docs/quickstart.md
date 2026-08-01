@@ -291,7 +291,8 @@ resulting SSMD emphasis plain, use:
 ttsforge convert book.epub --detect-emphasis
 ```
 
-To opt into the current deterministic gain-only emphasis approximation, enable it separately:
+To opt into the current deterministic gain-only emphasis approximation, enable it
+separately:
 
 ```bash
 ttsforge convert book.epub --detect-emphasis --enable-ssmd-emphasis

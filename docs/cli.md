@@ -106,10 +106,9 @@ approximate applies segment-level volume/rate changes.
 
 `--enable-ssmd-emphasis` : Convenience opt-in equivalent to
 `--ssmd-emphasis approximate`. It applies the current deterministic gain-only
-approximation to existing
-SSMD emphasis. Use `--detect-emphasis` separately when EPUB italic/bold styling should
-first be extracted into SSMD annotations. This flag cannot be combined with
-`--ssmd-emphasis`.
+approximation to existing SSMD emphasis. Use `--detect-emphasis` separately when EPUB
+italic/bold styling should first be extracted into SSMD annotations. This flag cannot be
+combined with `--ssmd-emphasis`.
 
 `--detect-emphasis / --no-detect-emphasis` : Override persistent EPUB emphasis
 detection. When omitted, `detect_emphasis` from configuration is used.
