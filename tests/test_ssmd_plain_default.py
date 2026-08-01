@@ -120,7 +120,7 @@ def test_conversion_summary_shows_detection_and_rendering_mode(monkeypatch) -> N
     assert "EPUB Emphasis Detection" in output
     assert "Disabled" in output
     assert "SSMD Emphasis" in output
-    assert "Plain (no prosody)" in output
+    assert "Plain (emphasis unchanged)" in output
 
 
 def test_emphasis_mode_change_invalidates_resume_fingerprint() -> None:

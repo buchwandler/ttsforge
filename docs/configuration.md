@@ -73,6 +73,39 @@ remains active. Approximation can also be selected per conversion with
 `ssmd_voice_bindings` : Mapping such as `{"narrator": "af_sarah"}`; CLI/API bindings are
 supplied with repeated `--ssmd-voice ROLE=VOICE`.
 
+### EPUB emphasis and AudioSig prosody
+
+These three settings are related but distinct:
+
+`detect_emphasis` (boolean, default `false`) extracts italic and bold HTML from EPUB
+chapters and writes SSMD emphasis markup. It does not select how SSMD emphasis is
+rendered.
+
+`ssmd_emphasis_mode` (default `plain`) controls PyKokoro's treatment of SSMD emphasis.
+`plain` preserves normal synthesis, `approximate` enables the current deterministic
+gain-only approximation, and `warn`/`error` report or reject emphasis metadata. The
+approximation does not provide configurable strength profiles.
+
+`prosody_method` (default `wsola`) selects the AudioSig algorithm for explicit SSMD
+rate and pitch annotations. Supported methods are `wsola`, `esola`, `td_psola`,
+`psola` (an alias for `td_psola`), and `phase_vocoder`.
+
+Additional persistent prosody settings are `prosody_fallback_methods` (JSON list,
+default `["wsola", "phase_vocoder"]`), `prosody_strict`, `prosody_clip`,
+`prosody_n_fft`, nullable `prosody_hop_length`, `prosody_filter_width`,
+`prosody_rolloff`, and `prosody_boundary_blend_ms`. The default WSOLA path is the
+general audiobook choice; ESOLA and PSOLA are speech-oriented alternatives, while
+phase vocoder is primarily a reference or fallback path.
+
+Examples:
+
+```bash
+ttsforge config --set detect_emphasis true --set ssmd_emphasis_mode approximate
+ttsforge config --set prosody_method esola --set prosody_fallback_methods '["wsola","phase_vocoder"]'
+ttsforge config --set prosody_method psola
+ttsforge config --set prosody_strict true --set prosody_fallback_methods '[]'
+```
+
 `ssmd_audio_allow_remote` (default `false`), `ssmd_audio_root`, `ssmd_audio_max_bytes`
 (default `20000000`), and `ssmd_audio_max_duration_s` (default `120`) : Bound
 local/HTTPS audio annotation resolution. Remote audio is opt-in.

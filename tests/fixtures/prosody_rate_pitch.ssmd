@@ -1,0 +1,7 @@
+Normal speech.
+
+[This sentence is slower.]{rate="90%"}
+
+[This sentence is slightly higher.]{pitch="+1st"}
+
+[This sentence combines both changes.]{rate="92%" pitch="+0.8st" volume="+3dB"}

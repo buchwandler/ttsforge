@@ -389,13 +389,23 @@ or pitch changes. EPUB styling detection and SSMD rendering are independent cont
 # Detect italic/bold EPUB text and speak it plainly (the default)
 ttsforge convert book.epub --detect-emphasis
 
-# Detect styling and explicitly opt into approximate volume/rate changes
+# Detect styling and explicitly opt into the current gain-only approximation
 ttsforge convert book.epub --detect-emphasis --enable-ssmd-emphasis
 
 # Choose the persisted/default policy explicitly
 ttsforge config --set ssmd_emphasis_mode plain
 ttsforge convert book.epub --ssmd-emphasis approximate
+
+# Select AudioSig prosody for explicit SSMD rate/pitch annotations
+ttsforge config --set prosody_method esola
+ttsforge convert book.epub --prosody-method psola
 ```
+
+`detect_emphasis`, `ssmd_emphasis_mode`, and `prosody_method` are separate settings:
+the first extracts EPUB italic/bold markup, the second controls SSMD emphasis policy,
+and the third selects AudioSig processing for explicit rate and pitch annotations.
+The current approximate emphasis profile changes gain only and does not expose custom
+strength values. `psola` is accepted as an alias for AudioSig's canonical `td_psola`.
 
 The available policies are `plain`, `approximate`, `warn`, and `error`. Explicit SSMD
 prosody such as `[fast words]{rate="fast"}` remains active in plain emphasis mode.

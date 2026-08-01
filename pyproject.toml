@@ -23,7 +23,7 @@ dependencies = [
     "rich>=13.0.0",
     "epub2text",
     "numpy",
-    "audiosig>=0.1.1,<0.2",
+    "audiosig>=0.1.2,<0.2",
     "soundfile>=0.12.0",
     "chardet",
     "charset-normalizer",

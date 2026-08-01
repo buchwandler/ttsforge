@@ -148,6 +148,20 @@ class TestOutputFormats:
         expected = {"wav", "mp3", "flac", "opus", "m4b"}
         assert set(SUPPORTED_OUTPUT_FORMATS) == expected
 
+
+def test_prosody_defaults_are_opt_in_and_stable() -> None:
+    assert DEFAULT_CONFIG["detect_emphasis"] is False
+    assert DEFAULT_CONFIG["ssmd_emphasis_mode"] == "plain"
+    assert DEFAULT_CONFIG["prosody_method"] == "wsola"
+    assert DEFAULT_CONFIG["prosody_fallback_methods"] == ["wsola", "phase_vocoder"]
+    assert DEFAULT_CONFIG["prosody_strict"] is False
+    assert DEFAULT_CONFIG["prosody_clip"] is False
+    assert DEFAULT_CONFIG["prosody_n_fft"] == 2048
+    assert DEFAULT_CONFIG["prosody_hop_length"] is None
+    assert DEFAULT_CONFIG["prosody_filter_width"] == 32
+    assert DEFAULT_CONFIG["prosody_rolloff"] == 0.945
+    assert DEFAULT_CONFIG["prosody_boundary_blend_ms"] == 5.0
+
     def test_ffmpeg_formats_subset(self):
         """FFMPEG formats should be subset of supported formats."""
         assert set(FFMPEG_FORMATS).issubset(set(SUPPORTED_OUTPUT_FORMATS))

@@ -1,9 +1,11 @@
 """Regression coverage for conservative v2 resume matching."""
 
+from dataclasses import replace
 from pathlib import Path
 
 import numpy as np
 import soundfile as sf
+import pytest
 
 from ttsforge.conversion import (
     Chapter,
@@ -24,6 +26,7 @@ from ttsforge.phoneme_conversion import (
     PhonemeConverter,
 )
 from ttsforge.phonemes import PhonemeBook, PhonemeChapter, PhonemeSegment
+from ttsforge.prosody_support import ProsodyPolicy
 
 
 def _text_state(
@@ -421,6 +424,48 @@ def test_provider_changes_invalidate_resume_fingerprints() -> None:
         cpu_phonemes._generation_fingerprint()
         != nnapi_phonemes._generation_fingerprint()
     )
+
+
+@pytest.mark.parametrize(
+    "policy",
+    [
+        ProsodyPolicy(method="esola"),
+        ProsodyPolicy(method="psola"),
+        ProsodyPolicy(strict=True),
+        ProsodyPolicy(n_fft=4096),
+        ProsodyPolicy(hop_length=512),
+        ProsodyPolicy(boundary_blend_ms=10.0),
+    ],
+)
+def test_prosody_settings_invalidate_text_resume_fingerprint(
+    policy: ProsodyPolicy,
+) -> None:
+    base = TTSConverter(ConversionOptions())
+    changed = TTSConverter(ConversionOptions(prosody_policy=policy))
+    assert base._generation_fingerprint() != changed._generation_fingerprint()
+
+
+def test_psola_and_td_psola_are_resume_equivalent() -> None:
+    psola = TTSConverter(
+        ConversionOptions(prosody_policy=ProsodyPolicy(method="psola"))
+    )
+    td_psola = TTSConverter(
+        ConversionOptions(prosody_policy=ProsodyPolicy(method="td_psola"))
+    )
+    assert psola._generation_fingerprint() == td_psola._generation_fingerprint()
+
+
+def test_prosody_settings_invalidate_phoneme_resume_fingerprint() -> None:
+    book = PhonemeBook(title="Book", chapters=[])
+    base = PhonemeConverter(book, PhonemeConversionOptions())
+    changed = PhonemeConverter(
+        book,
+        replace(
+            PhonemeConversionOptions(),
+            prosody_policy=ProsodyPolicy(method="phase_vocoder"),
+        ),
+    )
+    assert base._generation_fingerprint() != changed._generation_fingerprint()
 
 
 def test_resolve_conversion_workspace(tmp_path: Path) -> None:

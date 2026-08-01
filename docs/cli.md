@@ -105,10 +105,23 @@ persisted `ssmd_emphasis_mode` value, normally `plain`. Plain speaks emphasis un
 approximate applies segment-level volume/rate changes.
 
 `--enable-ssmd-emphasis` : Convenience opt-in equivalent to
-`--ssmd-emphasis approximate`. It applies segment-level volume/rate changes to existing
+`--ssmd-emphasis approximate`. It applies the current deterministic gain-only
+approximation to existing
 SSMD emphasis. Use `--detect-emphasis` separately when EPUB italic/bold styling should
 first be extracted into SSMD annotations. This flag cannot be combined with
 `--ssmd-emphasis`.
+
+`--detect-emphasis / --no-detect-emphasis` : Override persistent EPUB emphasis
+detection. When omitted, `detect_emphasis` from configuration is used.
+
+`--prosody-method METHOD` : One-off override for the configured SSMD prosody algorithm:
+`wsola`, `esola`, `td_psola`, `psola`, or `phase_vocoder`. `psola` is the user-facing
+alias for AudioSig `td_psola`.
+
+`--prosody-strict / --no-prosody-strict` : Override whether prosody fallback is strict.
+Advanced tuning values remain available through persistent configuration. The conversion
+summary shows the effective method, fallbacks, strictness, clipping, FFT/hop, and
+boundary-blend values.
 
 `--ssmd-voice ROLE=VOICE` : Repeatable explicit Kokoro binding override.
 

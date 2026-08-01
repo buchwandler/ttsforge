@@ -99,6 +99,20 @@ Diagnostics have stable codes and source locations. Inspect without loading ONNX
 `ttsforge ssmd inspect FILE` or `ttsforge ssmd inspect FILE --json`. Validate with
 `ttsforge ssmd validate FILE`; `--strict` promotes warnings to failures.
 
+### Prosody method selection
+
+`prosody_method` is independent of `detect_emphasis` and `ssmd_emphasis_mode`. It
+chooses the AudioSig algorithm used when an SSMD segment contains `rate` or `pitch`
+metadata. `wsola` is the default speech-oriented audiobook choice; `esola` is an
+experimental speech-oriented alternative; `psola` is accepted as an alias for
+AudioSig's canonical `td_psola`; and `phase_vocoder` is a generic reference/fallback
+path. Keep fallbacks enabled unless testing strict behavior.
+
+The current `ssmd_emphasis_mode=approximate` profile changes gain only. Selecting ESOLA,
+WSOLA, or PSOLA does not change those fixed emphasis gains; the selected prosody method
+is used for explicit SSMD rate and pitch annotations. `plain` disables emphasis
+approximation but does not disable explicit rate, pitch, or volume annotations.
+
 Audio annotations use a document-relative local resolver with byte and duration limits.
 Remote audio is disabled by default; when enabled, only bounded HTTPS sources are
 accepted. Unresolved audio uses SSMD fallback text and emits an `ssmd.audio_fallback` or

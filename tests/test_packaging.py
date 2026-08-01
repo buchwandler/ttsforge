@@ -34,7 +34,7 @@ def test_pykokoro_dependency_floor_is_released_handoff() -> None:
         (Path(__file__).parents[1] / "pyproject.toml").read_text(encoding="utf-8")
     )
     dependencies = project["project"]["dependencies"]
-    assert "pykokoro[cpu]>=0.7.5,<0.8" in dependencies
+    assert "pykokoro[cpu]>=0.8.0,<0.9" in dependencies
     assert not any("pykokoro[cpu]>=0.7.3" in dependency for dependency in dependencies)
     assert not any("pykokoro[cpu]>=0.6.6" in dependency for dependency in dependencies)
 
@@ -53,7 +53,7 @@ def test_audiosig_dependency_floor_supports_waveform_primitives() -> None:
         (Path(__file__).parents[1] / "pyproject.toml").read_text(encoding="utf-8")
     )
     dependencies = project["project"]["dependencies"]
-    assert "audiosig>=0.1.1,<0.2" in dependencies
+    assert "audiosig>=0.1.2,<0.2" in dependencies
     assert "numpy" in dependencies
     assert "soundfile>=0.12.0" in dependencies
 
