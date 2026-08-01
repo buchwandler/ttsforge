@@ -17,8 +17,8 @@ authors = [
 ]
 urls = { Homepage = "https://github.com/buchwandler/ttsforge" }
 dependencies = [
-    # Explicit Literal-based wrappers require Typer 0.20.0 or newer.
-    "typer>=0.20.0",
+    # Typer 0.27.0 omits some Annotated options from help on Python 3.10.
+    "typer>=0.20.0,!=0.27.0",
     "click>=8.0.0",
     "rich>=13.0.0",
     "epub2text",
