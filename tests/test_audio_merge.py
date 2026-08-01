@@ -88,6 +88,37 @@ def test_wav_merge_rejects_wrong_sample_rate(tmp_path: Path) -> None:
         )
 
 
+def test_silence_wav_writes_fractional_duration_in_bounded_chunks(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    requested: list[int] = []
+    real_zeros = np.zeros
+
+    def track_zeros(shape, *args, **kwargs):
+        requested.append(int(shape))
+        return real_zeros(shape, *args, **kwargs)
+
+    monkeypatch.setattr("ttsforge.audio_merge.np.zeros", track_zeros)
+    output = tmp_path / "silence.wav"
+    AudioMerger(lambda message, level="info": None)._write_silence_wav(
+        output, 3.5
+    )
+
+    data, rate = sf.read(output, dtype="float32")
+    assert rate == 24000
+    assert data.shape == (int(3.5 * 24000),)
+    assert requested and max(requested) <= 65536
+
+
+def test_silence_wav_zero_duration_is_empty(tmp_path: Path) -> None:
+    output = tmp_path / "empty-silence.wav"
+    AudioMerger(lambda message, level="info": None)._write_silence_wav(output, 0)
+
+    data, rate = sf.read(output, dtype="float32")
+    assert rate == 24000
+    assert data.shape == (0,)
+
+
 def test_ffmpeg_formats_and_m4b_metadata(
     monkeypatch: pytest.MonkeyPatch, tmp_path: Path
 ) -> None:

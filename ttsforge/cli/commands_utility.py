@@ -9,6 +9,7 @@ from typing import Any, Literal, TypeAlias, cast
 
 import numpy as np
 import typer
+from audiosig import generate_silence
 from pykokoro import GenerationConfig, KokoroPipeline, PipelineConfig
 from pykokoro.onnx_backend import (
     DEFAULT_MODEL_QUALITY,
@@ -394,7 +395,7 @@ def demo(  # noqa: C901
     sample_rate = 24000  # Kokoro sample rate
 
     # Create silence array for gaps between samples
-    silence_samples = np.zeros(int(silence * sample_rate), dtype=np.float32)
+    silence_samples = generate_silence(silence, sample_rate)
 
     with Progress(
         SpinnerColumn(),

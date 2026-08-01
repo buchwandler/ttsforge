@@ -12,6 +12,14 @@ This guide covers the installation of ttsforge and its dependencies.
 
 ttsforge requires the following external tools:
 
+### AudioSig waveform primitives
+
+TTSForge depends directly on AudioSig `>=0.1.1,<0.2` for reusable NumPy waveform
+operations: duration-based silence generation and arithmetic-mean channel downmixing.
+NumPy remains a direct dependency for TTSForge arrays, composition, playback buffers,
+and bounded I/O buffers. SoundFile remains required for audio decoding and encoding;
+AudioSig does not replace TTSForge's file, FFmpeg, or audiobook orchestration layers.
+
 ### PyKokoro memory API
 
 The package requires PyKokoro `>=0.7.5,<0.8`. This release provides the public

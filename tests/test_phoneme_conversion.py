@@ -6,6 +6,7 @@ from unittest.mock import MagicMock, patch
 
 import numpy as np
 import pytest
+import soundfile as sf
 
 from ttsforge.phoneme_conversion import (
     PhonemeChapterState,
@@ -308,16 +309,6 @@ class TestPhonemeConverter:
         converter.cancel()
         assert converter._cancelled is True
 
-    def test_generate_silence(self, sample_book):
-        """Test silence generation."""
-        options = PhonemeConversionOptions()
-        converter = PhonemeConverter(sample_book, options)
-        silence = converter._generate_silence(1.0)
-        assert isinstance(silence, np.ndarray)
-        assert len(silence) == 24000  # 1 second at 24kHz
-        assert silence.dtype == np.float32
-        assert np.all(silence == 0)
-
     def test_get_selected_chapters_all(self, sample_book):
         """Test getting all chapters when no selection."""
         options = PhonemeConversionOptions()
@@ -423,7 +414,11 @@ class TestPhonemeConverterConversion:
 
         with tempfile.TemporaryDirectory() as tmpdir:
             output_path = Path(tmpdir) / "test.wav"
-            options = PhonemeConversionOptions(output_format="wav")
+            options = PhonemeConversionOptions(
+                output_format="wav",
+                announce_chapters=False,
+                silence_between_chapters=0.125,
+            )
             converter = PhonemeConverter(sample_book, options)
 
             result = converter.convert_streaming(output_path)
@@ -431,6 +426,9 @@ class TestPhonemeConverterConversion:
             assert result.success is True
             assert result.output_path == output_path
             assert output_path.exists()
+            rendered, sample_rate = sf.read(output_path, dtype="float32")
+            assert sample_rate == 24000
+            assert rendered.shape == (2 * 24000 + int(0.125 * 24000),)
 
     def test_convert_no_chapters(self):
         """Test convert with empty book."""

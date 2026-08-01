@@ -47,6 +47,24 @@ def test_ssmd_dependency_is_direct_and_bounded() -> None:
     assert "ssmd>=0.8.0,<0.9" in project["project"]["dependencies"]
 
 
+def test_audiosig_dependency_floor_supports_waveform_primitives() -> None:
+    tomllib = pytest.importorskip("tomllib")
+    project = tomllib.loads(
+        (Path(__file__).parents[1] / "pyproject.toml").read_text(encoding="utf-8")
+    )
+    dependencies = project["project"]["dependencies"]
+    assert "audiosig>=0.1.1,<0.2" in dependencies
+    assert "numpy" in dependencies
+    assert "soundfile>=0.12.0" in dependencies
+
+
+def test_audiosig_waveform_primitives_are_importable() -> None:
+    from audiosig import downmix_to_mono, generate_silence
+
+    assert callable(downmix_to_mono)
+    assert callable(generate_silence)
+
+
 def test_pykokoro_ssmd_080_contract_is_importable() -> None:
     pytest.importorskip("pykokoro")
     try:

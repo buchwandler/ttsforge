@@ -11,6 +11,7 @@ from urllib.request import Request, urlopen
 
 import numpy as np
 import soundfile as sf
+from audiosig import downmix_to_mono
 
 
 class SSMDRemoteAudioError(OSError):
@@ -30,9 +31,7 @@ def _decode_audio(data: io.BytesIO, *, max_duration_s: float) -> tuple[np.ndarra
         raise
     except Exception as exc:
         raise ValueError("audio source could not be decoded") from exc
-    if samples.ndim == 2:
-        samples = samples.mean(axis=1, dtype=np.float32)
-    return np.asarray(samples, dtype=np.float32), sample_rate
+    return downmix_to_mono(samples, channel_axis=1), sample_rate
 
 
 def _host_is_private(host: str) -> bool:

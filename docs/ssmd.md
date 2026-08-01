@@ -103,7 +103,9 @@ Audio annotations use a document-relative local resolver with byte and duration 
 Remote audio is disabled by default; when enabled, only bounded HTTPS sources are
 accepted. Unresolved audio uses SSMD fallback text and emits an `ssmd.audio_fallback` or
 `ssmd.audio_unresolved` diagnostic. Audio files are decoded and downmixed to mono before
-pykokoro applies SSMD transformations.
+pykokoro applies SSMD transformations. TTSForge retains source resolution, security
+limits, SoundFile decoding, and output orchestration; AudioSig supplies the reusable
+array downmix, while PyKokoro remains responsible for SSMD speed, gain, and resampling.
 
 ## Intentional Kokoro limitations
 

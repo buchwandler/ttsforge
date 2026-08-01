@@ -2,6 +2,10 @@
 
 from dataclasses import dataclass
 from pathlib import Path
+from types import SimpleNamespace
+
+import numpy as np
+import soundfile as sf
 
 from ttsforge.cli import utility_light
 from ttsforge.cli.commands_utility import _close_pipeline_and_backend
@@ -136,3 +140,63 @@ def test_direct_pipeline_cleanup_closes_backend_after_pipeline_failure() -> None
         raise AssertionError("pipeline failure was swallowed")
 
     assert events == ["pipeline", "backend"]
+
+
+def test_demo_combined_gap_uses_exact_generated_silence(monkeypatch, tmp_path) -> None:
+    from ttsforge.cli import commands_utility
+
+    class Backend:
+        def close(self) -> None:
+            pass
+
+    class Result(SimpleNamespace):
+        def release_audio(self) -> None:
+            pass
+
+    class Pipeline:
+        def __init__(self, *args, **kwargs):
+            del args, kwargs
+
+        def run(self, text, *, voice, lang):
+            del text, voice, lang
+            return Result(audio=np.ones(4, dtype=np.float32), sample_rate=24000)
+
+        def close(self) -> None:
+            pass
+
+    monkeypatch.setattr(commands_utility, "load_config", lambda: {})
+    monkeypatch.setattr(
+        commands_utility, "resolve_onnx_provider", lambda *args, **kwargs: "cpu"
+    )
+    monkeypatch.setattr(commands_utility, "Kokoro", lambda **kwargs: Backend())
+    monkeypatch.setattr(commands_utility, "KokoroPipeline", Pipeline)
+    monkeypatch.setattr(
+        commands_utility, "OnnxPhonemeProcessorAdapter", lambda backend: backend
+    )
+    monkeypatch.setattr(
+        commands_utility, "OnnxAudioGenerationAdapter", lambda backend: backend
+    )
+    monkeypatch.setattr(
+        commands_utility, "OnnxAudioPostprocessingAdapter", lambda backend: backend
+    )
+
+    output = tmp_path / "demo.wav"
+    commands_utility.demo(
+        SimpleNamespace(obj={}),
+        output=output,
+        language=None,
+        voices_filter="af_heart,af_bella",
+        speed=1.0,
+        use_gpu=None,
+        provider=None,
+        silence=0.125,
+        text="Demo {voice}",
+        separate=False,
+        blend=None,
+        blend_presets=False,
+        play_audio=False,
+    )
+
+    rendered, sample_rate = sf.read(output, dtype="float32")
+    assert sample_rate == 24000
+    assert rendered.shape == (4 + int(0.125 * 24000) + 4,)

@@ -264,11 +264,15 @@ class AudioMerger:
 
     def _write_silence_wav(self, path: Path, duration: float) -> None:
         samples = int(duration * SAMPLE_RATE)
-        audio = np.zeros(samples, dtype="float32")
+        silence = np.zeros(min(samples, 65536), dtype="float32")
         with sf.SoundFile(
             str(path), "w", samplerate=SAMPLE_RATE, channels=1, format="wav"
         ) as f:
-            f.write(audio)
+            remaining = samples
+            while remaining > 0:
+                chunk_size = min(remaining, len(silence))
+                f.write(silence[:chunk_size])
+                remaining -= chunk_size
 
     def _ffmetadata(self, chapters: list[dict[str, Any]]) -> str:
         lines = [";FFMETADATA1"]

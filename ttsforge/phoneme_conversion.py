@@ -16,6 +16,7 @@ from typing import Literal as _Literal
 
 import numpy as np
 import soundfile as sf
+from audiosig import generate_silence
 from pykokoro.config_types import (
     DEFAULT_MODEL_SOURCE,
     DEFAULT_MODEL_VARIANT,
@@ -372,11 +373,6 @@ class PhonemeConverter:
             parts.append("\n" if strength == "p" else " ")
         return "".join(parts).strip()
 
-    def _generate_silence(self, duration: float) -> np.ndarray:
-        """Generate silence audio of given duration."""
-        samples = int(duration * SAMPLE_RATE)
-        return np.zeros(samples, dtype="float32")
-
     def _setup_output(
         self, output_path: Path
     ) -> tuple[sf.SoundFile | None, subprocess.Popen[bytes] | None]:
@@ -538,8 +534,7 @@ class PhonemeConverter:
                 # Add pause after chapter title
                 pause_duration = self.options.chapter_pause_after_title
                 if pause_duration > 0:
-                    pause_samples = int(pause_duration * SAMPLE_RATE)
-                    pause_audio = np.zeros(pause_samples, dtype=np.float32)
+                    pause_audio = generate_silence(pause_duration, SAMPLE_RATE)
                     out_file.write(pause_audio)
                     duration += pause_duration
 
@@ -1172,8 +1167,8 @@ class PhonemeConverter:
                     chapter_idx < len(selected_chapters) - 1
                     and self.options.silence_between_chapters > 0
                 ):
-                    silence = self._generate_silence(
-                        self.options.silence_between_chapters
+                    silence = generate_silence(
+                        self.options.silence_between_chapters, SAMPLE_RATE
                     )
                     self._write_audio_chunk(silence, out_file, ffmpeg_proc)
                     current_time += self.options.silence_between_chapters
