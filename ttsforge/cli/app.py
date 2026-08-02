@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import os
+import shutil
 from pathlib import Path
 from typing import Annotated
 
@@ -12,8 +13,41 @@ from typer.core import TyperCommand, TyperGroup
 from ..constants import PROGRAM_NAME
 from .helpers import get_version
 
+_MIN_RICH_HELP_WIDTH = 110
 
-def _sync_rich_terminal() -> None:
+
+def _terminal_width(fallback: int = 80) -> int:
+    """Return the current terminal width, honoring embedded CLI overrides."""
+    for name in ("TERMINAL_WIDTH", "COLUMNS"):
+        value = os.getenv(name)
+        if value:
+            try:
+                return int(value)
+            except ValueError:
+                pass
+    return shutil.get_terminal_size(fallback=(fallback, 24)).columns
+
+
+def _narrow_terminal() -> bool:
+    return _terminal_width() < _MIN_RICH_HELP_WIDTH
+
+
+def _run_with_terminal_help_mode(  # type: ignore[no-untyped-def]
+    command, main, *args, **kwargs
+):
+    """Disable Rich's error panels when they cannot fit the terminal."""
+    if not _narrow_terminal():
+        return main(*args, **kwargs)
+
+    rich_markup_mode = command.rich_markup_mode
+    command.rich_markup_mode = None
+    try:
+        return main(*args, **kwargs)
+    finally:
+        command.rich_markup_mode = rich_markup_mode
+
+
+def _sync_rich_terminal(formatter) -> bool:  # type: ignore[no-untyped-def]
     """Apply terminal color environment variables at help-render time.
 
     Typer snapshots ``GITHUB_ACTIONS`` and related variables when
@@ -22,6 +56,9 @@ def _sync_rich_terminal() -> None:
     and other embedded uses of the CLI.
     """
     from typer import rich_utils
+
+    terminal_width = _terminal_width(getattr(formatter, "width", 80) or 80)
+    narrow_terminal = terminal_width < _MIN_RICH_HELP_WIDTH
 
     if os.getenv("NO_COLOR"):
         rich_utils.FORCE_TERMINAL = False
@@ -32,22 +69,41 @@ def _sync_rich_terminal() -> None:
         rich_utils.FORCE_TERMINAL = True
     else:
         rich_utils.FORCE_TERMINAL = None
+    return narrow_terminal
+
+
+def _format_help(command, ctx, formatter):  # type: ignore[no-untyped-def]
+    """Use plain Click help when Rich's table cannot fit the terminal."""
+    narrow_terminal = _sync_rich_terminal(formatter)
+    if not narrow_terminal:
+        return super(type(command), command).format_help(ctx, formatter)
+
+    rich_markup_mode = command.rich_markup_mode
+    command.rich_markup_mode = None
+    try:
+        return super(type(command), command).format_help(ctx, formatter)
+    finally:
+        command.rich_markup_mode = rich_markup_mode
 
 
 class _ColorAwareTyperCommand(TyperCommand):
     """Typer command that evaluates color policy for every help request."""
 
     def format_help(self, ctx, formatter):  # type: ignore[no-untyped-def]
-        _sync_rich_terminal()
-        return super().format_help(ctx, formatter)
+        return _format_help(self, ctx, formatter)
+
+    def main(self, *args, **kwargs):  # type: ignore[no-untyped-def]
+        return _run_with_terminal_help_mode(self, super().main, *args, **kwargs)
 
 
 class _ColorAwareTyperGroup(TyperGroup):
     """Typer group that evaluates color policy for every help request."""
 
     def format_help(self, ctx, formatter):  # type: ignore[no-untyped-def]
-        _sync_rich_terminal()
-        return super().format_help(ctx, formatter)
+        return _format_help(self, ctx, formatter)
+
+    def main(self, *args, **kwargs):  # type: ignore[no-untyped-def]
+        return _run_with_terminal_help_mode(self, super().main, *args, **kwargs)
 
 
 class _ColorAwareTyper(typer.Typer):

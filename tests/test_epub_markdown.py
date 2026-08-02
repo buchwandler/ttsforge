@@ -27,8 +27,8 @@ def test_normalize_preserves_controlled_structure_and_converts_scene_break() -> 
 
 def test_normalize_unwraps_defensive_inline_constructs_and_emphasis() -> None:
     result = normalize_epub_markdown(
-        r"A [linked word](https://example.test) and `literal` plus *soft* and **bold**."
-        ,
+        r"A [linked word](https://example.test) and `literal`"
+        r" plus *soft* and **bold**.",
         preserve_emphasis=False,
     )
 

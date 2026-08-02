@@ -106,8 +106,12 @@ def markdown_structure_counts(markdown_body: str) -> dict[str, int]:
     return {
         "headings": sum(1 for line in lines if re.match(r"^#{1,6}\s+", line)),
         "subheadings": sum(1 for line in lines if re.match(r"^#{2,6}\s+", line)),
-        "moderate_spans": len(re.findall(r"(?<!\\)(?<!\*)\*(?!\*)(?:[^*\n]|\\.)+\*(?!\*)", markdown_body)),
-        "strong_spans": len(re.findall(r"(?<!\\)\*\*(?:[^*\n]|\\.)+\*\*", markdown_body)),
+        "moderate_spans": len(
+            re.findall(r"(?<!\\)(?<!\*)\*(?!\*)(?:[^*\n]|\\.)+\*(?!\*)", markdown_body)
+        ),
+        "strong_spans": len(
+            re.findall(r"(?<!\\)\*\*(?:[^*\n]|\\.)+\*\*", markdown_body)
+        ),
         "scene_breaks": sum(1 for line in lines if line.strip() == "...p"),
     }
 

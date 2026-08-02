@@ -13,7 +13,8 @@ from ttsforge.ssmd_generator import chapter_to_ssmd
 def _write_markdown_fixture(path: Path) -> None:
     container = """<?xml version="1.0" encoding="UTF-8"?>
 <container version="1.0" xmlns="urn:oasis:names:tc:opendocument:xmlns:container">
-  <rootfiles><rootfile full-path="OEBPS/content.opf" media-type="application/oebps-package+xml"/></rootfiles>
+  <rootfiles><rootfile full-path="OEBPS/content.opf"
+    media-type="application/oebps-package+xml"/></rootfiles>
 </container>"""
     opf = """<?xml version="1.0" encoding="UTF-8"?>
 <package xmlns="http://www.idpf.org/2007/opf" unique-identifier="bookid" version="3.0">
@@ -24,7 +25,8 @@ def _write_markdown_fixture(path: Path) -> None:
     <dc:language>en</dc:language>
   </metadata>
   <manifest>
-    <item id="nav" href="nav.xhtml" media-type="application/xhtml+xml" properties="nav"/>
+    <item id="nav" href="nav.xhtml"
+      media-type="application/xhtml+xml" properties="nav"/>
     <item id="chapter" href="chapter.xhtml" media-type="application/xhtml+xml"/>
     <item id="css" href="styles.css" media-type="text/css"/>
   </manifest>
@@ -32,7 +34,9 @@ def _write_markdown_fixture(path: Path) -> None:
 </package>"""
     nav = """<?xml version="1.0" encoding="UTF-8"?>
 <html xmlns="http://www.w3.org/1999/xhtml" xmlns:epub="http://www.idpf.org/2007/ops">
-  <body><nav epub:type="toc"><ol><li><a href="chapter.xhtml#one">ONE</a></li></ol></nav></body>
+  <body><nav epub:type="toc"><ol>
+    <li><a href="chapter.xhtml#one">ONE</a></li>
+  </ol></nav></body>
 </html>"""
     chapter = """<?xml version="1.0" encoding="UTF-8"?>
 <html xmlns="http://www.w3.org/1999/xhtml">
@@ -90,7 +94,9 @@ def test_reader_consumes_chapter_document_markdown_and_metadata(
     assert "*" not in chapter.text
 
 
-def test_generated_ssmd_preserves_headings_emphasis_and_pause(markdown_epub: Path) -> None:
+def test_generated_ssmd_preserves_headings_emphasis_and_pause(
+    markdown_epub: Path,
+) -> None:
     chapter = InputReader(markdown_epub).get_chapters()[0]
     ssmd = chapter_to_ssmd(
         chapter.title,
@@ -123,7 +129,9 @@ def test_detect_emphasis_false_preserves_structure_but_unwraps_inline_markup(
     assert "---" in (chapter.markdown_body or "")
 
 
-def test_plain_compatibility_mode_keeps_legacy_visible_text(markdown_epub: Path) -> None:
+def test_plain_compatibility_mode_keeps_legacy_visible_text(
+    markdown_epub: Path,
+) -> None:
     chapter = InputReader(
         markdown_epub,
         epub_options=EpubReadOptions(content_mode="plain"),
