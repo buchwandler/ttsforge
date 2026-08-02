@@ -20,6 +20,10 @@ def test_conversion_state_roundtrip(tmp_path: Path) -> None:
                 index=0,
                 title="Chapter 1",
                 content_hash="hash",
+                source_format="markdown",
+                source_id="ch1",
+                source_markup_hash="markup",
+                extraction_schema="epub2text.chapter-document/0.2.8",
                 completed=True,
                 audio_file="chapter_001.wav",
                 duration=1.2,
@@ -38,6 +42,8 @@ def test_conversion_state_roundtrip(tmp_path: Path) -> None:
     assert loaded.voice == "af_heart"
     assert loaded.chapters[0].audio_file == "chapter_001.wav"
     assert loaded.chapters[0].completed is True
+    assert loaded.chapters[0].source_format == "markdown"
+    assert loaded.chapters[0].source_markup_hash == "markup"
 
     assert not (tmp_path / "state.json.tmp").exists()
 

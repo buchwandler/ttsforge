@@ -150,7 +150,8 @@ class TestOutputFormats:
 
 
 def test_prosody_defaults_are_opt_in_and_stable() -> None:
-    assert DEFAULT_CONFIG["detect_emphasis"] is False
+    assert DEFAULT_CONFIG["detect_emphasis"] is True
+    assert DEFAULT_CONFIG["epub_content_mode"] == "markdown"
     assert DEFAULT_CONFIG["ssmd_emphasis_mode"] == "plain"
     assert DEFAULT_CONFIG["prosody_method"] == "wsola"
     assert DEFAULT_CONFIG["prosody_fallback_methods"] == ["wsola", "phase_vocoder"]

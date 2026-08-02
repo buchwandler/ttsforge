@@ -76,7 +76,13 @@ class Chapter:
     title: str
     content: str
     index: int = 0
-    html_content: str | None = None  # Optional HTML for emphasis detection
+    markdown_body: str | None = None
+    source_format: Literal["plain", "markdown", "ssmd"] = "plain"
+    source_id: str | None = None
+    parent_id: str | None = None
+    level: int = 1
+    extraction_schema: str | None = None
+    extraction_diagnostics: tuple[str, ...] = ()
     is_ssmd: bool = False
 
     @property
@@ -147,6 +153,10 @@ class ChapterState:
     index: int
     title: str
     content_hash: str  # Hash of chapter content for integrity check
+    source_format: str = "plain"
+    source_id: str | None = None
+    source_markup_hash: str = ""
+    extraction_schema: str | None = None
     completed: bool = False
     audio_file: str | None = None  # Relative path to chapter audio
     duration: float = 0.0  # Duration in seconds
@@ -301,6 +311,10 @@ class ConversionState:
                     "index": ch.index,
                     "title": ch.title,
                     "content_hash": ch.content_hash,
+                    "source_format": ch.source_format,
+                    "source_id": ch.source_id,
+                    "source_markup_hash": ch.source_markup_hash,
+                    "extraction_schema": ch.extraction_schema,
                     "completed": ch.completed,
                     "audio_file": ch.audio_file,
                     "duration": ch.duration,
@@ -504,6 +518,29 @@ def _canonical_fingerprint(data: Any) -> str:
     return hashlib.sha256(payload.encode("utf-8")).hexdigest()
 
 
+def _chapter_source_markup_hash(chapter: Chapter) -> str:
+    """Hash the exact source body supplied before SSMD title/front matter."""
+    if chapter.source_format != "markdown":
+        return ""
+    return _hash_content(chapter.markdown_body or "")
+
+
+def _chapter_render_fingerprint(chapter: Chapter, generation: str) -> str:
+    """Fingerprint all chapter source representation inputs."""
+    return _canonical_fingerprint(
+        {
+            "generation": generation,
+            "source_index": chapter.index,
+            "title": chapter.title,
+            "content_sha256": _hash_content(chapter.content),
+            "markdown_sha256": _chapter_source_markup_hash(chapter),
+            "source_format": chapter.source_format,
+            "source_id": chapter.source_id,
+            "extraction_schema": chapter.extraction_schema,
+        }
+    )
+
+
 def _path_identity(path: Path | str | None) -> dict[str, str] | None:
     """Return stable path/content identity without embedding file contents."""
     if path is None:
@@ -705,7 +742,8 @@ class ConversionOptions:
     voices_path: Path | None = None
     # SSMD generation control
     generate_ssmd_only: bool = False  # If True, only generate SSMD files, no audio
-    detect_emphasis: bool = False  # If True, detect emphasis from HTML tags in EPUB
+    detect_emphasis: bool = True
+    epub_content_mode: Literal["markdown", "plain"] = "markdown"
     text_postprocess_options: TextPostprocessOptions = field(
         default_factory=TextPostprocessOptions
     )
@@ -880,7 +918,6 @@ class TTSConverter:
         chapter: Chapter,
         phoneme_dict: dict[str, str] | None,
         mixed_language_config: dict[str, Any] | None,
-        html_content: str | None,
     ) -> str:
         """Generate validated SSMD content for a chapter."""
         try:
@@ -890,7 +927,14 @@ class TTSConverter:
                 phoneme_dict=phoneme_dict,
                 phoneme_dict_case_sensitive=self.options.phoneme_dict_case_sensitive,
                 mixed_language_config=mixed_language_config,
-                html_content=html_content,
+                chapter_markdown=(
+                    chapter.markdown_body
+                    if chapter.source_format == "markdown"
+                    else None
+                ),
+                source_format=(
+                    "markdown" if chapter.source_format == "markdown" else "plain"
+                ),
                 include_title=self.options.announce_chapters,
             )
         except SSMDGenerationError as e:
@@ -903,7 +947,6 @@ class TTSConverter:
         ssmd_file: Path,
         phoneme_dict: dict[str, str] | None,
         mixed_language_config: dict[str, Any] | None,
-        html_content: str | None,
     ) -> tuple[str, str, SSMDDocumentInfo]:
         """Load SSMD from disk or generate and save it."""
         ssmd_content: str | None = None
@@ -957,7 +1000,6 @@ class TTSConverter:
                 chapter,
                 phoneme_dict=phoneme_dict,
                 mixed_language_config=mixed_language_config,
-                html_content=html_content,
             )
             ssmd_hash = save_ssmd_file(
                 ssmd_content, ssmd_file, policy=self.options.ssmd_policy
@@ -1117,6 +1159,9 @@ class TTSConverter:
             "split_mode": options.split_mode,
             "generate_ssmd_only": options.generate_ssmd_only,
             "detect_emphasis": options.detect_emphasis,
+            "epub_content_mode": options.epub_content_mode,
+            "epub_heading_policy": "minimum_body_heading_level=2",
+            "epub_scene_break_policy": "preserve",
             "text_postprocess_options": vars(options.text_postprocess_options),
             "ssmd_policy": _ssmd_policy_payload(options.ssmd_policy),
             "prosody_policy": prosody_policy_payload(options.prosody_policy),
@@ -1159,6 +1204,23 @@ class TTSConverter:
         work_dir: Path,
     ) -> ResumeValidation:
         """Allow reuse only when v2 inputs and completed artifacts still match."""
+        has_markdown_source = any(
+            chapter.source_format == "markdown" for chapter in chapters
+        )
+        if (
+            self.options.epub_content_mode == "markdown"
+            and has_markdown_source
+            and state.version < 4
+        ):
+            self.log(
+                "EPUB extraction format changed from plain to markdown; "
+                "rebuilding chapter artifacts.",
+                "warning",
+            )
+            return ResumeValidation(
+                reusable=False,
+                reason="epub-extraction-format-changed",
+            )
         if state.version < 2:
             self.log(
                 "Legacy resume state is unsafe; starting fresh conversion", "warning"
@@ -1199,18 +1261,17 @@ class TTSConverter:
 
         for saved, chapter in zip(state.chapters, chapters, strict=True):
             content_hash = _hash_content(chapter.content)
-            render_fingerprint = _canonical_fingerprint(
-                {
-                    "generation": generation_fingerprint,
-                    "source_index": chapter.index,
-                    "title": chapter.title,
-                    "content_sha256": content_hash,
-                }
+            render_fingerprint = _chapter_render_fingerprint(
+                chapter, generation_fingerprint
             )
             if (
                 saved.index != chapter.index
                 or saved.title != chapter.title
                 or saved.content_hash != content_hash
+                or saved.source_format != chapter.source_format
+                or saved.source_id != chapter.source_id
+                or saved.source_markup_hash != _chapter_source_markup_hash(chapter)
+                or saved.extraction_schema != chapter.extraction_schema
                 or saved.render_fingerprint != render_fingerprint
             ):
                 self.log(
@@ -1367,7 +1428,7 @@ class TTSConverter:
                 state = ConversionState(
                     source_file=str(source_file) if source_file else "",
                     source_hash=source_hash,
-                    version=3,
+                    version=4,
                     output_file=str(output_path.resolve()),
                     work_dir=str(work_dir),
                     voice=self.options.voice,
@@ -1394,14 +1455,13 @@ class TTSConverter:
                             index=ch.index,
                             title=ch.title,
                             content_hash=_hash_content(ch.content),
+                            source_format=ch.source_format,
+                            source_id=ch.source_id,
+                            source_markup_hash=_hash_content(ch.markdown_body or ""),
+                            extraction_schema=ch.extraction_schema,
                             char_count=ch.char_count,
-                            render_fingerprint=_canonical_fingerprint(
-                                {
-                                    "generation": generation_fingerprint,
-                                    "source_index": ch.index,
-                                    "title": ch.title,
-                                    "content_sha256": _hash_content(ch.content),
-                                }
+                            render_fingerprint=_chapter_render_fingerprint(
+                                ch, generation_fingerprint
                             ),
                         )
                         for ch in chapters
@@ -1610,15 +1670,11 @@ class TTSConverter:
                 # Generate SSMD filename (same as WAV but with .ssmd extension)
                 ssmd_filename = chapter_filename.replace(".wav", ".ssmd")
                 ssmd_file = work_dir / ssmd_filename
-                html_content = (
-                    chapter.html_content if self.options.detect_emphasis else None
-                )
                 ssmd_content, ssmd_hash, document_info = self._load_or_generate_ssmd(
                     chapter,
                     ssmd_file,
                     phoneme_dict=phoneme_dict,
                     mixed_language_config=mixed_language_config,
-                    html_content=html_content,
                 )
 
                 # If generate_ssmd_only mode, just generate SSMD and skip audio
@@ -1627,6 +1683,30 @@ class TTSConverter:
                     chapter_state.ssmd_file = ssmd_filename
                     chapter_state.ssmd_hash = ssmd_hash
                     chapter_state.ssmd_document_title = document_info.title
+                    chapter_state.ssmd_diagnostics_file = ssmd_filename.replace(
+                        ".ssmd", ".diagnostics.json"
+                    )
+                    atomic_write_json(
+                        work_dir / chapter_state.ssmd_diagnostics_file,
+                        {
+                            "schema_version": 1,
+                            "extraction_diagnostics": list(
+                                chapter.extraction_diagnostics
+                            ),
+                            "issues": [
+                                {
+                                    "code": issue.code,
+                                    "severity": issue.severity,
+                                    "message": issue.message,
+                                    "line": issue.line,
+                                    "column": issue.column,
+                                }
+                                for issue in document_info.issues
+                            ],
+                        },
+                        indent=2,
+                        ensure_ascii=True,
+                    )
                     aggregate_issues.extend(document_info.issues)
                     if document_info.title:
                         aggregate_metadata.setdefault("title", document_info.title)
@@ -1657,6 +1737,9 @@ class TTSConverter:
                         work_dir / chapter_state.ssmd_diagnostics_file,
                         {
                             "schema_version": 1,
+                            "extraction_diagnostics": list(
+                                chapter.extraction_diagnostics
+                            ),
                             "issues": [
                                 {
                                     "code": issue.code,

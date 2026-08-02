@@ -9,6 +9,7 @@ from __future__ import annotations
 import re
 from dataclasses import dataclass, field
 from pathlib import Path
+from typing import Any, Literal
 
 from .ssmd_support import SSMDValidationError, inspect_ssmd_document
 from .text_postprocessing import (
@@ -37,6 +38,13 @@ class Chapter:
     text: str
     index: int = 0
     is_ssmd: bool = False
+    markdown_body: str | None = None
+    source_format: Literal["plain", "markdown", "ssmd"] = "plain"
+    source_id: str | None = None
+    parent_id: str | None = None
+    level: int = 1
+    extraction_schema: str | None = None
+    extraction_diagnostics: tuple[str, ...] = ()
 
     @property
     def char_count(self) -> int:
@@ -49,6 +57,16 @@ class Chapter:
         return self.text
 
 
+@dataclass(frozen=True)
+class EpubReadOptions:
+    """Controls the public epub2text chapter extraction policy."""
+
+    content_mode: Literal["markdown", "plain"] = "markdown"
+    preserve_emphasis: bool = True
+    preserve_strong: bool = True
+    preserve_scene_breaks: bool = True
+
+
 class InputReader:
     """Unified reader for EPUB, TXT (Gutenberg), and SSMD files."""
 
@@ -56,6 +74,7 @@ class InputReader:
         self,
         file_path: Path | str,
         postprocess_options: TextPostprocessOptions | None = None,
+        epub_options: EpubReadOptions | None = None,
     ):
         """Initialize the reader with a file path.
 
@@ -64,6 +83,7 @@ class InputReader:
         """
         self.file_path = Path(file_path)
         self.postprocess_options = postprocess_options or TextPostprocessOptions()
+        self.epub_options = epub_options or EpubReadOptions()
         self._metadata: Metadata | None = None
         self._chapters: list[Chapter] | None = None
 
@@ -140,19 +160,6 @@ class InputReader:
             raise ValueError("Chapters could not be loaded")
         return self._chapters
 
-    def get_chapters_with_html(self) -> list[tuple[Chapter, str | None]]:
-        """Extract chapters with their original HTML content for markup detection.
-
-        Returns:
-            List of tuples containing (Chapter, html_content or None)
-        """
-        if self.file_type == "epub":
-            return self._get_epub_chapters_with_html()
-        else:
-            # For non-EPUB files, HTML content is not available
-            chapters = self.get_chapters()
-            return [(ch, None) for ch in chapters]
-
     # EPUB methods
     def _get_epub_metadata(self) -> Metadata:
         """Extract metadata from EPUB file."""
@@ -196,50 +203,75 @@ class InputReader:
             ) from e
 
         parser = EPUBParser(str(self.file_path))
+        options = self.epub_options
+
+        if options.content_mode == "markdown":
+            try:
+                from epub2text import ChapterMarkdownOptions
+            except ImportError as e:
+                raise ImportError(
+                    "epub2text>=0.2.8 is required for EPUB Markdown mode; "
+                    "install or upgrade epub2text"
+                ) from e
+            try:
+                documents = parser.get_chapter_documents(
+                    options=ChapterMarkdownOptions(
+                        include_title=False,
+                        minimum_body_heading_level=2,
+                        preserve_emphasis=options.preserve_emphasis,
+                        preserve_strong=options.preserve_strong,
+                        link_mode="unwrap",
+                        code_mode="unwrap",
+                        resolve_css_emphasis=True,
+                        preserve_scene_breaks=options.preserve_scene_breaks,
+                    )
+                )
+            except AttributeError as e:
+                raise ImportError(
+                    "Installed epub2text does not provide the required "
+                    "get_chapter_documents() API for Markdown mode; "
+                    "install epub2text>=0.2.8"
+                ) from e
+
+            return [
+                Chapter(
+                    title=doc.title,
+                    text=postprocess_extracted_text(
+                        doc.text,
+                        self.postprocess_options,
+                    ),
+                    markdown_body=doc.markdown_body,
+                    source_format="markdown",
+                    source_id=doc.id,
+                    parent_id=doc.parent_id,
+                    level=doc.level,
+                    extraction_schema=_epub_extraction_schema("chapter-document"),
+                    extraction_diagnostics=tuple(
+                        _format_extraction_diagnostic(diagnostic)
+                        for diagnostic in doc.diagnostics
+                    ),
+                    index=i,
+                )
+                for i, doc in enumerate(documents)
+            ]
+
         epub_chapters = parser.get_chapters()
-
-        # Convert to our Chapter format
-        chapters = []
-        for i, ch in enumerate(epub_chapters):
-            content = postprocess_extracted_text(
-                ch.text,
-                self.postprocess_options,
+        return [
+            Chapter(
+                title=ch.title,
+                text=postprocess_extracted_text(
+                    ch.text,
+                    self.postprocess_options,
+                ),
+                source_format="plain",
+                source_id=ch.id,
+                parent_id=ch.parent_id,
+                level=ch.level,
+                extraction_schema=_epub_extraction_schema("chapter"),
+                index=i,
             )
-            chapters.append(Chapter(title=ch.title, text=content, index=i))
-
-        return chapters
-
-    def _get_epub_chapters_with_html(self) -> list[tuple[Chapter, str | None]]:
-        """Extract chapters from EPUB with HTML content preserved."""
-        try:
-            from epub2text import EPUBParser
-        except ImportError as e:
-            raise ImportError(
-                "epub2text is required for EPUB support. "
-                "Install with: pip install epub2text"
-            ) from e
-
-        parser = EPUBParser(str(self.file_path))
-        epub_chapters = parser.get_chapters()
-
-        # Convert to our Chapter format with HTML
-        chapters_with_html = []
-        for i, ch in enumerate(epub_chapters):
-            content = postprocess_extracted_text(
-                ch.text,
-                self.postprocess_options,
-            )
-            chapter = Chapter(title=ch.title, text=content, index=i)
-
-            # Try to get HTML content
-            # epub2text may have an html attribute or we need to extract it
-            html_content = getattr(ch, "html", None)
-            if html_content is None:
-                html_content = getattr(ch, "content", None)
-
-            chapters_with_html.append((chapter, html_content))
-
-        return chapters_with_html
+            for i, ch in enumerate(epub_chapters)
+        ]
 
     # Gutenberg TXT methods
     def _get_gutenberg_metadata(self) -> Metadata:
@@ -456,3 +488,19 @@ class InputReader:
         TODO: Implement PDF chapter extraction.
         """
         raise NotImplementedError("PDF support is not yet implemented")
+
+
+def _format_extraction_diagnostic(diagnostic: Any) -> str:
+    """Render the public epub2text Diagnostic contract."""
+    return f"{diagnostic.severity}: {diagnostic.code}: {diagnostic.message}"
+
+
+def _epub_extraction_schema(kind: str) -> str:
+    """Return a stable source schema/version identity for resume state."""
+    try:
+        import epub2text
+
+        version = str(epub2text.__version__)
+    except (ImportError, AttributeError):
+        version = "unknown"
+    return f"epub2text.{kind}/{version}"

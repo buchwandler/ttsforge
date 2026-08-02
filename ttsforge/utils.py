@@ -193,6 +193,15 @@ def _validate_ssmd_config(key: str, value: Any) -> bool:
     return False
 
 
+def _validate_epub_config(key: str, value: Any) -> bool:
+    """Validate EPUB extraction policy configuration."""
+    if key == "epub_content_mode":
+        if value not in {"markdown", "plain"}:
+            raise ValueError("must be markdown or plain")
+        return True
+    return False
+
+
 _BOOLEAN_CONFIG_KEYS: frozenset[str] = frozenset(
     {
         "detect_emphasis",
@@ -236,6 +245,9 @@ def validate_config_value(key: str, value: Any) -> None:
         return
 
     if _validate_ssmd_config(key, value):
+        return
+
+    if _validate_epub_config(key, value):
         return
 
     bounds = _NUMERIC_CONFIG_RANGES.get(key)

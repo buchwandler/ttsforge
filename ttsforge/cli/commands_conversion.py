@@ -206,6 +206,7 @@ def convert(  # noqa: C901
     resume: bool,
     generate_ssmd_only: bool,
     detect_emphasis: bool | None,
+    epub_content_mode: str | None,
     prosody_method: str | None,
     prosody_strict: bool | None,
     fresh: bool,
@@ -252,6 +253,14 @@ def convert(  # noqa: C901
         if detect_emphasis is not None
         else bool(config.get("detect_emphasis", DEFAULT_CONFIG["detect_emphasis"]))
     )
+    effective_epub_content_mode = (
+        epub_content_mode
+        if epub_content_mode is not None
+        else str(config.get("epub_content_mode", DEFAULT_CONFIG["epub_content_mode"]))
+    )
+    if effective_epub_content_mode not in {"markdown", "plain"}:
+        console.print("[red]Invalid EPUB content mode:[/red] must be markdown or plain")
+        raise typer.Exit(code=2)
     try:
         effective_prosody_policy = _resolve_prosody_policy(
             config,
@@ -314,13 +323,19 @@ def convert(  # noqa: C901
     # Load chapters from input file
     console.print(f"[bold]Loading:[/bold] {epub_file}")
 
-    from ..input_reader import InputReader
+    from ..input_reader import EpubReadOptions, InputReader
 
     # Parse input file
     try:
         reader = InputReader(
             epub_file,
             postprocess_options=text_postprocess_options,
+            epub_options=EpubReadOptions(
+                content_mode=cast(
+                    Literal["markdown", "plain"], effective_epub_content_mode
+                ),
+                preserve_emphasis=effective_detect_emphasis,
+            ),
         )
     except Exception as e:
         console.print(f"[red]Error loading file:[/red] {e}")
@@ -337,23 +352,41 @@ def convert(  # noqa: C901
     effective_title = title or epub_title
     effective_author = author or epub_author
 
-    # Extract chapters
+    # Extract chapters through the selected public epub2text boundary.
     with console.status("Extracting chapters..."):
-        if effective_detect_emphasis and reader.file_type == "epub":
-            # Get chapters with HTML for emphasis detection
-            chapters_with_html = reader.get_chapters_with_html()
-            epub_chapters = [ch for ch, _ in chapters_with_html]
-            html_contents = [html for _, html in chapters_with_html]
-        else:
-            # Just get plain text chapters
-            epub_chapters = reader.get_chapters()
-            html_contents = None
+        epub_chapters = reader.get_chapters()
 
     if not epub_chapters:
         console.print("[red]Error:[/red] No chapters found in file.")
         sys.exit(1)
 
     console.print(f"[green]Found {len(epub_chapters)} chapters[/green]")
+
+    if verbose:
+        from ..epub_markdown import markdown_structure_counts
+
+        structure = {
+            "headings": 0,
+            "subheadings": 0,
+            "moderate_spans": 0,
+            "strong_spans": 0,
+            "scene_breaks": 0,
+        }
+        diagnostic_count = 0
+        for chapter in epub_chapters:
+            counts = markdown_structure_counts(chapter.markdown_body or "")
+            for key in structure:
+                structure[key] += counts[key]
+            diagnostic_count += len(chapter.extraction_diagnostics)
+        console.print(
+            "[dim]EPUB extraction: "
+            f"{structure['headings']} headings, "
+            f"{structure['subheadings']} subheadings, "
+            f"{structure['moderate_spans']} italic spans, "
+            f"{structure['strong_spans']} strong spans, "
+            f"{structure['scene_breaks']} scene breaks, "
+            f"{diagnostic_count} epub2text diagnostics[/dim]"
+        )
 
     # Auto-detect language if not specified
     if language is None:
@@ -401,7 +434,13 @@ def convert(  # noqa: C901
                     title=ch.title,
                     content=ch.text,
                     index=ch.index,
-                    html_content=html_contents[i] if html_contents else None,
+                    markdown_body=ch.markdown_body,
+                    source_format=ch.source_format,
+                    source_id=ch.source_id,
+                    parent_id=ch.parent_id,
+                    level=ch.level,
+                    extraction_schema=ch.extraction_schema,
+                    extraction_diagnostics=ch.extraction_diagnostics,
                     is_ssmd=ch.is_ssmd,
                 )
                 for i, ch in enumerate(epub_chapters)
@@ -690,6 +729,9 @@ def convert(  # noqa: C901
             voices_path=voices_path,
             generate_ssmd_only=generate_ssmd_only,
             detect_emphasis=effective_detect_emphasis,
+            epub_content_mode=cast(
+                Literal["markdown", "plain"], effective_epub_content_mode
+            ),
             text_postprocess_options=text_postprocess_options,
             ssmd_policy=ssmd_policy,
             prosody_policy=effective_prosody_policy,
@@ -750,6 +792,7 @@ def convert(  # noqa: C901
         mixed_language_confidence=options.mixed_language_confidence,
         random_seed=random_seed,
         detect_emphasis=effective_detect_emphasis,
+        epub_content_mode=effective_epub_content_mode,
         ssmd_emphasis_mode=ssmd_policy.emphasis_mode,
         prosody_policy=effective_prosody_policy,
         short_sentence=_format_short_sentence_summary(
@@ -839,26 +882,24 @@ def convert(  # noqa: C901
         filtered_chapters = [
             ch for i, ch in enumerate(epub_chapters) if i in selected_indices
         ]
-        if html_contents:
-            filtered_html = [
-                html for i, html in enumerate(html_contents) if i in selected_indices
-            ]
-        else:
-            filtered_html = None
     else:
         filtered_chapters = epub_chapters
-        filtered_html = html_contents
 
     # Convert input_reader.Chapter to conversion.Chapter
     chapters_to_convert: list[Chapter] = []
-    for i, ch in enumerate(filtered_chapters):
-        html_content = filtered_html[i] if filtered_html else None
+    for ch in filtered_chapters:
         chapters_to_convert.append(
             Chapter(
                 title=ch.title,
                 content=ch.text,
                 index=ch.index,
-                html_content=html_content,
+                markdown_body=ch.markdown_body,
+                source_format=ch.source_format,
+                source_id=ch.source_id,
+                parent_id=ch.parent_id,
+                level=ch.level,
+                extraction_schema=ch.extraction_schema,
+                extraction_diagnostics=ch.extraction_diagnostics,
                 is_ssmd=ch.is_ssmd,
             )
         )
@@ -1258,6 +1299,7 @@ def _show_conversion_summary(
     mixed_language_confidence: float = 0.7,
     random_seed: int | None = None,
     detect_emphasis: bool = False,
+    epub_content_mode: str = "markdown",
     ssmd_emphasis_mode: str = "plain",
     prosody_policy: ProsodyPolicy = _DEFAULT_PROSODY_POLICY,
     short_sentence: str = DEFAULT_SHORT_SENTENCE,
@@ -1290,9 +1332,20 @@ def _show_conversion_summary(
             table.add_row("  Allowed Langs", ", ".join(mixed_language_allowed))
         table.add_row("  Confidence", f"{mixed_language_confidence:.2f}")
     table.add_row("Speed", f"{speed}x")
+    is_markdown = epub_content_mode == "markdown"
     table.add_row(
-        "EPUB Emphasis Detection", "Enabled" if detect_emphasis else "Disabled"
+        "EPUB Content Extraction",
+        "Markdown" if is_markdown else "Plain (compatibility)",
     )
+    table.add_row(
+        "EPUB Headings/Scene Breaks",
+        "Preserved" if is_markdown else "Legacy plain path",
+    )
+    table.add_row(
+        "EPUB Emphasis Markup",
+        "Preserved" if is_markdown and detect_emphasis else "Unwrapped",
+    )
+    table.add_row("EPUB CSS Emphasis", "Enabled" if is_markdown else "Not used")
     emphasis_labels = {
         "plain": "Plain (emphasis unchanged)",
         "approximate": "Approximate (gain-only)",

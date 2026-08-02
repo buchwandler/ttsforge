@@ -110,8 +110,12 @@ approximation to existing SSMD emphasis. Use `--detect-emphasis` separately when
 italic/bold styling should first be extracted into SSMD annotations. This flag cannot be
 combined with `--ssmd-emphasis`.
 
-`--detect-emphasis / --no-detect-emphasis` : Override persistent EPUB emphasis
-detection. When omitted, `detect_emphasis` from configuration is used.
+`--epub-content-mode [markdown|plain]` : Select structured chapter Markdown extraction
+(default) or the explicit legacy plain compatibility path.
+
+`--detect-emphasis / --no-detect-emphasis` : Preserve or unwrap EPUB italic and bold
+semantics in generated SSMD. Headings and scene breaks are preserved independently; when
+omitted, `detect_emphasis` from configuration is used.
 
 `--prosody-method METHOD` : One-off override for the configured SSMD prosody algorithm:
 `wsola`, `esola`, `td_psola`, `psola`, or `phase_vocoder`. `psola` is the user-facing
@@ -155,9 +159,6 @@ ttsforge ssmd inspect FILE --json
 
 `--generate-ssmd` : Generate only SSMD files without creating audio (for manual
 editing).
-
-`--detect-emphasis / --no-detect-emphasis` : Detect emphasis (italic/bold) from EPUB
-HTML. Default: disabled.
 
 `--keep-chapters` : Keep individual chapter audio files after conversion.
 

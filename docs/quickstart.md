@@ -284,12 +284,18 @@ ttsforge convert book.epub
 [Hermione]{ph="hɝmˈIni"}          # Custom pronunciation
 ```
 
-Emphasis is spoken plainly by default. To detect italic/bold EPUB styling and keep the
-resulting SSMD emphasis plain, use:
+EPUB conversion has three layers: epub2text performs semantic Markdown extraction,
+TTSForge generates editable SSMD while preserving that structure, and the SSMD policy
+controls audible rendering. Markdown extraction and emphasis preservation are enabled by
+default, while emphasis is spoken plainly:
 
 ```bash
-ttsforge convert book.epub --detect-emphasis
+ttsforge convert book.epub
 ```
+
+Use `--no-detect-emphasis` to unwrap italic/bold delimiters without removing headings or
+scene breaks. Use `--epub-content-mode plain` to compare against the legacy flattened
+source path. The persisted equivalents are `epub_content_mode` and `detect_emphasis`.
 
 To opt into the current deterministic gain-only emphasis approximation, enable it
 separately:

@@ -73,15 +73,18 @@ remains active. Approximation can also be selected per conversion with
 `ssmd_voice_bindings` : Mapping such as `{"narrator": "af_sarah"}`; CLI/API bindings are
 supplied with repeated `--ssmd-voice ROLE=VOICE`.
 
-### EPUB emphasis and AudioSig prosody
+### EPUB Markdown extraction, emphasis, and AudioSig prosody
 
-These three settings are related but distinct:
+These settings form three related but distinct layers:
 
-`detect_emphasis` (boolean, default `false`) extracts italic and bold HTML from EPUB
-chapters and writes SSMD emphasis markup. It does not select how SSMD emphasis is
-rendered.
+1. `epub_content_mode` (`markdown`, default `markdown`) selects epub2text's structured
+   chapter Markdown API. `plain` is an explicit compatibility/debug path; TTSForge does
+   not silently fall back to it when the Markdown API is unavailable.
+2. `detect_emphasis` (boolean, default `true`) preserves or unwraps EPUB italic and bold
+   semantics while leaving headings, paragraphs, and scene breaks independent. CSS
+   emphasis is resolved by epub2text in Markdown mode.
+3. `ssmd_emphasis_mode` controls how preserved SSMD emphasis is rendered audibly.
 
-`ssmd_emphasis_mode` (default `plain`) controls PyKokoro's treatment of SSMD emphasis.
 `plain` preserves normal synthesis, `approximate` enables the current deterministic
 gain-only approximation, and `warn`/`error` report or reject emphasis metadata. The
 approximation does not provide configurable strength profiles.
@@ -101,6 +104,8 @@ Examples:
 
 ```bash
 ttsforge config --set detect_emphasis true --set ssmd_emphasis_mode approximate
+ttsforge config --set epub_content_mode markdown
+ttsforge config --set epub_content_mode plain
 ttsforge config --set prosody_method esola --set prosody_fallback_methods '["wsola","phase_vocoder"]'
 ttsforge config --set prosody_method psola
 ttsforge config --set prosody_strict true --set prosody_fallback_methods '[]'

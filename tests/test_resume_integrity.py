@@ -15,6 +15,7 @@ from ttsforge.conversion import (
     ResumeValidation,
     TTSConverter,
     _canonical_fingerprint,
+    _chapter_render_fingerprint,
     _hash_content,
     discover_resume_candidate,
     resolve_conversion_workspace,
@@ -34,16 +35,9 @@ def _text_state(
 ) -> ConversionState:
     generation = converter._generation_fingerprint()
     content_hash = _hash_content(chapter.content)
-    render = _canonical_fingerprint(
-        {
-            "generation": generation,
-            "source_index": chapter.index,
-            "title": chapter.title,
-            "content_sha256": content_hash,
-        }
-    )
+    render = _chapter_render_fingerprint(chapter, generation)
     return ConversionState(
-        version=2,
+        version=4,
         source_hash="source",
         onnx_provider=converter.options.effective_onnx_provider(),
         source_selection=[chapter.index],
@@ -117,20 +111,112 @@ def test_text_resume_rejects_missing_or_corrupt_audio(tmp_path: Path) -> None:
     assert validation.reason == "audio-file-invalid"
 
 
+def test_markdown_v3_state_is_invalidated_with_precise_reason() -> None:
+    messages: list[str] = []
+    chapter = Chapter(
+        title="ONE",
+        content="Visible",
+        markdown_body="## Sub\n\nVisible\n",
+        source_format="markdown",
+        source_id="ch1",
+        extraction_schema="epub2text.chapter-document/0.2.8",
+        index=0,
+    )
+    converter = TTSConverter(
+        ConversionOptions(title="Book"),
+        log_callback=lambda message, _level: messages.append(message),
+    )
+    generation = converter._generation_fingerprint()
+    state = ConversionState(
+        version=3,
+        source_hash="source",
+        onnx_provider=converter.options.effective_onnx_provider(),
+        source_selection=[0],
+        generation_fingerprint=generation,
+        chapters=[
+            ChapterState(
+                index=0,
+                title=chapter.title,
+                content_hash=_hash_content(chapter.content),
+                render_fingerprint=_chapter_render_fingerprint(chapter, generation),
+            )
+        ],
+    )
+
+    result = converter._resume_state_matches(
+        state, [chapter], "source", generation, Path(".")
+    )
+
+    assert result == ResumeValidation(
+        reusable=False,
+        reason="epub-extraction-format-changed",
+    )
+    assert any(
+        "EPUB extraction format changed from plain to markdown" in m for m in messages
+    )
+
+
+def test_markdown_v4_state_reuses_only_unchanged_markup() -> None:
+    chapter = Chapter(
+        title="ONE",
+        content="Visible",
+        markdown_body="## Sub\n\nVisible\n",
+        source_format="markdown",
+        source_id="ch1",
+        extraction_schema="epub2text.chapter-document/0.2.8",
+        index=0,
+    )
+    converter = TTSConverter(ConversionOptions(title="Book"))
+    generation = converter._generation_fingerprint()
+    state = ConversionState(
+        version=4,
+        source_hash="source",
+        onnx_provider=converter.options.effective_onnx_provider(),
+        source_selection=[0],
+        generation_fingerprint=generation,
+        chapters=[
+            ChapterState(
+                index=0,
+                title=chapter.title,
+                content_hash=_hash_content(chapter.content),
+                source_format=chapter.source_format,
+                source_id=chapter.source_id,
+                source_markup_hash=_chapter_source_markup_hash_for_test(chapter),
+                extraction_schema=chapter.extraction_schema,
+                render_fingerprint=_chapter_render_fingerprint(chapter, generation),
+            )
+        ],
+    )
+
+    reusable = converter._resume_state_matches(
+        state, [chapter], "source", generation, Path(".")
+    )
+    changed = converter._resume_state_matches(
+        state,
+        [replace(chapter, markdown_body="## Changed\n\nVisible\n")],
+        "source",
+        generation,
+        Path("."),
+    )
+
+    assert reusable.reusable is True
+    assert changed == ResumeValidation(
+        reusable=False,
+        reason="chapter-content-changed",
+    )
+
+
+def _chapter_source_markup_hash_for_test(chapter: Chapter) -> str:
+    return _hash_content(chapter.markdown_body or "")
+
+
 def test_structured_validation_reasons(tmp_path: Path) -> None:
     """Test that _resume_state_matches returns structured reasons."""
     chapter = Chapter(title="Ch1", content="Hello world", index=0)
     converter = TTSConverter(ConversionOptions(title="Book"))
     generation = converter._generation_fingerprint()
     content_hash = _hash_content(chapter.content)
-    render = _canonical_fingerprint(
-        {
-            "generation": generation,
-            "source_index": chapter.index,
-            "title": chapter.title,
-            "content_sha256": content_hash,
-        }
-    )
+    render = _chapter_render_fingerprint(chapter, generation)
 
     # Source hash mismatch
     state = ConversionState(

@@ -59,14 +59,16 @@ Canonical inline annotations use `[text]{key="value"}`:
 ...c ...s ...p ...250ms
 ```
 
-Moderate, strong, reduced, and none emphasis are parsed. Emphasis is spoken plainly by
-default: it does not add automatic volume, rate, or pitch changes, and its metadata is
-preserved. Use `--ssmd-emphasis approximate` or the convenience flag
-`--enable-ssmd-emphasis` to opt into segment-level volume/rate approximation; use `warn`
-or `error` for stricter behavior. Explicit document prosody such as
-`[fast words]{rate="fast"}` remains active in plain mode. Language, voice, prosody,
-say-as, substitution, phoneme, break, mark, paragraph, heading, and supported audio
-attributes are passed to the renderer.
+Moderate, strong, reduced, and none emphasis are parsed. EPUB processing has three
+layers: epub2text performs semantic extraction, TTSForge preserves the resulting
+controlled Markdown in SSMD, and the SSMD emphasis policy controls audible rendering.
+Emphasis is spoken plainly by default: it does not add automatic volume, rate, or pitch
+changes, and its metadata is preserved. Use `--ssmd-emphasis approximate` or the
+convenience flag `--enable-ssmd-emphasis` to opt into segment-level volume/rate
+approximation; use `warn` or `error` for stricter behavior. Explicit document prosody
+such as `[fast words]{rate="fast"}` remains active in plain mode. Language, voice,
+prosody, say-as, substitution, phoneme, break, mark, paragraph, heading, and supported
+audio attributes are passed to the renderer.
 
 ## Direct SSMD input
 
@@ -126,9 +128,10 @@ array downmix, while PyKokoro remains responsible for SSMD speed, gain, and resa
 - SSMD voice language, gender, and variant hints are preserved as metadata but do not
   select a Kokoro voice.
 - SSMD extensions are rejected by default for the Kokoro profile.
-- Emphasis is spoken plainly by default. EPUB styling detection and SSMD rendering are
-  independent; use `--detect-emphasis` to extract italic/bold HTML and
-  `--enable-ssmd-emphasis` to opt into approximation.
+- Emphasis is spoken plainly by default. EPUB Markdown extraction and SSMD rendering are
+  independent; use `--epub-content-mode plain` only for legacy comparison,
+  `--no-detect-emphasis` to unwrap inline emphasis, and `--enable-ssmd-emphasis` to opt
+  into approximation.
 - Remote audio is opt-in and bounded.
 - Marks are exported as `chapter_NNN.markers.json` and an aggregate output sidecar
   rather than embedded in every audiobook container.

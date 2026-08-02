@@ -25,6 +25,8 @@ with support for 54 neural voices across 9 languages.
 - **Voice Blending**: Mix multiple voices for custom narration
 - **ONNX Runtime Providers**: CPU, CUDA, NNAPI, XNNPACK, and other PyKokoro providers
 - **Chapter Support**: M4B files include chapter markers from EPUB
+- **EPUB Structure Preservation**: Markdown extraction keeps chapter headings,
+  paragraphs, scene breaks, and inline emphasis in generated SSMD
 - **Streaming Read**: Listen to EPUB/text directly with the `read` command
 - **Reduced Memory Retention**: Release chapter audio buffers before the next synthesis
 
@@ -382,12 +384,27 @@ SSMD files use a simple markdown-like syntax:
 **text**    # Strong emphasis
 ```
 
-Emphasis is plain by default: styled EPUB text is spoken without automatic volume, rate,
-or pitch changes. EPUB styling detection and SSMD rendering are independent controls:
+EPUB processing has three independent layers:
+
+1. **Semantic extraction**: epub2text converts EPUB navigation, headings, paragraphs,
+   scene breaks, semantic emphasis, and CSS emphasis into chapter Markdown.
+2. **SSMD generation**: TTSForge preserves that controlled Markdown in `.ssmd` files;
+   `##` headings and `*`/`**` spans remain editable and parseable.
+3. **Audible rendering**: `ssmd_emphasis_mode` controls whether emphasis is spoken
+   normally, approximated, warned on, or rejected.
+
+Markdown extraction and emphasis preservation are enabled by default, while audible
+emphasis remains plain:
 
 ```bash
-# Detect italic/bold EPUB text and speak it plainly (the default)
-ttsforge convert book.epub --detect-emphasis
+# Default: Markdown structure and emphasis are preserved; audio remains plain
+ttsforge convert book.epub
+
+# Unwrap emphasis while retaining headings and scene breaks
+ttsforge convert book.epub --no-detect-emphasis
+
+# Compare with the legacy flattened extraction path
+ttsforge convert book.epub --epub-content-mode plain
 
 # Detect styling and explicitly opt into the current gain-only approximation
 ttsforge convert book.epub --detect-emphasis --enable-ssmd-emphasis
@@ -401,11 +418,13 @@ ttsforge config --set prosody_method esola
 ttsforge convert book.epub --prosody-method psola
 ```
 
-`detect_emphasis`, `ssmd_emphasis_mode`, and `prosody_method` are separate settings: the
-first extracts EPUB italic/bold markup, the second controls SSMD emphasis policy, and
-the third selects AudioSig processing for explicit rate and pitch annotations. The
-current approximate emphasis profile changes gain only and does not expose custom
-strength values. `psola` is accepted as an alias for AudioSig's canonical `td_psola`.
+`epub_content_mode`, `detect_emphasis`, `ssmd_emphasis_mode`, and `prosody_method` are
+separate settings. The first selects Markdown or explicit legacy plain extraction; the
+second preserves or unwraps inline emphasis without affecting headings; the third
+controls SSMD emphasis policy; and the fourth selects AudioSig processing for explicit
+rate and pitch annotations. The current approximate emphasis profile changes gain only
+and does not expose custom strength values. `psola` is accepted as an alias for
+AudioSig's canonical `td_psola`.
 
 The available policies are `plain`, `approximate`, `warn`, and `error`. Explicit SSMD
 prosody such as `[fast words]{rate="fast"}` remains active in plain emphasis mode.

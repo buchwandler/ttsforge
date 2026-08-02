@@ -20,10 +20,10 @@ import os
 import re
 import tempfile
 from collections.abc import Mapping
-from html.parser import HTMLParser
 from pathlib import Path
-from typing import Any
+from typing import Any, Literal
 
+from .epub_markdown import normalize_epub_markdown
 from .ssmd_support import (
     SSMDPolicy,
     SSMDValidationError,
@@ -56,93 +56,6 @@ def _hash_content(content: str) -> str:
     return hash_ssmd_content(content)
 
 
-class _EmphasisHTMLParser(HTMLParser):
-    def __init__(self) -> None:
-        super().__init__(convert_charrefs=True)
-        self._stack: list[str] = []
-        self.segments: list[tuple[str, str]] = []
-        self._last_was_emphasis = False
-
-    def handle_starttag(self, tag: str, attrs: list[tuple[str, str | None]]) -> None:
-        tag_lower = tag.lower()
-        if tag_lower in {"em", "i"}:
-            self._stack.append("*")
-        elif tag_lower in {"strong", "b"}:
-            self._stack.append("**")
-
-    def handle_endtag(self, tag: str) -> None:
-        tag_lower = tag.lower()
-        if tag_lower in {"em", "i", "strong", "b"}:
-            for idx in range(len(self._stack) - 1, -1, -1):
-                if self._stack[idx] in {"*", "**"}:
-                    self._stack.pop(idx)
-                    break
-
-    def handle_data(self, data: str) -> None:
-        marker = "**" if "**" in self._stack else ("*" if "*" in self._stack else None)
-        if not marker:
-            self._last_was_emphasis = False
-            return
-        if self._last_was_emphasis and self.segments and self.segments[-1][1] == marker:
-            prev_text, _ = self.segments[-1]
-            self.segments[-1] = (prev_text + data, marker)
-        else:
-            self.segments.append((data, marker))
-        self._last_was_emphasis = True
-
-
-def _detect_emphasis_from_html(html_content: str) -> list[tuple[str, str]]:
-    """Detect emphasis from HTML tags and return ordered text segments.
-
-    Args:
-        html_content: HTML content with formatting tags
-
-    Returns:
-        List of (text, marker) segments in document order
-    """
-    parser = _EmphasisHTMLParser()
-    parser.feed(html_content)
-    return parser.segments
-
-
-def _apply_emphasis_markers(text: str, emphasis_segments: list[tuple[str, str]]) -> str:
-    """Apply emphasis markers to text based on ordered emphasis segments.
-
-    Args:
-        text: Plain text
-        emphasis_segments: List of (text, marker) in document order
-
-    Returns:
-        Text with emphasis markers applied
-    """
-    if not emphasis_segments:
-        return text
-
-    matches: list[tuple[int, int, str]] = []
-    cursor = 0
-    base_text = text
-
-    for emphasized_text, marker in emphasis_segments:
-        if not emphasized_text.strip():
-            continue
-        pattern = re.escape(emphasized_text)
-        pattern = re.sub(r"\s+", r"\\s+", pattern)
-        match = re.search(pattern, base_text[cursor:], flags=re.MULTILINE)
-        if not match:
-            continue
-        start = cursor + match.start()
-        end = cursor + match.end()
-        matches.append((start, end, marker))
-        cursor = end
-
-    for start, end, marker in reversed(matches):
-        base_text = (
-            base_text[:start] + marker + base_text[start:end] + marker + base_text[end:]
-        )
-
-    return base_text
-
-
 def _inject_phoneme_substitutions(
     text: str, phoneme_dict: dict[str, str], case_sensitive: bool = False
 ) -> str:
@@ -158,8 +71,6 @@ def _inject_phoneme_substitutions(
     """
     if not phoneme_dict:
         return text
-
-    link_pattern = re.compile(r"\[[^\]]+\]\([^\)]+\)")
 
     words = [word for word in phoneme_dict.keys() if word]
     if not words:
@@ -189,19 +100,76 @@ def _inject_phoneme_substitutions(
         clean_phoneme = phoneme.strip("/")
         return f"[{matched_word}]" + "{" + f'ph="{clean_phoneme}"' + "}"
 
-    segments: list[str] = []
-    last_index = 0
-    for match in link_pattern.finditer(text):
-        if match.start() > last_index:
-            segment = text[last_index : match.start()]
-            segments.append(compiled.sub(replace, segment))
-        segments.append(match.group(0))
-        last_index = match.end()
+    return _transform_visible_markdown(
+        text,
+        lambda segment: compiled.sub(replace, segment),
+    )
 
-    if last_index < len(text):
-        segments.append(compiled.sub(replace, text[last_index:]))
 
-    return "".join(segments)
+def _transform_visible_markdown(text: str, transform: Any) -> str:
+    """Transform visible text while protecting Markdown and SSMD syntax."""
+    parts: list[str] = []
+    visible: list[str] = []
+
+    def flush_visible() -> None:
+        if visible:
+            parts.append(transform("".join(visible)))
+            visible.clear()
+
+    index = 0
+    line_start = True
+    while index < len(text):
+        if line_start:
+            heading = re.match(r"^#{1,6}\s+", text[index:])
+            if heading:
+                flush_visible()
+                parts.append(heading.group(0))
+                index += len(heading.group(0))
+                line_start = False
+                continue
+            if text.startswith("...p", index):
+                flush_visible()
+                parts.append("...p")
+                index += 4
+                line_start = False
+                continue
+
+        if text[index] == "\\" and index + 1 < len(text):
+            flush_visible()
+            parts.append(text[index : index + 2])
+            index += 2
+            line_start = False
+            continue
+        if text.startswith("**", index):
+            flush_visible()
+            parts.append("**")
+            index += 2
+            line_start = False
+            continue
+        if text[index] == "*":
+            flush_visible()
+            parts.append("*")
+            index += 1
+            line_start = False
+            continue
+        if text[index] == "[":
+            close = text.find("]", index + 1)
+            if close >= 0 and close + 1 < len(text) and text[close + 1] == "{":
+                end = text.find("}", close + 2)
+                if end >= 0:
+                    flush_visible()
+                    parts.append(text[index : end + 1])
+                    index = end + 1
+                    line_start = False
+                    continue
+
+        char = text[index]
+        visible.append(char)
+        index += 1
+        line_start = char == "\n"
+
+    flush_visible()
+    return "".join(parts)
 
 
 def _add_language_markers(text: str, mixed_language_config: dict | None = None) -> str:
@@ -289,13 +257,32 @@ def _strip_redundant_title(chapter_title: str, chapter_text: str) -> str:
     return "\n".join(remaining).lstrip()
 
 
+def _strip_redundant_markdown_title(chapter_title: str, chapter_markdown: str) -> str:
+    """Remove one exact leading Markdown heading duplicated by navigation."""
+    title = re.sub(r"\\([\\`*{}\[\]<>|~_])", r"\1", chapter_title.strip())
+    lines = chapter_markdown.splitlines()
+    first = next((idx for idx, line in enumerate(lines) if line.strip()), None)
+    if first is None:
+        return chapter_markdown
+    match = re.match(r"^#{1,6}\s+(.+?)\s*$", lines[first])
+    if not match or match.group(1).strip().casefold() != title.casefold():
+        return chapter_markdown
+    remaining = lines[first + 1 :]
+    while remaining and not remaining[0].strip():
+        remaining.pop(0)
+    body = "\n".join(remaining).strip("\n")
+    return f"{body}\n" if body else ""
+
+
 def chapter_to_ssmd(
     chapter_title: str,
     chapter_text: str,
     phoneme_dict: dict[str, str] | None = None,
     phoneme_dict_case_sensitive: bool = False,
     mixed_language_config: dict | None = None,
-    html_content: str | None = None,
+    *,
+    chapter_markdown: str | None = None,
+    source_format: Literal["plain", "markdown"] = "plain",
     include_title: bool = True,
     document_header: Mapping[str, Any] | None = None,
 ) -> str:
@@ -307,7 +294,8 @@ def chapter_to_ssmd(
         phoneme_dict: Optional dictionary mapping words to IPA phonemes
         phoneme_dict_case_sensitive: Whether phoneme matching is case-sensitive
         mixed_language_config: Optional config for mixed-language mode
-        html_content: Optional HTML content for emphasis detection
+        chapter_markdown: epub2text-generated Markdown body without a title
+        source_format: Source representation used for this chapter
         include_title: Whether to include chapter title in SSMD
         document_header: Optional explicit header values.  Missing generated
             fields are filled without replacing explicit document values.
@@ -319,20 +307,22 @@ def chapter_to_ssmd(
         SSMDGenerationError: If generation fails
     """
     try:
-        result = chapter_text
-        if include_title and chapter_title:
-            result = _strip_redundant_title(chapter_title, result)
+        if source_format == "markdown":
+            if chapter_markdown is None:
+                raise SSMDGenerationError(
+                    "Markdown source format requires chapter_markdown"
+                )
+            result = _strip_redundant_markdown_title(
+                chapter_title,
+                normalize_epub_markdown(chapter_markdown).body,
+            )
+        else:
+            result = chapter_text
+            if include_title and chapter_title:
+                result = _strip_redundant_title(chapter_title, result)
+            result = _add_structural_breaks(result)
 
-        # Step 1: Detect emphasis from HTML if available
-        emphasis_segments: list[tuple[str, str]] = []
-        if html_content:
-            emphasis_segments = _detect_emphasis_from_html(html_content)
-
-        # Step 2: Apply emphasis markers
-        if emphasis_segments:
-            result = _apply_emphasis_markers(result, emphasis_segments)
-
-        # Step 3: Inject phoneme substitutions
+        # Apply visible-text transformations without changing Markdown syntax.
         if phoneme_dict:
             result = _inject_phoneme_substitutions(
                 result, phoneme_dict, phoneme_dict_case_sensitive
@@ -342,10 +332,7 @@ def chapter_to_ssmd(
         if mixed_language_config and mixed_language_config.get("use_mixed_language"):
             result = _add_language_markers(result, mixed_language_config)
 
-        # Step 5: Add structural breaks (paragraphs, sentences, clauses)
-        result = _add_structural_breaks(result)
-
-        # Step 6: Add chapter title if requested
+        # Add exactly one synthetic chapter title when requested.
         if include_title and chapter_title:
             # Clean title and add as heading with double newline separation
             clean_title = chapter_title.strip()

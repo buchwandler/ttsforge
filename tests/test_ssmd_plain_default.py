@@ -117,8 +117,10 @@ def test_conversion_summary_shows_detection_and_rendering_mode(monkeypatch) -> N
     )
 
     output = stream.getvalue()
-    assert "EPUB Emphasis Detection" in output
-    assert "Disabled" in output
+    assert "EPUB Content Extraction" in output
+    assert "Markdown" in output
+    assert "EPUB Emphasis Markup" in output
+    assert "Unwrapped" in output
     assert "SSMD Emphasis" in output
     assert "Plain (emphasis unchanged)" in output
 

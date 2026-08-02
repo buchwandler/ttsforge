@@ -285,7 +285,14 @@ def convert_command(
         bool | None,
         typer.Option(
             "--detect-emphasis/--no-detect-emphasis",
-            help="Detect EPUB italic/bold markup; omitted uses persistent configuration.",
+            help="Preserve EPUB italic and bold semantics in generated SSMD. Headings and scene breaks are preserved independently.",
+        ),
+    ] = None,
+    epub_content_mode: Annotated[
+        Literal["markdown", "plain"] | None,
+        typer.Option(
+            "--epub-content-mode",
+            help="EPUB extraction mode: markdown (default) or plain compatibility mode.",
         ),
     ] = None,
     prosody_method: Annotated[
@@ -554,6 +561,7 @@ def convert_command(
         resume=resume,
         generate_ssmd_only=generate_ssmd_only,
         detect_emphasis=detect_emphasis,
+        epub_content_mode=epub_content_mode,
         prosody_method=prosody_method,
         prosody_strict=prosody_strict,
         fresh=fresh,
