@@ -14,6 +14,7 @@ import typer
 LanguageCode = Literal["a", "b", "d", "e", "f", "h", "i", "j", "p", "z"]
 AudioFormat = Literal["wav", "mp3", "flac", "opus", "m4b"]
 ConversionSplitMode = Literal["auto", "line", "paragraph", "sentence", "clause"]
+ConversionUnit = Literal["chapter", "paragraph"]
 ReadSplitMode = Literal["sentence", "paragraph"]
 
 
@@ -265,6 +266,13 @@ def convert_command(
         typer.Option(
             "--split-mode",
             help="Text splitting mode: auto, line, paragraph, sentence, clause.",
+        ),
+    ] = None,
+    conversion_unit: Annotated[
+        ConversionUnit | None,
+        typer.Option(
+            "--conversion-unit",
+            help="Output and resume unit: chapter or paragraph (fixed at workspace creation).",
         ),
     ] = None,
     resume: Annotated[
@@ -558,6 +566,7 @@ def convert_command(
         yes=yes,
         verbose=verbose,
         split_mode=split_mode,
+        conversion_unit=conversion_unit,
         resume=resume,
         generate_ssmd_only=generate_ssmd_only,
         detect_emphasis=detect_emphasis,

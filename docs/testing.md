@@ -6,6 +6,19 @@ Run the normal test suite with:
 pytest
 ```
 
+Paragraph conversion has focused contract coverage:
+
+```bash
+pytest -q tests/test_pykokoro_unit_contract.py tests/test_conversion_unit_cli.py \
+  tests/test_paragraph_filenames.py tests/test_paragraph_state.py \
+  tests/test_paragraph_rendering.py tests/test_paragraph_audio_parity.py \
+  tests/test_paragraph_merge.py tests/test_paragraph_manifest.py
+```
+
+These tests cover public PyKokoro streaming, schema-5 migration, atomic output and
+ownership, unit resume boundaries, filename ordering, timing parity, no-gap merging,
+and merge-only recovery.
+
 The maintained coverage policy is staged so high-risk code has explicit gates while the
 repository-wide target can be raised as the large CLI modules are decomposed:
 

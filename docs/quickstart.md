@@ -133,6 +133,21 @@ To start fresh, discarding previous progress:
 ttsforge convert mybook.epub --fresh
 ```
 
+### Paragraph output and resume
+
+Use paragraph conversion for visible, independently resumable WAV artifacts:
+
+```bash
+ttsforge convert mybook.epub --conversion-unit paragraph --yes
+```
+
+This creates `mybook_paragraphs/` with fixed-width globally sequenced WAV names,
+`manifest.json`, and `playlist.m3u8`. The files sort in playback order and remain
+after the merged audiobook succeeds. `--split-mode paragraph` is a separate internal
+batching setting. The saved conversion unit cannot be changed during resume; use
+`--fresh` to intentionally create a new workspace. Chapter boundary silence is
+included once in the final paragraph of each non-final selected chapter.
+
 ## Phoneme Pre-tokenization
 
 For large books or batch processing, pre-tokenize text to phonemes:

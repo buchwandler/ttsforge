@@ -198,6 +198,11 @@ availability.
 - Choices: `auto`, `line`, `paragraph`, `sentence`, `clause`
 - Example: `ttsforge config --set default_split_mode sentence`
 
+`--conversion-unit` is intentionally separate from `default_split_mode`. It is a
+per-workspace CLI choice: `chapter` (default) keeps existing chapter output, while
+`paragraph` retains one WAV per spoken paragraph and resumes at unit boundaries. The
+saved choice is restored on resume and cannot be changed without `--fresh`.
+
 ### Read Settings
 
 `default_content_mode` : Default content mode for `read` (`chapters` or `pages`).

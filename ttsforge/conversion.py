@@ -9,11 +9,12 @@ import re
 import tempfile
 import threading
 import time
-from collections.abc import Callable, Sequence
+from collections.abc import Callable, Mapping, Sequence
 from dataclasses import dataclass, field
 from pathlib import Path, PurePosixPath, PureWindowsPath
 from typing import TYPE_CHECKING, Any, Literal, cast
 
+import numpy as np
 import soundfile as sf
 from pykokoro.config_types import (
     DEFAULT_MODEL_SOURCE,
@@ -23,7 +24,7 @@ from pykokoro.config_types import (
     ModelVariant,
 )
 
-from .audio_merge import AudioMerger, MergeMeta
+from .audio_merge import AudioMerger, ChapterBoundary, MergeMeta, OrderedAudioInput
 from .constants import (
     DEFAULT_VOICE_FOR_LANG,
     ISO_TO_LANG_CODE,
@@ -33,7 +34,27 @@ from .constants import (
 )
 from .kokoro_lang import get_onnx_lang_code
 from .memory_diagnostics import log_snapshot
+from .paragraph_output import (
+    canonical_filename,
+    ensure_owned_directory,
+    finalize_wav,
+    owned_path,
+    paragraph_directory,
+    rebuild_manifest_and_playlist,
+    validate_wav,
+)
 from .prosody_support import ProsodyPolicy, prosody_policy_payload
+from .render_units import (
+    PARAGRAPH_MANIFEST_SCHEMA,
+    PARAGRAPH_OUTPUT_SCHEMA,
+    UNIT_FILENAME_SCHEMA,
+    ConversionUnit,
+    RenderUnitState,
+    UnitRateEstimator,
+    map_descriptors,
+    reconcile_units,
+    validate_conversion_unit,
+)
 from .short_sentence_config import resolve_short_sentence_config
 from .short_sentence_stats import ShortSentenceStats
 from .ssmd_audio import LocalSSMDAudioResolver
@@ -107,6 +128,11 @@ class ConversionProgress:
     current_text: str = ""
     elapsed_time: float = 0.0
     estimated_remaining: float = 0.0
+    current_unit: int = 0
+    total_units: int = 0
+    current_paragraph: int = 0
+    paragraphs_in_chapter: int = 0
+    unit_kind: str = ""
 
     @property
     def percent(self) -> int:
@@ -132,6 +158,9 @@ class ConversionResult:
     document_metadata: dict[str, Any] = field(default_factory=dict)
     ssmd_diagnostics: tuple[SSMDIssue, ...] = ()
     markers: list[dict[str, Any]] = field(default_factory=list)
+    conversion_unit: str = "chapter"
+    paragraphs_dir: Path | None = None
+    unit_count: int = 0
 
 
 @dataclass(slots=True)
@@ -167,6 +196,7 @@ class ChapterState:
     ssmd_diagnostics_file: str | None = None
     ssmd_markers_file: str | None = None
     ssmd_document_title: str | None = None
+    units: list[RenderUnitState] = field(default_factory=list)
 
 
 @dataclass
@@ -205,6 +235,10 @@ class ConversionState:
     ssmd_policy_fingerprint: str = ""
     started_at: str = ""
     last_updated: str = ""
+    conversion_unit: ConversionUnit = "chapter"
+    paragraphs_dir: str | None = None
+    unit_filename_schema: int = UNIT_FILENAME_SCHEMA
+    paragraph_manifest_schema: int = PARAGRAPH_MANIFEST_SCHEMA
 
     @classmethod
     def load(cls, state_file: Path) -> ConversionState | None:
@@ -215,8 +249,21 @@ class ConversionState:
             with open(state_file, encoding="utf-8") as f:
                 data = json.load(f)
 
-            # Reconstruct ChapterState objects
-            chapters = [ChapterState(**ch) for ch in data.get("chapters", [])]
+            # Reconstruct ChapterState objects, retaining compatibility with
+            # pre-schema-5 records that have no per-unit list.
+            chapters = []
+            chapter_fields = {
+                field.name for field in ChapterState.__dataclass_fields__.values()
+            }
+            for chapter_data in data.get("chapters", []):
+                chapter_values = {
+                    key: value for key, value in chapter_data.items() if key in chapter_fields
+                }
+                chapter_values["units"] = [
+                    RenderUnitState.from_dict(unit)
+                    for unit in chapter_data.get("units", [])
+                ]
+                chapters.append(ChapterState(**chapter_values))
             data["chapters"] = chapters
             data.setdefault("source_selection", [])
             data.setdefault("generation_fingerprint", "")
@@ -273,6 +320,12 @@ class ConversionState:
             if "model_variant" not in data:
                 data["model_variant"] = DEFAULT_MODEL_VARIANT
             data.setdefault("onnx_provider", None)
+            data["conversion_unit"] = validate_conversion_unit(
+                str(data.get("conversion_unit", "chapter"))
+            )
+            data.setdefault("paragraphs_dir", None)
+            data.setdefault("unit_filename_schema", UNIT_FILENAME_SCHEMA)
+            data.setdefault("paragraph_manifest_schema", PARAGRAPH_MANIFEST_SCHEMA)
 
             return cls(**data)
         except (json.JSONDecodeError, TypeError, KeyError):
@@ -325,6 +378,7 @@ class ConversionState:
                     "ssmd_diagnostics_file": ch.ssmd_diagnostics_file,
                     "ssmd_markers_file": ch.ssmd_markers_file,
                     "ssmd_document_title": ch.ssmd_document_title,
+                    "units": [unit.to_dict() for unit in ch.units],
                 }
                 for ch in self.chapters
             ],
@@ -333,12 +387,29 @@ class ConversionState:
             "source_selection": self.source_selection,
             "generation_fingerprint": self.generation_fingerprint,
             "ssmd_policy_fingerprint": self.ssmd_policy_fingerprint,
+            "conversion_unit": self.conversion_unit,
+            "paragraphs_dir": self.paragraphs_dir,
+            "unit_filename_schema": self.unit_filename_schema,
+            "paragraph_manifest_schema": self.paragraph_manifest_schema,
         }
         atomic_write_json(state_file, data, indent=2, ensure_ascii=True)
 
     def get_completed_count(self) -> int:
         """Get the number of completed chapters."""
+        if self.conversion_unit == "paragraph":
+            return self.get_completed_unit_count()
         return sum(1 for ch in self.chapters if ch.completed)
+
+    def get_completed_unit_count(self) -> int:
+        return sum(
+            1
+            for chapter in self.chapters
+            for unit in chapter.units
+            if unit.completed
+        )
+
+    def get_total_unit_count(self) -> int:
+        return sum(len(chapter.units) for chapter in self.chapters)
 
     def get_next_incomplete_index(self) -> int | None:
         """Get the index of the next incomplete chapter."""
@@ -347,8 +418,20 @@ class ConversionState:
                 return ch.index
         return None
 
+    def get_next_incomplete_unit(self) -> RenderUnitState | None:
+        for chapter in self.chapters:
+            for unit in chapter.units:
+                if not unit.completed:
+                    return unit
+        return None
+
     def is_complete(self) -> bool:
         """Check if all chapters are completed."""
+        if self.conversion_unit == "paragraph":
+            return all(
+                chapter.units and all(unit.completed for unit in chapter.units)
+                for chapter in self.chapters
+            )
         return all(ch.completed for ch in self.chapters)
 
 
@@ -720,6 +803,8 @@ class ConversionOptions:
     merge_at_end: bool = True
     # Split mode: auto, line, paragraph, sentence, clause
     split_mode: str = "auto"
+    # Output/resume unit; independent from internal split_mode.
+    conversion_unit: ConversionUnit = "chapter"
     # Resume capability
     resume: bool = True  # Enable resume by default for long conversions
     keep_chapter_files: bool = False  # Keep individual chapter files after merge
@@ -759,6 +844,7 @@ class ConversionOptions:
         return "auto" if self.use_gpu else "cpu"
 
     def __post_init__(self) -> None:
+        self.conversion_unit = validate_conversion_unit(self.conversion_unit)
         validate_generation_ranges(
             speed=self.speed,
             mixed_language_confidence=self.mixed_language_confidence,
@@ -1120,6 +1206,428 @@ class TTSConverter:
             if temp_path is not None:
                 temp_path.unlink(missing_ok=True)
 
+    def _paragraph_ownership(
+        self, *, state: ConversionState, output_path: Path, work_dir: Path
+    ) -> dict[str, object]:
+        return {
+            "schema_version": 1,
+            "workspace_id": work_dir.name,
+            "source_hash": state.source_hash,
+            "output_path": str(output_path.resolve()),
+            "conversion_unit": "paragraph",
+        }
+
+    def _paragraph_units_valid(
+        self, units: Sequence[RenderUnitState], directory: Path
+    ) -> bool:
+        for unit in units:
+            if not unit.completed or not unit.audio_file:
+                return False
+            try:
+                path = owned_path(directory, unit.audio_file)
+                validate_wav(
+                    path,
+                    sample_rate=unit.sample_rate,
+                    expected_duration=unit.duration if unit.duration else None,
+                )
+                if unit.marker_file and not owned_path(directory, unit.marker_file).is_file():
+                    return False
+            except (OSError, ValueError):
+                return False
+        return True
+
+    def _paragraph_marker_records(
+        self, state: ConversionState, directory: Path
+    ) -> list[dict[str, Any]]:
+        records: list[dict[str, Any]] = []
+        base_samples = 0
+        for chapter in state.chapters:
+            for unit in sorted(chapter.units, key=lambda item: item.sequence_index):
+                if unit.marker_file:
+                    marker_path = owned_path(directory, unit.marker_file)
+                    try:
+                        marker_data = json.loads(marker_path.read_text(encoding="utf-8"))
+                    except (OSError, json.JSONDecodeError):
+                        marker_data = {}
+                    for marker in marker_data.get("markers", []):
+                        local_offset = int(marker.get("sample_offset", 0))
+                        absolute_offset = base_samples + local_offset
+                        records.append(
+                            {
+                                **marker,
+                                "sample_offset": absolute_offset,
+                                "time_s": absolute_offset / unit.sample_rate,
+                                "unit_sequence": unit.sequence_index,
+                                "unit_index": unit.unit_index,
+                            }
+                        )
+                base_samples += int(round(unit.duration * unit.sample_rate))
+        return records
+
+    def _merge_paragraph_state(
+        self,
+        *,
+        state: ConversionState,
+        output_path: Path,
+        work_dir: Path,
+        paragraph_dir: Path,
+        chapter_titles: Mapping[int, str],
+        aggregate_metadata: dict[str, Any] | None = None,
+    ) -> ConversionResult:
+        all_units = [
+            unit
+            for chapter in state.chapters
+            for unit in sorted(chapter.units, key=lambda item: item.sequence_index)
+        ]
+        if not all_units or not self._paragraph_units_valid(all_units, paragraph_dir):
+            return ConversionResult(
+                success=False,
+                error_message="Paragraph output contains incomplete or invalid unit files",
+                chapters_dir=work_dir,
+                conversion_unit="paragraph",
+                paragraphs_dir=paragraph_dir,
+                unit_count=len(all_units),
+            )
+
+        ownership = self._paragraph_ownership(
+            state=state, output_path=output_path, work_dir=work_dir
+        )
+        rebuild_manifest_and_playlist(
+            paragraph_dir,
+            ownership=ownership,
+            units=all_units,
+            chapter_titles=chapter_titles,
+        )
+        ordered = [
+            OrderedAudioInput(
+                path=owned_path(paragraph_dir, unit.audio_file or ""),
+                sequence_index=unit.sequence_index,
+                chapter_position=unit.chapter_position,
+                chapter_title=chapter_titles.get(unit.chapter_position, "Untitled"),
+                duration=unit.duration,
+                content_duration=unit.content_duration,
+                trailing_chapter_silence=unit.trailing_chapter_silence,
+            )
+            for unit in all_units
+        ]
+        boundaries: list[ChapterBoundary] = []
+        timeline = 0.0
+        for chapter in state.chapters:
+            if not chapter.units:
+                continue
+            chapter_start = timeline
+            content_end = timeline + sum(unit.content_duration for unit in chapter.units)
+            timeline += sum(unit.duration for unit in chapter.units)
+            boundaries.append(
+                ChapterBoundary(
+                    chapter_position=chapter.units[0].chapter_position,
+                    title=chapter_titles.get(chapter.units[0].chapter_position, chapter.title),
+                    start=chapter_start,
+                    end=content_end,
+                )
+            )
+        meta = MergeMeta(
+            fmt=self.options.output_format,
+            silence_between_chapters=0.0,
+            title=self.options.title,
+            author=self.options.author,
+            cover_image=self.options.cover_image,
+        )
+        self._merger.merge_ordered_wavs(
+            ordered,
+            output_path,
+            chapter_boundaries=boundaries,
+            meta=meta,
+        )
+        aggregate_markers = self._paragraph_marker_records(state, paragraph_dir)
+        atomic_write_json(
+            output_path.with_suffix(output_path.suffix + ".markers.json"),
+            {"schema_version": 1, "sample_rate": SAMPLE_RATE, "markers": aggregate_markers},
+            indent=2,
+            ensure_ascii=True,
+        )
+        return ConversionResult(
+            success=True,
+            output_path=output_path,
+            chapters_dir=work_dir,
+            paragraphs_dir=paragraph_dir,
+            conversion_unit="paragraph",
+            unit_count=len(all_units),
+            document_metadata=aggregate_metadata or {},
+            markers=aggregate_markers,
+            short_sentence_stats=self._short_sentence_stats(),
+        )
+
+    def _convert_paragraph_chapters(
+        self,
+        *,
+        chapters: list[Chapter],
+        output_path: Path,
+        work_dir: Path,
+        state_file: Path,
+        state: ConversionState,
+        phoneme_dict: dict[str, str] | None,
+        mixed_language_config: dict[str, Any] | None,
+    ) -> ConversionResult:
+        """Render selected chapters as independently resumable paragraph WAVs."""
+        paragraph_dir = Path(state.paragraphs_dir or paragraph_directory(output_path))
+        state.paragraphs_dir = str(paragraph_dir)
+        ownership = self._paragraph_ownership(
+            state=state, output_path=output_path, work_dir=work_dir
+        )
+        ensure_owned_directory(paragraph_dir, ownership=ownership)
+        chapter_titles = {position: chapter.title for position, chapter in enumerate(chapters)}
+        all_units = [unit for chapter in state.chapters for unit in chapter.units]
+
+        # Merge-only recovery deliberately does not initialize PyKokoro.
+        if state.is_complete() and all_units and self._paragraph_units_valid(all_units, paragraph_dir):
+            return self._merge_paragraph_state(
+                state=state,
+                output_path=output_path,
+                work_dir=work_dir,
+                paragraph_dir=paragraph_dir,
+                chapter_titles=chapter_titles,
+            )
+
+        self._init_runner()
+        assert self._runner is not None
+        effective_lang = self.options.lang if self.options.lang else self.options.language
+        lang_code = get_onnx_lang_code(effective_lang)
+        resolver_root = work_dir
+        resolver = LocalSSMDAudioResolver(
+            resolver_root,
+            allowed_root=self.options.ssmd_policy.audio_root or resolver_root,
+            allow_remote=self.options.ssmd_policy.allow_remote_audio,
+            timeout_s=self.options.ssmd_policy.audio_timeout_s,
+            max_bytes=self.options.ssmd_policy.audio_max_bytes,
+            max_duration_s=self.options.ssmd_policy.audio_max_duration_s,
+        )
+        estimator = UnitRateEstimator()
+        aggregate_metadata: dict[str, Any] = {}
+        sequence_start = 0
+        total_chars = sum(chapter.char_count for chapter in chapters)
+        chars_processed = 0
+
+        for chapter_position, chapter in enumerate(chapters):
+            if self._cancelled:
+                state.save(state_file)
+                return ConversionResult(
+                    success=False,
+                    error_message="Cancelled",
+                    chapters_dir=work_dir,
+                    paragraphs_dir=paragraph_dir,
+                    conversion_unit="paragraph",
+                    unit_count=state.get_total_unit_count(),
+                )
+            chapter_state = state.chapters[chapter_position]
+            ssmd_filename = f"chapter_{chapter_position + 1:06d}.ssmd"
+            ssmd_file = work_dir / ssmd_filename
+            ssmd_content, ssmd_hash, document_info = self._load_or_generate_ssmd(
+                chapter,
+                ssmd_file,
+                phoneme_dict=phoneme_dict,
+                mixed_language_config=mixed_language_config,
+            )
+            chapter_state.ssmd_file = ssmd_filename
+            chapter_state.ssmd_hash = ssmd_hash
+            chapter_state.ssmd_document_title = document_info.title
+            if self._cancelled:
+                state.save(state_file)
+                return ConversionResult(success=False, error_message="Cancelled")
+
+            with self._runner.prepare_paragraph_units(
+                ssmd_content,
+                lang_code=lang_code,
+                pause_mode=cast(Literal["tts", "manual", "auto"], self.options.pause_mode),
+                ssmd_policy=self.options.ssmd_policy,
+                audio_resolver=resolver,
+            ) as prepared:
+                planned = map_descriptors(
+                    prepared.units,
+                    chapter_position=chapter_position,
+                    source_chapter_index=chapter.index,
+                    chapter_fingerprint=chapter_state.render_fingerprint,
+                    sequence_start=sequence_start,
+                    announced_title=(self.options.announce_chapters and not chapter.is_ssmd),
+                    sample_rate=SAMPLE_RATE,
+                )
+                for unit in planned:
+                    filename = canonical_filename(
+                        sequence_index=unit.sequence_index + 1,
+                        source_chapter_index=unit.source_chapter_index,
+                        paragraph_index=unit.paragraph_index,
+                        kind=unit.kind,
+                        chapter_title=chapter.title,
+                    )
+                    unit.audio_file = filename
+                    unit.marker_file = f"{filename}.markers.json"
+                reconciled, stale = reconcile_units(chapter_state.units, planned)
+                chapter_state.units = reconciled
+                chapter_state.audio_file = None
+                chapter_state.completed = not planned
+                for old in stale:
+                    for name in (old.audio_file, old.marker_file):
+                        if name:
+                            try:
+                                owned_path(paragraph_dir, name).unlink(missing_ok=True)
+                            except ValueError:
+                                pass
+
+                # Verify retained artifacts before asking PyKokoro to render.
+                first_invalid: int | None = None
+                for index, unit in enumerate(chapter_state.units):
+                    if not unit.completed:
+                        continue
+                    try:
+                        validate_wav(
+                            owned_path(paragraph_dir, unit.audio_file or ""),
+                            sample_rate=unit.sample_rate,
+                            expected_duration=unit.duration if unit.duration else None,
+                        )
+                        if unit.marker_file and not owned_path(
+                            paragraph_dir, unit.marker_file
+                        ).is_file():
+                            raise ValueError("marker sidecar missing")
+                    except (OSError, ValueError):
+                        first_invalid = index
+                        break
+                if first_invalid is not None:
+                    for unit in chapter_state.units[first_invalid:]:
+                        unit.completed = False
+                        unit.duration = 0.0
+                        unit.content_duration = 0.0
+                chapter_state.completed = not chapter_state.units or all(
+                    unit.completed for unit in chapter_state.units
+                )
+                state.save(state_file)  # plan is durable before first inference
+
+                skip_indices = {
+                    unit.unit_index for unit in chapter_state.units if unit.completed
+                }
+                by_index = {unit.unit_index: unit for unit in chapter_state.units}
+                for result in prepared.render(skip_indices=skip_indices):
+                    if self._cancelled:
+                        state.save(state_file)
+                        try:
+                            result.release_audio()
+                        finally:
+                            pass
+                        return ConversionResult(
+                            success=False,
+                            error_message="Cancelled",
+                            chapters_dir=work_dir,
+                            paragraphs_dir=paragraph_dir,
+                            conversion_unit="paragraph",
+                            unit_count=state.get_total_unit_count(),
+                        )
+                    unit_index = int(result.descriptor.index)
+                    unit = by_index[unit_index]
+                    started = time.monotonic()
+                    try:
+                        samples = np.asarray(result.audio)
+                        sample_rate = int(result.sample_rate or SAMPLE_RATE)
+                        unit.sample_rate = sample_rate
+                        unit.content_duration = len(samples) / sample_rate
+                        trailing = (
+                            self.options.silence_between_chapters
+                            if unit is chapter_state.units[-1]
+                            and chapter_position < len(chapters) - 1
+                            else 0.0
+                        )
+                        unit.trailing_chapter_silence = trailing
+                        destination = owned_path(paragraph_dir, unit.audio_file or "")
+                        if self._cancelled:
+                            state.save(state_file)
+                            return ConversionResult(
+                                success=False,
+                                error_message="Cancelled",
+                                chapters_dir=work_dir,
+                                paragraphs_dir=paragraph_dir,
+                                conversion_unit="paragraph",
+                                unit_count=state.get_total_unit_count(),
+                            )
+                        unit.duration = finalize_wav(
+                            samples=samples,
+                            sample_rate=sample_rate,
+                            destination=destination,
+                            trailing_chapter_silence=trailing,
+                        )
+                        _write_marker_records_sidecar(
+                            owned_path(paragraph_dir, unit.marker_file or ""),
+                            sample_rate=sample_rate,
+                            markers=_marker_records(result),
+                        )
+                        unit.render_wall_seconds = time.monotonic() - started
+                        unit.completed = True
+                        chapter_state.completed = all(item.completed for item in chapter_state.units)
+                        state.save(state_file)
+                        rebuild_manifest_and_playlist(
+                            paragraph_dir,
+                            ownership=ownership,
+                            units=[
+                                item
+                                for saved_chapter in state.chapters
+                                for item in saved_chapter.units
+                            ],
+                            chapter_titles=chapter_titles,
+                        )
+                        estimator.add(unit.render_wall_seconds, unit.char_count)
+                        chars_processed += unit.char_count
+                        progress = ConversionProgress(
+                            current_chapter=chapter_position + 1,
+                            total_chapters=len(chapters),
+                            chapter_name=chapter.title,
+                            chars_processed=chars_processed,
+                            total_chars=total_chars,
+                            current_unit=unit.sequence_index + 1,
+                            total_units=state.get_total_unit_count(),
+                            current_paragraph=unit.paragraph_index,
+                            paragraphs_in_chapter=len(chapter_state.units),
+                            unit_kind=unit.kind,
+                            estimated_remaining=estimator.estimate(
+                                sum(
+                                    1
+                                    for saved_chapter in state.chapters
+                                    for saved_unit in saved_chapter.units
+                                    if not saved_unit.completed
+                                ),
+                                total_chars - chars_processed,
+                            ),
+                        )
+                        if self.progress_callback:
+                            self.progress_callback(progress)
+                        if self._cancelled:
+                            state.save(state_file)
+                            return ConversionResult(
+                                success=False,
+                                error_message="Cancelled",
+                                chapters_dir=work_dir,
+                                paragraphs_dir=paragraph_dir,
+                                conversion_unit="paragraph",
+                                unit_count=state.get_total_unit_count(),
+                            )
+                    finally:
+                        try:
+                            result.release_audio()
+                        except Exception as exc:
+                            self.log(f"Failed to release PyKokoro unit audio: {exc}", "warning")
+                aggregate_metadata.update(prepared.document_metadata)
+            sequence_start += len(chapter_state.units)
+            chapter_state.completed = not chapter_state.units or all(
+                unit.completed for unit in chapter_state.units
+            )
+            state.save(state_file)
+
+        state.save(state_file)
+        return self._merge_paragraph_state(
+            state=state,
+            output_path=output_path,
+            work_dir=work_dir,
+            paragraph_dir=paragraph_dir,
+            chapter_titles=chapter_titles,
+            aggregate_metadata=aggregate_metadata,
+        )
+
     def _generation_fingerprint(self) -> str:
         """Fingerprint every option that can affect generated audio."""
         options = self.options
@@ -1157,6 +1665,9 @@ class TTSConverter:
             "announce_chapters": options.announce_chapters,
             "chapter_pause_after_title": options.chapter_pause_after_title,
             "split_mode": options.split_mode,
+            "conversion_unit": options.conversion_unit,
+            "paragraph_output_schema": PARAGRAPH_OUTPUT_SCHEMA,
+            "paragraph_pause_ownership": "following-boundary-owned-by-previous-v1",
             "generate_ssmd_only": options.generate_ssmd_only,
             "detect_emphasis": options.detect_emphasis,
             "epub_content_mode": options.epub_content_mode,
@@ -1175,10 +1686,11 @@ class TTSConverter:
         source_hash: str,
         generation_fingerprint: str,
         work_dir: Path,
+        output_path: Path | None = None,
     ) -> ResumeValidation:
         """Validate resume state and return structured result."""
         result = self._resume_state_validation(
-            state, chapters, source_hash, generation_fingerprint, work_dir
+            state, chapters, source_hash, generation_fingerprint, work_dir, output_path
         )
         return result
 
@@ -1189,10 +1701,16 @@ class TTSConverter:
         source_hash: str,
         generation_fingerprint: str,
         work_dir: Path,
+        output_path: Path | None = None,
     ) -> bool:
         """Compatibility wrapper returning bool."""
         return self._resume_state_matches(
-            state, chapters, source_hash, generation_fingerprint, work_dir
+            state,
+            chapters,
+            source_hash,
+            generation_fingerprint,
+            work_dir,
+            output_path,
         ).reusable
 
     def _resume_state_validation(
@@ -1202,6 +1720,7 @@ class TTSConverter:
         source_hash: str,
         generation_fingerprint: str,
         work_dir: Path,
+        output_path: Path | None = None,
     ) -> ResumeValidation:
         """Allow reuse only when v2 inputs and completed artifacts still match."""
         has_markdown_source = any(
@@ -1232,6 +1751,11 @@ class TTSConverter:
                 "warning",
             )
             return ResumeValidation(reusable=False, reason="source-hash-changed")
+        if output_path is not None and state.output_file:
+            saved_output = Path(state.output_file)
+            if saved_output.resolve() != output_path.resolve():
+                self.log("Output path changed, use --fresh to start a new conversion", "warning")
+                return ResumeValidation(reusable=False, reason="output-path-changed")
         if state.onnx_provider is None:
             self.log(
                 "Resume state predates provider-aware fingerprints; "
@@ -1244,6 +1768,12 @@ class TTSConverter:
         if state.onnx_provider != self.options.effective_onnx_provider():
             self.log("ONNX provider changed, starting fresh conversion", "warning")
             return ResumeValidation(reusable=False, reason="provider-changed")
+        if state.conversion_unit != self.options.conversion_unit:
+            self.log(
+                "Conversion unit changed, use --fresh to start a new conversion",
+                "warning",
+            )
+            return ResumeValidation(reusable=False, reason="conversion-unit-changed")
         if state.source_selection != [chapter.index for chapter in chapters]:
             self.log("Chapter selection changed, starting fresh conversion", "warning")
             return ResumeValidation(reusable=False, reason="chapter-selection-changed")
@@ -1281,7 +1811,7 @@ class TTSConverter:
                 return ResumeValidation(
                     reusable=False, reason="chapter-content-changed"
                 )
-            if saved.completed:
+            if saved.completed and state.conversion_unit == "chapter":
                 if not saved.audio_file:
                     return ResumeValidation(reusable=False, reason="missing-audio-file")
                 audio_path = work_dir / saved.audio_file
@@ -1399,7 +1929,12 @@ class TTSConverter:
                 state = ConversionState.load(state_file)
                 if state:
                     validation = self._resume_state_matches(
-                        state, chapters, source_hash, generation_fingerprint, work_dir
+                        state,
+                        chapters,
+                        source_hash,
+                        generation_fingerprint,
+                        work_dir,
+                        output_path=output_path,
                     )
                     if not validation.reusable:
                         # Archive incompatible state before replacing it so
@@ -1428,13 +1963,14 @@ class TTSConverter:
                 state = ConversionState(
                     source_file=str(source_file) if source_file else "",
                     source_hash=source_hash,
-                    version=4,
+                    version=5,
                     output_file=str(output_path.resolve()),
                     work_dir=str(work_dir),
                     voice=self.options.voice,
                     language=self.options.language,
                     speed=self.options.speed,
                     split_mode=self.options.split_mode,
+                    conversion_unit=self.options.conversion_unit,
                     output_format=self.options.output_format,
                     model_quality=self.options.model_quality,
                     model_source=self.options.model_source,
@@ -1457,7 +1993,7 @@ class TTSConverter:
                             content_hash=_hash_content(ch.content),
                             source_format=ch.source_format,
                             source_id=ch.source_id,
-                            source_markup_hash=_hash_content(ch.markdown_body or ""),
+                            source_markup_hash=_chapter_source_markup_hash(ch),
                             extraction_schema=ch.extraction_schema,
                             char_count=ch.char_count,
                             render_fingerprint=_chapter_render_fingerprint(
@@ -1472,12 +2008,43 @@ class TTSConverter:
                         _ssmd_policy_payload(self.options.ssmd_policy)
                     ),
                     started_at=time.strftime("%Y-%m-%d %H:%M:%S"),
+                    paragraphs_dir=(
+                        str(output_path.with_suffix("" ).parent / f"{output_path.stem}_paragraphs")
+                        if self.options.conversion_unit == "paragraph"
+                        else None
+                    ),
                 )
                 state.save(state_file)
             else:
                 completed = state.get_completed_count()
                 total = len(chapters)
                 self.log(f"Resuming conversion: {completed}/{total} chapters completed")
+
+            if self.options.conversion_unit == "paragraph":
+                phoneme_dict = None
+                if self.options.phoneme_dictionary_path:
+                    phoneme_dict = load_phoneme_dictionary(
+                        self.options.phoneme_dictionary_path,
+                        case_sensitive=self.options.phoneme_dict_case_sensitive,
+                        log_callback=lambda message: self.log(message, "warning"),
+                    )
+                mixed_language_config = None
+                if self.options.use_mixed_language:
+                    mixed_language_config = {
+                        "use_mixed_language": True,
+                        "primary": self.options.mixed_language_primary,
+                        "allowed": self.options.mixed_language_allowed,
+                        "confidence": self.options.mixed_language_confidence,
+                    }
+                return self._convert_paragraph_chapters(
+                    chapters=chapters,
+                    output_path=output_path,
+                    work_dir=work_dir,
+                    state_file=state_file,
+                    state=state,
+                    phoneme_dict=phoneme_dict,
+                    mixed_language_config=mixed_language_config,
+                )
 
             phoneme_dict = None
             if self.options.phoneme_dictionary_path:

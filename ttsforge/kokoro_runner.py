@@ -1,6 +1,7 @@
 # ttsforge/kokoro_runner.py
 from __future__ import annotations
 
+from collections.abc import Collection, Iterator, Sequence
 from dataclasses import dataclass, field
 from typing import Any, Literal, Protocol, cast
 
@@ -27,6 +28,7 @@ from pykokoro.stages.phoneme_processing.onnx import OnnxPhonemeProcessorAdapter
 
 from .memory_diagnostics import log_snapshot
 from .prosody_support import ProsodyPolicy, build_pykokoro_prosody_config
+from .render_units import PreparedUnitDescriptor, descriptor_from_public
 from .short_sentence_stats import ShortSentenceStats
 from .ssmd_support import SSMDPolicy, build_pykokoro_ssmd_config
 
@@ -60,6 +62,44 @@ class KokoroRunOptions:
         if self.onnx_provider is not None:
             return self.onnx_provider
         return "auto" if self.use_gpu else "cpu"
+
+
+class PreparedParagraphUnits:
+    """TTSForge's dependency-light facade over PyKokoro's public provider."""
+
+    def __init__(self, runner: KokoroRunner, prepared: Any):
+        self._runner = runner
+        self._prepared = prepared
+        self._units = tuple(
+            descriptor_from_public(descriptor) for descriptor in prepared.units
+        )
+
+    @property
+    def units(self) -> tuple[PreparedUnitDescriptor, ...]:
+        return self._units
+
+    @property
+    def document_metadata(self) -> dict[str, Any]:
+        value = getattr(self._prepared, "document_metadata", {})
+        return dict(value) if hasattr(value, "items") else {}
+
+    @property
+    def diagnostics(self) -> Sequence[Any]:
+        return tuple(getattr(self._prepared, "diagnostics", ()))
+
+    def render(self, *, skip_indices: Collection[int] = ()) -> Iterator[Any]:
+        for result in self._prepared.render(skip_indices=skip_indices):
+            self._runner.short_sentence_stats.add_audio_result(result)
+            for warning in getattr(getattr(result, "trace", None), "warnings", ()):
+                self._runner.log(str(warning), "warning")
+            yield result
+
+    def __enter__(self) -> PreparedParagraphUnits:
+        self._prepared.__enter__()
+        return self
+
+    def __exit__(self, exc_type: object, exc: object, tb: object) -> None:
+        self._prepared.__exit__(exc_type, exc, tb)
 
 
 class KokoroRunner:
@@ -237,6 +277,53 @@ class KokoroRunner:
             audio_resolver=audio_resolver,
         )
         return cast(np.ndarray, result.audio)
+
+    def prepare_paragraph_units(
+        self,
+        text: str,
+        *,
+        lang_code: str,
+        pause_mode: Literal["tts", "manual", "auto"],
+        ssmd_policy: SSMDPolicy | None = None,
+        audio_resolver: object | None = None,
+    ) -> PreparedParagraphUnits:
+        """Prepare a complete document using PyKokoro's public unit API."""
+        self.ensure_ready()
+        pipeline = self._pipeline
+        if pipeline is None or not callable(getattr(pipeline, "prepare_units", None)):
+            raise RuntimeError(
+                "Installed PyKokoro does not provide the public paragraph-unit API; "
+                "install pykokoro>=0.8.1,<0.9."
+            )
+        gen = GenerationConfig(
+            speed=self.opts.speed,
+            lang=lang_code,
+            pause_mode=pause_mode,
+            enable_short_sentence=self.opts.enable_short_sentence,
+            pause_clause=self.opts.pause_clause,
+            pause_sentence=self.opts.pause_sentence,
+            pause_paragraph=self.opts.pause_paragraph,
+            pause_variance=self.opts.pause_variance,
+            random_seed=self.opts.random_seed,
+        )
+        overrides: dict[str, Any] = {"generation": gen}
+        if ssmd_policy is not None or audio_resolver is not None:
+            effective_policy = ssmd_policy or self.opts.ssmd_policy
+            overrides["ssmd"] = build_pykokoro_ssmd_config(
+                effective_policy, audio_resolver=audio_resolver
+            )
+        try:
+            prepared = pipeline.prepare_units(
+                text,
+                unit="paragraph",
+                **overrides,
+            )
+        except (AttributeError, TypeError) as exc:
+            raise RuntimeError(
+                "Installed PyKokoro cannot satisfy the public paragraph-unit API; "
+                "install pykokoro>=0.8.1,<0.9."
+            ) from exc
+        return PreparedParagraphUnits(self, prepared)
 
     def get_short_sentence_stats(self) -> ShortSentenceStats:
         return self.short_sentence_stats.copy()

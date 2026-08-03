@@ -48,11 +48,14 @@ from ..conversion import (
     TTSConverter,
     detect_language_from_iso,
     get_default_voice_for_language,
+    validate_generation_ranges,
 )
+from ..paragraph_output import ensure_owned_directory, paragraph_directory
 from ..prosody_support import (
     ProsodyPolicy,
     build_pykokoro_prosody_config,
 )
+from ..render_units import validate_conversion_unit
 from ..short_sentence_config import (
     DEFAULT_SHORT_SENTENCE,
     resolve_short_sentence_config,
@@ -203,6 +206,7 @@ def convert(  # noqa: C901
     yes: bool,
     verbose: bool,
     split_mode: str | None,
+    conversion_unit: str | None,
     resume: bool,
     generate_ssmd_only: bool,
     detect_emphasis: bool | None,
@@ -312,6 +316,45 @@ def convert(  # noqa: C901
         effective_short_sentence,
         effective_enable_short_sentence,
     )
+
+    # Preserve the existing validation ordering: invalid persisted settings
+    # must fail before any new interactive conversion-unit prompt.
+    try:
+        validate_generation_ranges(
+            speed=resolved_defaults["speed"],
+            mixed_language_confidence=(
+                mixed_language_confidence
+                if mixed_language_confidence is not None
+                else config.get("mixed_language_confidence", 0.7)
+            ),
+            silence_between_chapters=(
+                silence if silence is not None else config.get("silence_between_chapters", 2.0)
+            ),
+            pause_clause=(
+                pause_clause if pause_clause is not None else config.get("pause_clause", 0.3)
+            ),
+            pause_sentence=(
+                pause_sentence if pause_sentence is not None else config.get("pause_sentence", 0.5)
+            ),
+            pause_paragraph=(
+                pause_paragraph
+                if pause_paragraph is not None
+                else config.get("pause_paragraph", 0.9)
+            ),
+            pause_variance=(
+                pause_variance
+                if pause_variance is not None
+                else config.get("pause_variance", 0.05)
+            ),
+            chapter_pause_after_title=(
+                chapter_pause
+                if chapter_pause is not None
+                else config.get("chapter_pause_after_title", 2.0)
+            ),
+        )
+    except (TypeError, ValueError) as exc:
+        console.print(f"[red]Invalid conversion configuration:[/red] {exc}.")
+        raise typer.Exit(code=2) from exc
 
     # Get format first (needed for output path construction)
     fmt = (
@@ -447,6 +490,39 @@ def convert(  # noqa: C901
             ],
         )
 
+    # Conversion granularity is a workspace property. Resolve it only after
+    # discovering a resumable workspace so resume never prompts.
+    if resume_candidate is not None and not fresh:
+        saved_unit = validate_conversion_unit(resume_candidate.state.conversion_unit)
+        if conversion_unit is not None and conversion_unit != saved_unit:
+            console.print(
+                f"[red]This conversion workspace was created in {saved_unit} mode.[/red]\n"
+                "The conversion unit cannot be changed while resuming.\n"
+                f"Use --fresh --conversion-unit {conversion_unit} to start a new conversion."
+            )
+            raise typer.Exit(code=2)
+        effective_conversion_unit = saved_unit
+    elif conversion_unit is not None:
+        try:
+            effective_conversion_unit = validate_conversion_unit(conversion_unit)
+        except ValueError as exc:
+            raise typer.BadParameter(str(exc), param_hint="--conversion-unit") from exc
+    elif yes:
+        effective_conversion_unit = "chapter"
+    else:
+        answer = console.input("Conversion unit [chapter/paragraph] (chapter): ").strip().lower()
+        try:
+            effective_conversion_unit = validate_conversion_unit(answer or "chapter")
+        except ValueError as exc:
+            console.print(f"[red]Invalid conversion unit:[/red] {exc}")
+            raise typer.Exit(code=2) from exc
+
+    if generate_ssmd_only and effective_conversion_unit == "paragraph":
+        console.print(
+            "[red]--generate-ssmd cannot be combined with --conversion-unit paragraph[/red]"
+        )
+        raise typer.Exit(code=2)
+
     # --- Chapter selection with precedence ---
     #   1. Explicit --chapters / --skip-chapters (user intent wins)
     #   2. Resume candidate (restore saved selection)
@@ -511,6 +587,14 @@ def convert(  # noqa: C901
         if chapters_range:
             output_filename = f"{output_filename}_{chapters_range}"
         output = output / f"{output_filename}.{fmt}"
+
+    if resume_candidate is not None and not fresh and output is not None:
+        if output.resolve() != resume_candidate.saved_output.resolve():
+            console.print(
+                "[red]The output path cannot change while resuming this conversion workspace.[/red]\n"
+                "Use --fresh to start a new conversion at the requested output path."
+            )
+            raise typer.Exit(code=2)
 
     # Get format from output extension if not specified
     if output_format is None:
@@ -714,6 +798,7 @@ def convert(  # noqa: C901
                 else config.get("chapter_pause_after_title", 2.0)
             ),
             split_mode=resolved_defaults["split_mode"],
+            conversion_unit=effective_conversion_unit,
             resume=False if fresh else resume,
             keep_chapter_files=keep_chapter_files,
             title=effective_title,
@@ -761,7 +846,14 @@ def convert(  # noqa: C901
         console.print("[bold green]Found resumable conversion:[/bold green]")
         console.print(f"  Output: {resume_candidate.saved_output.name}")
         console.print(f"  Selection: chapters {sel_start}-{sel_end}")
-        console.print(f"  Progress: {completed}/{total} complete")
+        if state.conversion_unit == "paragraph":
+            console.print(
+                f"  Conversion unit: Paragraph\n"
+                f"  Completed units: {state.get_completed_unit_count()}/"
+                f"{state.get_total_unit_count()}"
+            )
+        else:
+            console.print(f"  Conversion unit: Chapter\n  Progress: {completed}/{total} complete")
         if next_chapter_num:
             console.print(
                 f"  Next: chapter {next_chapter_num} \u2014 {next_chapter_title}"
@@ -783,6 +875,12 @@ def convert(  # noqa: C901
         model_variant=model_variant,
         model_quality=model_quality,
         num_chapters=len(selected_indices) if selected_indices else len(epub_chapters),
+        conversion_unit=effective_conversion_unit,
+        paragraphs_dir=(
+            paragraph_directory(output)
+            if effective_conversion_unit == "paragraph"
+            else None
+        ),
         title=effective_title,
         author=effective_author,
         lang=options.lang,
@@ -830,6 +928,18 @@ def convert(  # noqa: C901
             book_title=effective_title,
             source_file=epub_file,
         )
+        if effective_conversion_unit == "paragraph":
+            ensure_owned_directory(
+                paragraph_directory(output),
+                ownership={
+                    "schema_version": 1,
+                    "workspace_id": workspace.work_dir.name,
+                    "source_hash": workspace.source_hash,
+                    "output_path": str(output.resolve()),
+                    "conversion_unit": "paragraph",
+                },
+                fresh=True,
+            )
         if workspace.work_dir.exists():
             console.print(
                 f"[yellow]Removing previous progress:[/yellow] {workspace.work_dir}"
@@ -859,6 +969,13 @@ def convert(  # noqa: C901
             ch = prog.current_chapter
             total = prog.total_chapters
             current_chapter_text = f"Chapter {ch}/{total}: {prog.chapter_name}"
+            if prog.unit_kind == "title":
+                current_chapter_text = f"Chapter {ch}/{total} · Title: {prog.chapter_name}"
+            elif prog.unit_kind:
+                current_chapter_text = (
+                    f"Chapter {ch}/{total} · Paragraph {prog.current_paragraph}/"
+                    f"{prog.paragraphs_in_chapter}: {prog.chapter_name}"
+                )
             progress.update(task_id, description=current_chapter_text[:50])
 
     def log_callback(message: str, level: str) -> None:
@@ -935,7 +1052,13 @@ def convert(  # noqa: C901
             console.print(
                 Panel(
                     "[green]Audiobook saved to:[/green]\n"
-                    f"{result.output_path}\n\n"
+                    f"{result.output_path}\n"
+                    + (
+                        f"\n[green]Paragraph output:[/green]\n{result.paragraphs_dir}\n"
+                        if result.paragraphs_dir is not None
+                        else ""
+                    )
+                    + "\n"
                     "[bold]Short sentence handling:[/bold] "
                     f"{format_short_sentence_stats(result.short_sentence_stats)}",
                     title="[bold green]Conversion Complete[/bold green]",
@@ -1292,6 +1415,8 @@ def _show_conversion_summary(
     num_chapters: int,
     title: str,
     author: str,
+    conversion_unit: str = "chapter",
+    paragraphs_dir: Path | None = None,
     lang: str | None = None,
     use_mixed_language: bool = False,
     mixed_language_primary: str | None = None,
@@ -1317,6 +1442,13 @@ def _show_conversion_summary(
     table.add_row("Output", str(output))
     table.add_row("Format", output_format.upper())
     table.add_row("Chapters", str(num_chapters))
+    table.add_row(
+        "Conversion unit",
+        "Paragraph WAV per paragraph" if conversion_unit == "paragraph" else "Chapter",
+    )
+    if paragraphs_dir is not None:
+        table.add_row("Paragraph output", paragraphs_dir.name)
+        table.add_row("Filename order", "Fixed-width global sequence")
     table.add_row("Voice", voice)
     table.add_row("Language", LANGUAGE_DESCRIPTIONS.get(language, language))
     table.add_row("Model Source", model_source)

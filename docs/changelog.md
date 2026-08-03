@@ -4,6 +4,9 @@
 
 ### Added
 
+- Added paragraph-wise conversion with workspace-fixed `--conversion-unit paragraph`,
+  retained ordered WAV files, atomic manifest/playlist output, per-unit resume,
+  merge-only recovery, and no-gap final merging on PyKokoro 0.8.1+.
 - Added configurable SSMD prosody method selection with CLI overrides and persistent
   configuration
 - Added EPUB chapter structure and emphasis preservation through epub2text Markdown

@@ -34,7 +34,7 @@ def test_pykokoro_dependency_floor_is_released_handoff() -> None:
         (Path(__file__).parents[1] / "pyproject.toml").read_text(encoding="utf-8")
     )
     dependencies = project["project"]["dependencies"]
-    assert "pykokoro[cpu]>=0.8.0,<0.9" in dependencies
+    assert "pykokoro[cpu]>=0.8.1,<0.9" in dependencies
     assert not any("pykokoro[cpu]>=0.7.3" in dependency for dependency in dependencies)
     assert not any("pykokoro[cpu]>=0.6.6" in dependency for dependency in dependencies)
 

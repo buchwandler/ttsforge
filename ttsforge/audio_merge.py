@@ -4,6 +4,7 @@ from __future__ import annotations
 import os
 import subprocess
 import tempfile
+from collections.abc import Sequence
 from dataclasses import dataclass
 from pathlib import Path
 from typing import Any, Protocol
@@ -22,6 +23,25 @@ class MergeMeta:
     title: str | None = None
     author: str | None = None
     cover_image: Path | None = None
+
+
+@dataclass(frozen=True, slots=True)
+class OrderedAudioInput:
+    path: Path
+    sequence_index: int
+    chapter_position: int
+    chapter_title: str
+    duration: float
+    content_duration: float
+    trailing_chapter_silence: float
+
+
+@dataclass(frozen=True, slots=True)
+class ChapterBoundary:
+    chapter_position: int
+    title: str
+    start: float
+    end: float
 
 
 class AudioMerger:
@@ -222,6 +242,86 @@ class AudioMerger:
                 if i < len(chapter_durations) - 1:
                     t += meta.silence_between_chapters
             self.add_chapters_to_m4b(output_path, times, meta.cover_image)
+
+    def merge_ordered_wavs(
+        self,
+        inputs: Sequence[OrderedAudioInput],
+        output_path: Path,
+        *,
+        chapter_boundaries: Sequence[ChapterBoundary] = (),
+        meta: MergeMeta | None = None,
+    ) -> None:
+        """Concatenate finalized paragraph WAVs without adding any gaps."""
+        ordered = tuple(sorted(inputs, key=lambda item: item.sequence_index))
+        if not ordered:
+            raise ValueError("At least one ordered audio input is required")
+        if any(item.sequence_index != index for index, item in enumerate(ordered)):
+            raise ValueError("Ordered audio inputs must have contiguous sequence indices")
+        for item in ordered:
+            if not item.path.is_file():
+                raise FileNotFoundError(item.path)
+            if item.duration < 0 or item.content_duration < 0:
+                raise ValueError("Ordered audio durations cannot be negative")
+
+        effective_meta = meta or MergeMeta(fmt="wav", silence_between_chapters=0.0)
+        output_path.parent.mkdir(parents=True, exist_ok=True)
+        if effective_meta.fmt == "wav":
+            with tempfile.TemporaryDirectory(
+                dir=output_path.parent, prefix=f".{output_path.stem}.ttsforge-"
+            ) as temp_name:
+                temporary = Path(temp_name) / output_path.name
+                self._merge_wavs([item.path for item in ordered], temporary, 0.0)
+                os.replace(temporary, output_path)
+            return
+
+        ffmpeg = get_ffmpeg_path()
+        with tempfile.TemporaryDirectory(
+            dir=output_path.parent, prefix=f".{output_path.stem}.ttsforge-"
+        ) as temp_name:
+            temp_dir = Path(temp_name)
+            concat_file = temp_dir / "concat.txt"
+            temporary = temp_dir / output_path.name
+            concat_file.write_text(
+                "".join(f"file {self._concat_path(item.path)}\n" for item in ordered),
+                encoding="utf-8",
+            )
+            command = [ffmpeg, "-y", "-f", "concat", "-safe", "0", "-i", str(concat_file)]
+            if effective_meta.fmt == "m4b":
+                if effective_meta.cover_image and effective_meta.cover_image.exists():
+                    command += [
+                        "-i", str(effective_meta.cover_image),
+                        "-map", "0:a", "-map", "1", "-c:v", "copy",
+                        "-disposition:v", "attached_pic",
+                    ]
+                command += [
+                    "-c:a", "aac", "-q:a", "2",
+                    "-movflags", "+faststart+use_metadata_tags",
+                ]
+                if effective_meta.title:
+                    command += ["-metadata", f"title={effective_meta.title}"]
+                if effective_meta.author:
+                    command += ["-metadata", f"artist={effective_meta.author}"]
+            elif effective_meta.fmt == "opus":
+                command += ["-c:a", "libopus", "-b:a", "24000"]
+            elif effective_meta.fmt == "mp3":
+                command += ["-c:a", "libmp3lame", "-q:a", "2"]
+            elif effective_meta.fmt == "flac":
+                command += ["-c:a", "flac"]
+            else:
+                raise ValueError(f"Unsupported format: {effective_meta.fmt}")
+            command.append(str(temporary))
+            self._run_ffmpeg(command, "merging ordered paragraph audio")
+            os.replace(temporary, output_path)
+
+        if effective_meta.fmt == "m4b" and chapter_boundaries:
+            self.add_chapters_to_m4b(
+                output_path,
+                [
+                    {"title": boundary.title, "start": boundary.start, "end": boundary.end}
+                    for boundary in chapter_boundaries
+                ],
+                effective_meta.cover_image,
+            )
 
     def _merge_wavs(
         self,

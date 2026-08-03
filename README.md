@@ -119,6 +119,26 @@ ttsforge read book.epub
 
 ## Usage
 
+### Paragraph-wise conversion
+
+Chapter output remains the default. Use `--conversion-unit paragraph` for one
+retained WAV per spoken paragraph and paragraph-level resume:
+
+```bash
+ttsforge convert book.epub --conversion-unit paragraph
+ttsforge convert book.epub --conversion-unit paragraph --yes
+ttsforge convert book.epub --fresh --conversion-unit paragraph
+```
+
+`--split-mode paragraph` controls internal splitting and batching; it does not choose
+output files or resume granularity. The conversion unit is saved when the workspace
+is created, restored on resume, and cannot be changed without `--fresh`.
+
+Paragraph WAVs remain in `<output-stem>_paragraphs/` with `manifest.json` and
+`playlist.m3u8`. Fixed-width global sequence prefixes make lexical order playback
+order. PyKokoro owns paragraph and boundary pauses; TTSForge-owned interchapter
+silence is stored only in the final paragraph of each non-final selected chapter.
+
 ### Basic Conversion
 
 ```bash

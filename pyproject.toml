@@ -29,7 +29,7 @@ dependencies = [
     "charset-normalizer",
     "platformdirs>=3.0.0",
     # CPU is the supported default provider; backend modules remain lazy.
-    "pykokoro[cpu]>=0.8.0,<0.9",
+    "pykokoro[cpu]>=0.8.1,<0.9",
     "ssmd>=0.8.0,<0.9",
 ]
 classifiers=[

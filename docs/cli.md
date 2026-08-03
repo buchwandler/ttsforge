@@ -153,6 +153,10 @@ ttsforge ssmd inspect FILE --json
 `--split-mode MODE` : Text splitting mode. Choices: `auto`, `line`, `paragraph`,
 `sentence`, `clause`. Default: `auto`.
 
+`--conversion-unit UNIT` : Output and resume granularity: `chapter` (default) or
+`paragraph`. Paragraph mode retains fixed-width-sequence WAVs in
+`<output-stem>_paragraphs/`.
+
 `--resume / --no-resume` : Enable or disable resume capability. Default: enabled.
 
 `--fresh` : Discard any previous progress and start conversion from scratch.
@@ -224,6 +228,20 @@ ttsforge convert book.epub \
     --mixed-language-primary de \
     --mixed-language-allowed de,en-us
 ```
+
+### Paragraph conversion and resume
+
+```bash
+ttsforge convert book.epub --conversion-unit paragraph
+ttsforge convert book.epub --conversion-unit paragraph --yes
+ttsforge convert book.epub --fresh --conversion-unit paragraph
+```
+
+The unit choice is fixed in the workspace. Resume without the option restores the
+saved choice; a conflicting choice requires `--fresh`. `--generate-ssmd` cannot be
+combined with paragraph conversion. Paragraph WAVs are always retained, so
+`--keep-chapters` is redundant in that mode. A complete paragraph workspace can
+rebuild a missing final audiobook without initializing inference.
 
 ## list
 
