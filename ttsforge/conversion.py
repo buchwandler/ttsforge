@@ -53,6 +53,7 @@ from .render_units import (
     UnitRateEstimator,
     map_descriptors,
     reconcile_units,
+    renderer_contract_payload,
     validate_conversion_unit,
 )
 from .short_sentence_config import resolve_short_sentence_config
@@ -238,7 +239,7 @@ class ConversionState:
     enable_short_sentence: bool | None = None
     short_sentence: str | None = None
     lang: str | None = None  # Language override for phonemization
-    use_spacy: bool = True
+    use_spacy: bool | None = None
     spacy_model: str | None = None
     spacy_model_size: str | None = None
     spacy_policy: str = "highest-installed-v1"
@@ -329,7 +330,7 @@ class ConversionState:
             if "lang" not in data:
                 data["lang"] = None
             if "use_spacy" not in data:
-                data["use_spacy"] = True
+                data["use_spacy"] = None
             if "spacy_model" not in data:
                 data["spacy_model"] = None
             if "spacy_model_size" not in data:
@@ -702,7 +703,7 @@ def _ssmd_policy_payload(policy: SSMDPolicy) -> dict[str, Any]:
         "audio_max_duration_s": policy.audio_max_duration_s,
         # This changes when the public renderer contract changes and prevents
         # older artifacts from being reused under a different policy model.
-        "ssmd_contract": "ssmd-0.8-pykokoro-0.7.2",
+            "renderer_contract": renderer_contract_payload(),
     }
 
 
@@ -815,7 +816,7 @@ class ConversionOptions:
     # If None, language is determined from voice prefix
     lang: str | None = None
     # spaCy model policy. None means highest installed compatible model.
-    use_spacy: bool = True
+    use_spacy: bool | None = None
     spacy_model: str | None = None
     spacy_model_size: str | None = None
     # Mixed-language support (auto-detect and handle multiple languages)
@@ -887,7 +888,7 @@ class ConversionOptions:
 
         self.spacy_model = normalize_spacy_model(self.spacy_model)
         self.spacy_model_size = normalize_spacy_model_size(self.spacy_model_size)
-        if not self.use_spacy:
+        if self.use_spacy is False:
             self.spacy_model = None
             self.spacy_model_size = None
         self.conversion_unit = validate_conversion_unit(self.conversion_unit)
@@ -1079,13 +1080,13 @@ class TTSConverter:
                 language=language,
                 request=request,
                 component="sentence",
-                require=request.use_spacy,
+                require=request.strict,
             )
             g2p_selection = resolve_spacy_model_for_component(
                 language=language,
                 request=request,
                 component="g2p",
-                require=request.use_spacy,
+                require=request.strict,
             )
             if sentence_selection.model:
                 sentence[language] = sentence_selection.model
@@ -1517,7 +1518,12 @@ class TTSConverter:
         aggregate_metadata: dict[str, Any] = {}
         sequence_start = 0
         total_chars = sum(chapter.char_count for chapter in chapters)
-        chars_processed = 0
+        chars_processed = sum(
+            unit.char_count
+            for saved_chapter in state.chapters
+            for unit in saved_chapter.units
+            if unit.completed
+        )
 
         for chapter_position, chapter in enumerate(chapters):
             if self._cancelled:
@@ -1566,7 +1572,7 @@ class TTSConverter:
                     filename = canonical_filename(
                         sequence_index=unit.sequence_index + 1,
                         source_chapter_index=unit.source_chapter_index,
-                        paragraph_index=unit.paragraph_index,
+                        paragraph_index=int(unit.chapter_unit_index or 0),
                         kind=unit.kind,
                         chapter_title=chapter.title,
                     )
@@ -1607,6 +1613,12 @@ class TTSConverter:
                         unit.completed = False
                         unit.duration = 0.0
                         unit.content_duration = 0.0
+                chars_processed = sum(
+                    unit.char_count
+                    for saved_chapter in state.chapters
+                    for unit in saved_chapter.units
+                    if unit.completed
+                )
                 chapter_state.completed = not chapter_state.units or all(
                     unit.completed for unit in chapter_state.units
                 )
@@ -1692,7 +1704,7 @@ class TTSConverter:
                             total_chars=total_chars,
                             current_unit=unit.sequence_index + 1,
                             total_units=state.get_total_unit_count(),
-                            current_paragraph=unit.paragraph_index,
+                            current_paragraph=int(unit.chapter_unit_index or 0),
                             paragraphs_in_chapter=len(chapter_state.units),
                             unit_kind=unit.kind,
                             estimated_remaining=estimator.estimate(

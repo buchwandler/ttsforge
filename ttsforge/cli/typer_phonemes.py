@@ -122,7 +122,7 @@ def phonemes_export_command(
         bool | None,
         typer.Option(
             "--use-spacy/--no-spacy",
-            help="Use spaCy for sentence splitting (default: enabled).",
+            help="Use spaCy for sentence splitting; unset uses local auto/fallback.",
         ),
     ] = None,
     chapters: Annotated[

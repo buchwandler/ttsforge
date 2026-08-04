@@ -11,7 +11,19 @@ import pytest
 def test_setuptools_scm_has_intentional_fallback() -> None:
     tomllib = pytest.importorskip("tomllib")
     data = tomllib.loads(Path("pyproject.toml").read_text(encoding="utf-8"))
-    assert data["tool"]["setuptools_scm"]["fallback_version"] != "0.0.0"
+    assert data["tool"]["setuptools_scm"]["fallback_version"] == "0.3.0"
+
+
+def test_pykokoro_release_metadata_uses_published_ssmd_floor() -> None:
+    tomllib = pytest.importorskip("tomllib")
+    pykokoro_pyproject = Path(__file__).parents[2] / "pykokoro" / "pyproject.toml"
+    if not pykokoro_pyproject.is_file():
+        pytest.skip("sibling pykokoro checkout is not present")
+    data = tomllib.loads(pykokoro_pyproject.read_text(encoding="utf-8"))
+    dependencies = data["project"]["dependencies"]
+    assert "ssmd>=0.8.0,<0.9" in dependencies
+    assert not any("ssmd>=0.8.1" in dependency for dependency in dependencies)
+    assert data["tool"]["setuptools_scm"]["fallback_version"] == "0.8.1"
 
 
 def test_built_wheels_do_not_report_zero_version() -> None:

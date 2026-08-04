@@ -159,15 +159,16 @@ ttsforge ssmd inspect FILE --json
 
 `--resume / --no-resume` : Enable or disable resume capability. Default: enabled.
 
-`--use-spacy / --no-spacy` : Enable or disable spaCy in sentence/G2P processing.
-When enabled, automatic selection uses the highest installed compatible local model.
+`--use-spacy / --no-spacy` : Require or disable spaCy in sentence/G2P processing.
+When neither switch is supplied, automatic mode selects the highest compatible
+installed local model and falls back without one. `--use-spacy` is strict.
 
 `--spacy-model PACKAGE` : Require one exact local spaCy package. This is strict and
 overrides `--spacy-model-size`.
 
 `--spacy-model-size sm|md|lg|trf` : Require one exact local spaCy tier. If neither
 this nor `--spacy-model` is set, TTSForge selects the highest installed compatible
-model. Selection never downloads packages.
+model. Selection never downloads packages. Exact package and tier requests are strict.
 
 `--fresh` : Discard any previous progress and start conversion from scratch.
 
@@ -253,10 +254,13 @@ ttsforge convert book.epub --fresh --conversion-unit paragraph
 ```
 
 The unit choice is fixed in the workspace. Resume without the option restores the
-saved choice; a conflicting choice requires `--fresh`. `--generate-ssmd` cannot be
-combined with paragraph conversion. Paragraph WAVs are always retained, so
-`--keep-chapters` is redundant in that mode. A complete paragraph workspace can
-rebuild a missing final audiobook without initializing inference.
+saved choice; a conflicting choice requires `--fresh`. Paragraph mode retains one WAV
+per render unit, including an optional title unit, plus marker sidecars, a manifest,
+and a playlist. `--generate-ssmd` cannot be combined with paragraph conversion.
+Paragraph WAVs are always retained, so `--keep-chapters` is redundant in that mode.
+A complete paragraph workspace can rebuild a missing final audiobook without
+initializing inference. The maintained inspection workflow is
+`python examples/paragraph_manifest.py book_paragraphs/manifest.json`.
 
 ## list
 

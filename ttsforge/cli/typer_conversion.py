@@ -127,7 +127,7 @@ def convert_command(
         bool | None,
         typer.Option(
             "--use-spacy/--no-spacy",
-            help="Use spaCy for sentence/G2P processing (default: enabled).",
+            help="Use spaCy for sentence/G2P processing; unset uses local auto/fallback.",
         ),
     ] = None,
     spacy_model: Annotated[

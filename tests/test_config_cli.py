@@ -9,6 +9,17 @@ from unittest.mock import patch
 from typer.testing import CliRunner
 
 from ttsforge.cli import app
+from ttsforge.constants import DEFAULT_CONFIG
+from ttsforge.utils import parse_config_cli_value, validate_config_value
+
+
+def test_spacy_config_preserves_auto_and_boolean_values() -> None:
+    assert DEFAULT_CONFIG["use_spacy"] is None
+    assert parse_config_cli_value("use_spacy", "auto", None) is None
+    assert parse_config_cli_value("use_spacy", "true", None) is True
+    assert parse_config_cli_value("use_spacy", "false", None) is False
+    validate_config_value("use_spacy", None)
+    validate_config_value("use_spacy", True)
 
 
 def test_config_set_accepts_repeated_pairs_and_dash_prefixed_values(

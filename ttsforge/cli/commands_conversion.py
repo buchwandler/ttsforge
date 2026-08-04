@@ -256,7 +256,9 @@ def convert(  # noqa: C901
 
     config = load_config()
     effective_use_spacy = (
-        use_spacy if use_spacy is not None else bool(config.get("use_spacy", True))
+        use_spacy
+        if use_spacy is not None
+        else config.get("use_spacy", DEFAULT_CONFIG["use_spacy"])
     )
     effective_spacy_model = (
         spacy_model if spacy_model is not None else config.get("spacy_model")
@@ -1438,7 +1440,7 @@ def _show_conversion_summary(
     conversion_unit: str = "chapter",
     paragraphs_dir: Path | None = None,
     lang: str | None = None,
-    use_spacy: bool = True,
+    use_spacy: bool | None = None,
     spacy_model: str | None = None,
     spacy_model_size: str | None = None,
     use_mixed_language: bool = False,
@@ -1479,7 +1481,7 @@ def _show_conversion_summary(
     table.add_row("Model Quality", str(model_quality))
     if lang:
         table.add_row("Phonemization Lang", f"{lang} (override)")
-    if not use_spacy:
+    if use_spacy is False:
         table.add_row("spaCy request", "Disabled")
     elif spacy_model:
         table.add_row("spaCy request", f"Exact {spacy_model}")

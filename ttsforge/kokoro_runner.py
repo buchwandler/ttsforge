@@ -53,7 +53,7 @@ class KokoroRunOptions:
     voice_blend: str | None = None
     voice_database: Any | None = None
     tokenizer_config: Any | None = None  # pykokoro.tokenizer.TokenizerConfig
-    use_spacy: bool = True
+    use_spacy: bool | None = None
     spacy_model: str | None = None
     spacy_model_size: str | None = None
     spacy_policy: str = SPACY_POLICY_VERSION

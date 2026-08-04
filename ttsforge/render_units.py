@@ -21,6 +21,20 @@ PARAGRAPH_OUTPUT_SCHEMA = 1
 PARAGRAPH_MANIFEST_SCHEMA = 1
 UNIT_FILENAME_SCHEMA = 1
 PARAGRAPH_PAUSE_OWNERSHIP = "following-boundary-owned-by-previous-v1"
+PYKOKORO_RENDERER_VERSION = "0.8.1"
+
+
+def renderer_contract_payload() -> dict[str, object]:
+    """Return the renderer contract that gates resumable paragraph audio."""
+    return {
+        "schema": 2,
+        "ssmd": "0.8",
+        "pykokoro": PYKOKORO_RENDERER_VERSION,
+        "paragraph_unit": 1,
+        "pause_ownership": PARAGRAPH_PAUSE_OWNERSHIP,
+        "unit_filename_schema": UNIT_FILENAME_SCHEMA,
+        "paragraph_manifest_schema": PARAGRAPH_MANIFEST_SCHEMA,
+    }
 
 
 def validate_conversion_unit(value: str) -> ConversionUnit:
@@ -71,7 +85,9 @@ def descriptor_from_public(value: object) -> PreparedUnitDescriptor:
     marker_names = tuple(str(item) for item in getattr(value, "marker_names", ()))
     return PreparedUnitDescriptor(
         index=int(value.index),
-        paragraph_index=int(getattr(value, "paragraph_idx", 0)),
+        paragraph_index=int(
+            getattr(value, "paragraph_idx", getattr(value, "paragraph_index", 0))
+        ),
         text=text,
         text_hash=text_hash,
         char_start=char_start,
@@ -93,6 +109,8 @@ class RenderUnitState:
     content_hash: str
     render_fingerprint: str
     char_count: int
+    source_paragraph_index: int | None = None
+    chapter_unit_index: int | None = None
     completed: bool = False
     audio_file: str | None = None
     marker_file: str | None = None
@@ -102,13 +120,24 @@ class RenderUnitState:
     trailing_chapter_silence: float = 0.0
     render_wall_seconds: float = 0.0
 
+    def __post_init__(self) -> None:
+        # ``paragraph_index`` was the original persisted/output ordinal. Keep
+        # accepting it for old callers and state files while exposing the two
+        # distinct meanings explicitly in the current schema.
+        if self.source_paragraph_index is None:
+            self.source_paragraph_index = self.paragraph_index
+        if self.chapter_unit_index is None:
+            self.chapter_unit_index = self.paragraph_index
+        self.paragraph_index = self.chapter_unit_index
+
     def identity(self) -> tuple[object, ...]:
         return (
             self.sequence_index,
             self.unit_index,
             self.chapter_position,
             self.source_chapter_index,
-            self.paragraph_index,
+            self.source_paragraph_index,
+            self.chapter_unit_index,
             self.kind,
             self.content_hash,
             self.render_fingerprint,
@@ -122,6 +151,8 @@ class RenderUnitState:
             "chapter_position": self.chapter_position,
             "source_chapter_index": self.source_chapter_index,
             "paragraph_index": self.paragraph_index,
+            "source_paragraph_index": self.source_paragraph_index,
+            "chapter_unit_index": self.chapter_unit_index,
             "kind": self.kind,
             "content_hash": self.content_hash,
             "render_fingerprint": self.render_fingerprint,
@@ -146,6 +177,8 @@ class RenderUnitState:
                 "chapter_position",
                 "source_chapter_index",
                 "paragraph_index",
+                "source_paragraph_index",
+                "chapter_unit_index",
                 "kind",
                 "content_hash",
                 "render_fingerprint",
@@ -167,6 +200,16 @@ class RenderUnitState:
             chapter_position=int(allowed["chapter_position"]),
             source_chapter_index=int(allowed["source_chapter_index"]),
             paragraph_index=int(allowed["paragraph_index"]),
+            source_paragraph_index=(
+                int(allowed["source_paragraph_index"])
+                if allowed.get("source_paragraph_index") is not None
+                else None
+            ),
+            chapter_unit_index=(
+                int(allowed["chapter_unit_index"])
+                if allowed.get("chapter_unit_index") is not None
+                else None
+            ),
             kind=cast(RenderUnitKind, str(allowed["kind"])),
             content_hash=str(allowed["content_hash"]),
             render_fingerprint=str(allowed["render_fingerprint"]),
@@ -190,14 +233,16 @@ def unit_render_fingerprint(
     descriptor: PreparedUnitDescriptor,
     *,
     chapter_fingerprint: str,
-    paragraph_index: int,
+    source_paragraph_index: int,
+    chapter_unit_index: int,
     kind: RenderUnitKind,
 ) -> str:
     return stable_hash(
         {
             "chapter": chapter_fingerprint,
             "unit_index": descriptor.index,
-            "paragraph_index": paragraph_index,
+            "source_paragraph_index": source_paragraph_index,
+            "chapter_unit_index": chapter_unit_index,
             "kind": kind,
             "text_hash": descriptor.text_hash,
             "char_start": descriptor.char_start,
@@ -221,7 +266,8 @@ def map_descriptors(
     for offset, raw in enumerate(descriptors):
         descriptor = descriptor_from_public(raw)
         is_title = announced_title and offset == 0
-        paragraph_index = 0 if is_title else (offset if announced_title else offset + 1)
+        chapter_unit_index = 0 if is_title else (offset if announced_title else offset + 1)
+        source_paragraph_index = descriptor.paragraph_index
         kind: RenderUnitKind = "title" if is_title else "paragraph"
         mapped.append(
             RenderUnitState(
@@ -229,13 +275,16 @@ def map_descriptors(
                 unit_index=descriptor.index,
                 chapter_position=chapter_position,
                 source_chapter_index=source_chapter_index,
-                paragraph_index=paragraph_index,
+                paragraph_index=chapter_unit_index,
+                source_paragraph_index=source_paragraph_index,
+                chapter_unit_index=chapter_unit_index,
                 kind=kind,
                 content_hash=descriptor.text_hash,
                 render_fingerprint=unit_render_fingerprint(
                     descriptor,
                     chapter_fingerprint=chapter_fingerprint,
-                    paragraph_index=paragraph_index,
+                    source_paragraph_index=source_paragraph_index,
+                    chapter_unit_index=chapter_unit_index,
                     kind=kind,
                 ),
                 char_count=descriptor.char_count,

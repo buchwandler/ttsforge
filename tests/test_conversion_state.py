@@ -88,3 +88,20 @@ def test_conversion_state_backward_compat(tmp_path: Path) -> None:
     assert loaded.pause_paragraph == 0.75
     assert loaded.pause_clause == 0.3
     assert loaded.pause_variance >= 0.01
+
+
+def test_conversion_state_preserves_tri_state_spacy_values(tmp_path: Path) -> None:
+    for value in (None, True, False):
+        state_file = tmp_path / f"state-{value}.json"
+        state_file.write_text(json.dumps({"version": 5, "use_spacy": value}), encoding="utf-8")
+        loaded = ConversionState.load(state_file)
+        assert loaded is not None
+        assert loaded.use_spacy is value
+
+
+def test_conversion_state_missing_spacy_value_defaults_to_auto(tmp_path: Path) -> None:
+    state_file = tmp_path / "legacy-without-policy.json"
+    state_file.write_text(json.dumps({"version": 5}), encoding="utf-8")
+    loaded = ConversionState.load(state_file)
+    assert loaded is not None
+    assert loaded.use_spacy is None

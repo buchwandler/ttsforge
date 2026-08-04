@@ -18,6 +18,8 @@ def _unit() -> RenderUnitState:
         content_hash="content",
         render_fingerprint="render",
         char_count=5,
+        source_paragraph_index=12,
+        chapter_unit_index=0,
         completed=True,
         audio_file="00000001__c000003__p000000__title__TITLE.wav",
         duration=1.0,
@@ -39,6 +41,8 @@ def test_schema5_state_round_trip_and_legacy_chapter_load(tmp_path: Path):
     assert loaded is not None
     assert loaded.conversion_unit == "paragraph"
     assert loaded.chapters[0].units[0].completed
+    assert loaded.chapters[0].units[0].source_paragraph_index == 12
+    assert loaded.chapters[0].units[0].chapter_unit_index == 0
     assert loaded.get_completed_unit_count() == 1
 
     legacy = json.loads(path.read_text(encoding="utf-8"))
@@ -51,3 +55,20 @@ def test_schema5_state_round_trip_and_legacy_chapter_load(tmp_path: Path):
     assert legacy_state.conversion_unit == "chapter"
     assert legacy_state.chapters[0].units == []
 
+
+def test_legacy_unit_index_is_migrated_to_both_paragraph_identities() -> None:
+    unit = RenderUnitState.from_dict(
+        {
+            "sequence_index": 0,
+            "unit_index": 4,
+            "chapter_position": 0,
+            "source_chapter_index": 2,
+            "paragraph_index": 9,
+            "kind": "paragraph",
+            "content_hash": "content",
+            "render_fingerprint": "render",
+            "char_count": 5,
+        }
+    )
+    assert unit.source_paragraph_index == 9
+    assert unit.chapter_unit_index == 9

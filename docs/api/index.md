@@ -18,6 +18,12 @@ path calculations.
 
 **ttsforge.conversion** : Main conversion logic for EPUB to audiobook conversion.
 
+**ttsforge.render_units** : Dependency-light paragraph descriptors, persistent unit
+identity, renderer contracts, and resume reconciliation.
+
+**ttsforge.paragraph_output** : Owned paragraph workspace files, manifests, playlists,
+marker sidecars, and atomic WAV output.
+
 **ttsforge.phoneme_conversion** : Conversion logic for pre-tokenized phoneme files.
 
 ### TTS Backend
@@ -72,22 +78,21 @@ opts = KokoroRunOptions(
     pause_sentence=0.5,
     pause_paragraph=0.9,
     pause_variance=0.05,
+    use_spacy=None,
 )
-runner = KokoroRunner(opts, log=print)
-runner.ensure_ready()
-
-# Generate audio
-result = runner.synthesize(
-    "Hello, world!",
-    lang_code=get_onnx_lang_code("en-us"),
-    pause_mode="tts",
-    is_phonemes=False,
-)
-
-# Save to file
-import soundfile as sf
-sf.write("output.wav", result.audio, result.sample_rate)
-print(result.document_metadata, result.markers)
+with KokoroRunner(opts, log=print) as runner:
+    result = runner.synthesize(
+        "Hello, world!",
+        lang_code=get_onnx_lang_code("en-us"),
+        pause_mode="tts",
+        is_phonemes=False,
+    )
+    try:
+        import soundfile as sf
+        sf.write("output.wav", result.audio, result.sample_rate)
+        print(result.document_metadata, result.markers)
+    finally:
+        result.release_audio()
 ```
 
 ### Converting an EPUB
@@ -104,22 +109,31 @@ options = ConversionOptions(
     output_format="m4b",
     use_gpu=False,
     onnx_provider="nnapi",
+    conversion_unit="paragraph",
+    use_spacy=None,
 )
 
-# Create converter
-converter = TTSConverter(options=options)
-
-# Convert EPUB
-result = converter.convert_epub(
-    epub_path=Path("book.epub"),
-    output_path=Path("book.m4b"),
-)
+with TTSConverter(options=options) as converter:
+    result = converter.convert_epub(
+        epub_path=Path("book.epub"),
+        output_path=Path("book.m4b"),
+    )
 
 if result.success:
     print(f"Created: {result.output_path}")
 else:
     print(f"Error: {result.error_message}")
 ```
+
+### Paragraph units and ownership
+
+Paragraph conversion prepares a chapter once and renders each public PyKokoro unit
+sequentially. Persist or copy the current result before asking for the next one;
+iteration may release the previous result. TTSForge writes each WAV and marker sidecar
+before advancing, rebuilds the manifest and playlist atomically, and records source
+paragraph identity separately from chapter output-unit order. See
+`examples/paragraph_conversion.py`, `examples/paragraph_resume.py`,
+`examples/paragraph_manifest.py`, and `examples/pykokoro_paragraph_units.py`.
 
 ### Working with Phonemes
 

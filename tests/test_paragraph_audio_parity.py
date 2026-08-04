@@ -13,7 +13,7 @@ from ttsforge.render_units import PreparedUnitDescriptor, map_descriptors
 def test_title_and_body_mapping_uses_expected_paragraph_numbers():
     descriptors = [
         PreparedUnitDescriptor(0, 0, "title", "title", 0, 5),
-        PreparedUnitDescriptor(1, 1, "body", "body", 6, 10),
+        PreparedUnitDescriptor(1, 7, "body", "body", 6, 10),
     ]
     titled = map_descriptors(
         descriptors,
@@ -36,6 +36,9 @@ def test_title_and_body_mapping_uses_expected_paragraph_numbers():
         ("paragraph", 1),
     ]
     assert [unit.paragraph_index for unit in plain] == [1, 2]
+    assert [unit.source_paragraph_index for unit in titled] == [0, 7]
+    assert [unit.chapter_unit_index for unit in titled] == [0, 1]
+    assert titled[1].to_dict()["source_paragraph_index"] == 7
 
 
 def test_interchapter_silence_is_inside_final_unit_and_not_reinserted(tmp_path: Path):
@@ -76,4 +79,3 @@ def test_interchapter_silence_is_inside_final_unit_and_not_reinserted(tmp_path: 
     )
     samples, _ = sf.read(output, dtype="float32")
     assert len(samples) == 240 + 480 + 240
-

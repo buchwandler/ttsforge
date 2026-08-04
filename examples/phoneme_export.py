@@ -23,8 +23,6 @@ To convert to audio later:
 
 import json
 
-from ttsforge.onnx_backend import KokoroONNX
-
 from ttsforge.phonemes import PhonemeBook
 
 # Text with heavy punctuation usage (same as punctuation.py)
@@ -58,8 +56,10 @@ LANG = "en-us"  # American English
 
 def main():
     """Export text to phoneme JSON file."""
-    print("Initializing TTS engine...")
-    kokoro = KokoroONNX()
+    from pykokoro.tokenizer import Tokenizer
+
+    print("Initializing tokenizer...")
+    tokenizer = Tokenizer(vocab_version="v1.0")
 
     print("Text with punctuation marks: ; : , . ! ? — … \" ( ) ' '")
     print(f"Voice: {VOICE}")
@@ -83,7 +83,7 @@ def main():
     # Add text with sentence-level splitting for natural segments
     segments = chapter.add_text(
         TEXT,
-        tokenizer=kokoro.tokenizer,
+        tokenizer=tokenizer,
         lang=LANG,
         split_mode="sentence",  # Split on sentence boundaries
     )
@@ -126,9 +126,6 @@ def main():
 
     print("\nTo convert to audio, run:")
     print(f"  ttsforge phonemes convert {output_file} -v {VOICE}")
-
-    kokoro.close()
-
 
 if __name__ == "__main__":
     main()

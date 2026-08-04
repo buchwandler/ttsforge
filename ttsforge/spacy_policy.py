@@ -34,17 +34,32 @@ class SpacyCapabilityError(SpacyPolicyError):
 class SpacyModelRequest:
     """Normalized, availability-independent spaCy selection request."""
 
-    use_spacy: bool = True
+    use_spacy: bool | None = None
     model: str | None = None
     size: SpacyModelSize | None = None
 
     def __post_init__(self) -> None:
-        object.__setattr__(self, "model", normalize_spacy_model(self.model))
-        object.__setattr__(self, "size", normalize_spacy_model_size(self.size))
+        model = normalize_spacy_model(self.model)
+        size = normalize_spacy_model_size(self.size)
+        if self.use_spacy is False:
+            model = None
+            size = None
+        object.__setattr__(self, "model", model)
+        object.__setattr__(self, "size", size)
 
     @property
     def is_automatic(self) -> bool:
-        return self.use_spacy and self.model is None and self.size is None
+        return self.use_spacy is None and self.model is None and self.size is None
+
+    @property
+    def strict(self) -> bool:
+        """Whether this request must resolve a loadable concrete model."""
+        return self.use_spacy is True or self.model is not None or self.size is not None
+
+    @property
+    def disabled(self) -> bool:
+        """Whether this request explicitly disables spaCy."""
+        return self.use_spacy is False
 
     def as_dict(self) -> dict[str, Any]:
         return {
@@ -204,7 +219,7 @@ def resolve_spacy_model_for_component(
     request: SpacyModelRequest,
     component: SpacyComponent,
     include_all: bool = False,
-    require: bool = True,
+    require: bool | None = None,
 ) -> ResolvedSpacyModel:
     """Resolve a loadable model with the capabilities required by a component.
 
@@ -213,7 +228,7 @@ def resolve_spacy_model_for_component(
     filters for the component's public capability contract.
     """
     normalized_language = normalize_language(language)
-    if not request.use_spacy:
+    if request.disabled:
         return ResolvedSpacyModel(
             language=normalized_language,
             model=None,
@@ -225,6 +240,10 @@ def resolve_spacy_model_for_component(
         )
 
     capabilities = _required_capabilities(component, include_all=include_all)
+    # Explicit model/tier requests and ``use_spacy=True`` are always strict.
+    # Automatic ``None`` requests may fall back unless the caller explicitly
+    # asks for a required model.
+    must_require = request.strict or bool(require)
     candidates = _candidate_models(normalized_language, request)
     attempts: list[str] = []
     for candidate in candidates:
@@ -260,7 +279,7 @@ def resolve_spacy_model_for_component(
             diagnostics=(f"selected {selection} model '{candidate}'",),
         )
 
-    if require:
+    if must_require:
         detail = f" Tried: {'; '.join(attempts)}" if attempts else ""
         raise SpacyPolicyError(
             f"No compatible loadable spaCy model is installed for language "

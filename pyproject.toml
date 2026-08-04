@@ -72,7 +72,7 @@ ttsforge = "ttsforge.launcher:main"
 
 [tool.setuptools_scm]
 write_to = "ttsforge/_version.py"
-fallback_version = "0.1.0"
+fallback_version = "0.3.0"
 
 [tool.tox]
 legacy_tox_ini = """

@@ -141,3 +141,32 @@ def test_complete_paragraph_state_supports_merge_only_resume(tmp_path: Path):
     result = second.convert_chapters_resumable(chapters, output, resume=True)
     assert result.success, result.error_message
     assert output.is_file()
+
+
+def test_resumed_progress_includes_retained_unit_characters(tmp_path: Path):
+    output = tmp_path / "book.wav"
+    options = ConversionOptions(
+        output_format="wav",
+        output_dir=tmp_path,
+        title="Book",
+        conversion_unit="paragraph",
+    )
+    chapters = [Chapter(title="One", content="first", index=0)]
+    first = TTSConverter(options)
+    first._runner = FakeRunner()
+    first_result = first.convert_chapters_resumable(chapters, output, resume=False)
+    assert first_result.success
+    assert first_result.paragraphs_dir is not None
+    files = sorted(first_result.paragraphs_dir.glob("*.wav"))
+    assert len(files) == 2
+    files[-1].unlink()
+    files[-1].with_name(files[-1].name + ".markers.json").unlink()
+
+    progress = []
+    resumed = TTSConverter(options, progress_callback=progress.append)
+    resumed._runner = FakeRunner()
+    result = resumed.convert_chapters_resumable(chapters, output, resume=True)
+
+    assert result.success, result.error_message
+    assert progress
+    assert progress[-1].chars_processed == len("Title") + len("Body")

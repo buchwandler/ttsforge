@@ -21,10 +21,26 @@ def test_request_normalizes_without_discovery() -> None:
     assert normalize_spacy_model_size("auto") is None
     assert normalize_spacy_model_size("LG") == "lg"
     assert SpacyModelRequest(model=" en_core_web_lg ", size="sm").as_dict() == {
-        "use_spacy": True,
+        "use_spacy": None,
         "model": "en_core_web_lg",
         "size": "sm",
     }
+
+
+def test_request_policy_distinguishes_auto_strict_and_disabled() -> None:
+    automatic = SpacyModelRequest()
+    strict = SpacyModelRequest(use_spacy=True)
+    explicit = SpacyModelRequest(size="lg")
+    disabled = SpacyModelRequest(use_spacy=False, model="auto", size="lg")
+
+    assert automatic.is_automatic is True
+    assert automatic.strict is False
+    assert automatic.disabled is False
+    assert strict.strict is True
+    assert explicit.strict is True
+    assert disabled.disabled is True
+    assert disabled.model is None
+    assert disabled.size is None
 
 
 def test_invalid_tier_is_rejected_without_model_lookup() -> None:
@@ -110,6 +126,48 @@ def test_exact_model_missing_capability_is_strict(monkeypatch) -> None:
             request=SpacyModelRequest(model="custom"),
             component="name",
         )
+
+
+def test_automatic_request_falls_back_when_no_model_is_installed(monkeypatch) -> None:
+    monkeypatch.setattr(
+        "ttsforge.spacy_policy.resolve_spacy_model",
+        lambda **_: SimpleNamespace(candidates=()),
+    )
+    selection = resolve_spacy_model_for_component(
+        language="en",
+        request=SpacyModelRequest(),
+        component="sentence",
+    )
+    assert selection.model is None
+    assert selection.available is False
+
+
+def test_strict_boolean_and_exact_tier_requests_fail_without_a_model(monkeypatch) -> None:
+    monkeypatch.setattr(
+        "ttsforge.spacy_policy.resolve_spacy_model",
+        lambda **_: SimpleNamespace(candidates=()),
+    )
+    for request in (SpacyModelRequest(use_spacy=True), SpacyModelRequest(size="lg")):
+        with pytest.raises(RuntimeError, match="No compatible loadable spaCy model"):
+            resolve_spacy_model_for_component(
+                language="en",
+                request=request,
+                component="sentence",
+            )
+
+
+def test_disabled_request_does_not_query_model_discovery(monkeypatch) -> None:
+    def fail_if_called(**_):
+        raise AssertionError("disabled policy must not discover models")
+
+    monkeypatch.setattr("ttsforge.spacy_policy.resolve_spacy_model", fail_if_called)
+    selection = resolve_spacy_model_for_component(
+        language="en",
+        request=SpacyModelRequest(use_spacy=False),
+        component="sentence",
+    )
+    assert selection.model is None
+    assert selection.available is False
 
 
 def test_conversion_options_do_not_discover_models(monkeypatch) -> None:

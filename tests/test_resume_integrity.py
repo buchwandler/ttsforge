@@ -28,6 +28,7 @@ from ttsforge.phoneme_conversion import (
 )
 from ttsforge.phonemes import PhonemeBook, PhonemeChapter, PhonemeSegment
 from ttsforge.prosody_support import ProsodyPolicy
+from ttsforge.render_units import renderer_contract_payload
 
 
 def _text_state(
@@ -98,6 +99,15 @@ def test_text_resume_rejects_changed_content_settings_and_legacy_state(
     )
     assert validation.reusable is False
     assert validation.reason == "legacy-state-version"
+
+
+def test_renderer_contract_uses_pykokoro_081_and_rejects_old_identity() -> None:
+    contract = renderer_contract_payload()
+    assert contract["pykokoro"] == "0.8.1"
+    assert contract["schema"] == 2
+    assert contract != {
+        "ssmd_contract": "ssmd-0.8-pykokoro-0.7.2",
+    }
 
 
 def test_text_resume_rejects_missing_or_corrupt_audio(tmp_path: Path) -> None:

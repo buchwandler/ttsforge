@@ -14,7 +14,7 @@ ttsforge requires the following external tools:
 
 ### AudioSig waveform primitives
 
-TTSForge depends directly on AudioSig `>=0.1.1,<0.2` for reusable NumPy waveform
+TTSForge depends directly on AudioSig `>=0.1.2,<0.2` for reusable NumPy waveform
 operations: duration-based silence generation and arithmetic-mean channel downmixing.
 NumPy remains a direct dependency for TTSForge arrays, composition, playback buffers,
 and bounded I/O buffers. SoundFile remains required for audio decoding and encoding;
@@ -25,9 +25,13 @@ AudioSig does not replace TTSForge's file, FFmpeg, or audiobook orchestration la
 The package requires released PyKokoro `>=0.8.1,<0.9`, SSMD `>=0.8.0,<0.9`, and
 phrasplit `>=0.3.4,<0.4`. These releases provide the public spaCy request/resolution
 and memory-ownership APIs used by TTSForge. TTSForge selects only already installed
-spaCy packages and never downloads them automatically.
+spaCy packages and never downloads them automatically. The default `use_spacy=null`
+policy selects the highest compatible local model and falls back to non-spaCy splitting
+when no compatible model is installed. `use_spacy=true`, `--spacy`, an exact package,
+or an exact tier is strict; `use_spacy=false` and `--no-spacy` disable spaCy.
 
-Install one or more compatible local spaCy packages when using the default policy:
+Install one or more compatible local spaCy packages when strict behavior or higher
+quality automatic selection is wanted:
 
 ```bash
 python -m spacy download en_core_web_lg
@@ -109,7 +113,7 @@ pip install sounddevice
 ### spaCy Models (Optional)
 
 spaCy is used for sentence splitting, name extraction, and spaCy-aware phonemization
-workflows:
+workflows. The base conversion does not require a local model in automatic mode:
 
 ```bash
 pip install spacy

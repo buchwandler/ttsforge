@@ -64,6 +64,24 @@ def parse_config_cli_value(key: str, raw: str, default: object) -> object:
     nullable prosody hop length is handled explicitly because its default is
     ``None``.
     """
+    if key == "use_spacy":
+        normalized = raw.strip().lower()
+        if normalized in {"null", "none", "auto", ""}:
+            return None
+        boolean_values = {
+            "true": True,
+            "1": True,
+            "yes": True,
+            "on": True,
+            "false": False,
+            "0": False,
+            "no": False,
+            "off": False,
+        }
+        if normalized not in boolean_values:
+            raise ValueError("must be auto, true, false, 1, 0, yes, no, on, or off")
+        return boolean_values[normalized]
+
     if isinstance(default, bool):
         normalized = raw.strip().lower()
         boolean_values = {
@@ -243,8 +261,8 @@ def validate_config_value(key: str, value: Any) -> None:
         return
 
     if key == "use_spacy":
-        if not isinstance(value, bool):
-            raise ValueError("must be a boolean")
+        if value is not None and not isinstance(value, bool):
+            raise ValueError("must be null/auto or a boolean")
         return
 
     if key == "spacy_model":

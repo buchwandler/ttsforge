@@ -54,14 +54,18 @@ deprecated compatibility alias.
 
 The global spaCy settings apply to audiobook conversion and phoneme export:
 
-- `use_spacy` (boolean, default `true`) enables the spaCy-backed pipeline.
+- `use_spacy` (nullable boolean, default `null`) selects automatic local-model
+  selection with fallback; `true` is strict and `false` disables spaCy.
 - `spacy_model` (nullable string, default `null`) requests one exact local package.
 - `spacy_model_size` (nullable `sm`, `md`, `lg`, or `trf`, default `null`) requests one
   exact tier.
 
 When both model and tier are unset, TTSForge selects the highest installed compatible
-model for each effective language. This is local-only and never downloads a package.
-An exact model wins over a tier, and `use_spacy=false` makes both model fields inactive.
+model for each effective language and falls back without a local model. This is
+local-only and never downloads a package. An exact model or tier is strict even when
+`use_spacy` is null; `use_spacy=false` disables model discovery and makes both model
+fields inactive. The requested tri-state value and concrete sentence/G2P selections
+are persisted as resume identity.
 The conversion summary shows the request; preflight and persisted state show concrete
 sentence/G2P selections. Those selections are part of resume identity.
 
@@ -74,7 +78,17 @@ ttsforge config --set spacy_model null --set spacy_model_size null
 # Preserve a previous medium or small workflow
 ttsforge config --set spacy_model_size md
 ttsforge config --set spacy_model en_core_web_sm
+ttsforge config --set use_spacy true
+ttsforge config --set use_spacy false
+ttsforge config --set use_spacy auto
 ```
+
+Paragraph conversion retains one WAV per render unit: an optional chapter-title unit
+and the spoken paragraph units that follow it. The workspace fixes the conversion
+unit, generation fingerprint, and selected chapters; use `--fresh` to change them.
+Valid units are skipped on resume, and a complete paragraph workspace can rebuild a
+missing final audiobook without ONNX initialization. See `examples/paragraph_manifest.py`
+for inspection-only validation.
 
 Name extraction additionally accepts `--spacy-model`, `--spacy-model-size`, and
 `--language`; its output metadata records the concrete NER-capable package. Existing

@@ -128,7 +128,9 @@ def phonemes_export(
 
     config = load_config()
     effective_use_spacy = (
-        use_spacy if use_spacy is not None else bool(config.get("use_spacy", True))
+        use_spacy
+        if use_spacy is not None
+        else config.get("use_spacy", DEFAULT_CONFIG["use_spacy"])
     )
     effective_model = (
         spacy_model if spacy_model is not None else config.get("spacy_model")
@@ -202,15 +204,16 @@ def phonemes_export(
 
     espeak_lang = LANG_CODE_TO_ONNX.get(language, "en-us")
 
+    spacy_request = SpacyModelRequest(
+        use_spacy=effective_use_spacy,
+        model=effective_model,
+        size=effective_size,
+    )
     spacy_selection = resolve_spacy_model_for_component(
         language=espeak_lang,
-        request=SpacyModelRequest(
-            use_spacy=effective_use_spacy,
-            model=effective_model,
-            size=effective_size,
-        ),
+        request=spacy_request,
         component="sentence",
-        require=effective_use_spacy,
+        require=spacy_request.strict,
     )
 
     # Initialize tokenizer
