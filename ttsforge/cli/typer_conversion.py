@@ -9,7 +9,6 @@ from __future__ import annotations
 from pathlib import Path
 from typing import Annotated, Literal
 
-import click
 import typer
 
 LanguageCode = Literal["a", "b", "d", "e", "f", "h", "i", "j", "p", "z"]
@@ -290,8 +289,7 @@ def convert_command(
         str | None,
         typer.Option(
             "--conversion-unit",
-            click_type=click.Choice(["chapter", "paragraph"]),
-            help="Output and resume unit: chapter or paragraph (fixed at workspace creation).",
+            help="Output and resume unit: chapter (default) or paragraph (fixed at workspace creation).",
         ),
     ] = None,
     resume: Annotated[
