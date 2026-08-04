@@ -9,12 +9,12 @@ from __future__ import annotations
 from pathlib import Path
 from typing import Annotated, Literal
 
+import click
 import typer
 
 LanguageCode = Literal["a", "b", "d", "e", "f", "h", "i", "j", "p", "z"]
 AudioFormat = Literal["wav", "mp3", "flac", "opus", "m4b"]
 ConversionSplitMode = Literal["auto", "line", "paragraph", "sentence", "clause"]
-ConversionUnit = Literal["chapter", "paragraph"]
 ReadSplitMode = Literal["sentence", "paragraph"]
 
 
@@ -287,9 +287,10 @@ def convert_command(
         ),
     ] = None,
     conversion_unit: Annotated[
-        ConversionUnit | None,
+        str | None,
         typer.Option(
             "--conversion-unit",
+            click_type=click.Choice(["chapter", "paragraph"]),
             help="Output and resume unit: chapter or paragraph (fixed at workspace creation).",
         ),
     ] = None,
