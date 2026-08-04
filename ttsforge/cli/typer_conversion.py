@@ -549,7 +549,13 @@ def convert_command(
         ),
     ] = None,
 ) -> None:
-    "Convert an EPUB file to an audiobook.\n\nEPUB_FILE is the path to the EPUB file to convert."
+    """Convert an EPUB file to an audiobook.
+
+    EPUB_FILE is the path to the EPUB file to convert.
+
+    Use --conversion-unit chapter (default) or paragraph to choose output and
+    resume granularity. Paragraph mode retains one WAV per render unit.
+    """
     from .commands_conversion import convert
 
     disable_short_sentence_value = False if disable_short_sentence else None
