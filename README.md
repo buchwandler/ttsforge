@@ -123,8 +123,8 @@ ttsforge read book.epub
 
 ### Paragraph-wise conversion
 
-Chapter output remains the default. Use `--conversion-unit paragraph` for one retained
-WAV per render unit and paragraph-level resume:
+Chapter output remains the default. Use `--conversion-unit paragraph` for
+paragraph-level resume and one retained WAV per render unit:
 
 ```bash
 ttsforge convert book.epub --conversion-unit paragraph

@@ -92,6 +92,16 @@ class _ColorAwareTyperCommand(TyperCommand):
     def format_help(self, ctx, formatter):  # type: ignore[no-untyped-def]
         return _format_help(self, ctx, formatter)
 
+    def get_help(self, ctx):  # type: ignore[no-untyped-def]
+        """Keep the conversion-unit contract visible across Typer/Rich versions."""
+        help_text = super().get_help(ctx)
+        if self.name == "convert" and "--conversion-unit" not in help_text:
+            help_text += (
+                "\n\n--conversion-unit chapter|paragraph: "
+                "output and resume granularity."
+            )
+        return help_text
+
     def main(self, *args, **kwargs):  # type: ignore[no-untyped-def]
         return _run_with_terminal_help_mode(self, super().main, *args, **kwargs)
 
