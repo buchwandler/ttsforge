@@ -27,9 +27,7 @@ from rich.prompt import Confirm
 from rich.table import Table
 
 from ..chapter_selection import parse_chapter_selection
-from ..constants import (
-    LANGUAGE_DESCRIPTIONS,
-)
+from ..constants import DEFAULT_CONFIG, LANGUAGE_DESCRIPTIONS
 from ..spacy_policy import (
     SPACY_POLICY_VERSION,
     SpacyModelRequest,

@@ -23,6 +23,7 @@ from .spacy_policy import (
 
 logger = logging.getLogger(__name__)
 
+
 @functools.lru_cache(maxsize=64)
 def _get_nlp(model_name: str) -> Any:
     """Load and cache the spaCy pipeline."""

@@ -1,16 +1,9 @@
 # Changelog
 
-## [0.3.0] - Unreleased
+## [0.3.1] - 2026-08-04
 
 ### Added
 
-- Added paragraph-wise conversion with workspace-fixed `--conversion-unit paragraph`,
-  optional chapter-title render units, retained ordered WAV files and marker sidecars,
-  atomic manifest/playlist output, per-unit resume, source/output paragraph identity,
-  merge-only recovery, and no-gap final merging on PyKokoro 0.8.1+.
-- Added the PyKokoro 0.8.1 public paragraph-unit ownership contract and automatic
-  spaCy policy: choose the highest compatible installed local model with fallback when
-  absent, while explicit spaCy, package, and tier requests remain strict.
 - Added configurable SSMD prosody method selection with CLI overrides and persistent
   configuration
 - Added EPUB chapter structure and emphasis preservation through epub2text Markdown
@@ -23,7 +16,6 @@
   keeping audible emphasis plain
 - Changed resume handling to invalidate flattened EPUB artifacts when the rendering
   source representation changes
-- Changed paragraph progress accounting to include valid retained units on resume
 
 ### Documentation
 

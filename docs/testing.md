@@ -16,8 +16,8 @@ pytest -q tests/test_pykokoro_unit_contract.py tests/test_conversion_unit_cli.py
 ```
 
 These tests cover public PyKokoro streaming, schema-5 migration, atomic output and
-ownership, unit resume boundaries, filename ordering, timing parity, no-gap merging,
-and merge-only recovery.
+ownership, unit resume boundaries, filename ordering, timing parity, no-gap merging, and
+merge-only recovery.
 
 The maintained coverage policy is staged so high-risk code has explicit gates while the
 repository-wide target can be raised as the large CLI modules are decomposed:

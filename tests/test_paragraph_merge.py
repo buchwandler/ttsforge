@@ -33,4 +33,3 @@ def test_ordered_wav_merge_inserts_no_additional_gaps(tmp_path: Path) -> None:
     assert len(samples) == 480
     assert np.allclose(samples[:240], 0.1, atol=1 / 32768)
     assert np.allclose(samples[240:], 0.2, atol=1 / 32768)
-

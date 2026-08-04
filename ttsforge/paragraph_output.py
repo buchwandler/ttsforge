@@ -25,10 +25,14 @@ SEQUENCE_WIDTH = 8
 CHAPTER_WIDTH = 6
 PARAGRAPH_WIDTH = 6
 MAX_BASENAME_LENGTH = 240
-FINALIZED_WAV_RE = re.compile(
-    r"^\d{8}__c\d{6}__p\d{6}__(?:title|paragraph)__.+\.wav$"
+FINALIZED_WAV_RE = re.compile(r"^\d{8}__c\d{6}__p\d{6}__(?:title|paragraph)__.+\.wav$")
+OWNERSHIP_KEYS = (
+    "schema_version",
+    "workspace_id",
+    "source_hash",
+    "output_path",
+    "conversion_unit",
 )
-OWNERSHIP_KEYS = ("schema_version", "workspace_id", "source_hash", "output_path", "conversion_unit")
 
 
 def paragraph_directory(output_path: Path) -> Path:
@@ -62,7 +66,7 @@ def canonical_filename(
     )
     suffix = _slug(chapter_title)
     available = MAX_BASENAME_LENGTH - len(prefix) - len(".wav")
-    return f"{prefix}{suffix[:max(1, available)]}.wav"
+    return f"{prefix}{suffix[: max(1, available)]}.wav"
 
 
 def is_canonical_filename(name: str) -> bool:
@@ -95,7 +99,8 @@ def ensure_owned_directory(
         existing = json.loads(manifest_path.read_text(encoding="utf-8"))
     except (OSError, json.JSONDecodeError) as exc:
         raise ValueError(
-            f"Refusing paragraph directory without valid TTSForge ownership: {directory}"
+            "Refusing paragraph directory without valid"
+            f" TTSForge ownership: {directory}"
         ) from exc
     if any(existing.get(key) != ownership.get(key) for key in OWNERSHIP_KEYS):
         raise ValueError("Paragraph output ownership belongs to another conversion")
@@ -248,11 +253,13 @@ def rebuild_manifest_and_playlist(
     entries = [
         entry
         for unit in sorted(units, key=lambda item: item.sequence_index)
-        if (entry := _manifest_entry(
-            unit,
-            chapter_title=chapter_titles.get(unit.chapter_position, "Untitled"),
-            directory=directory,
-        ))
+        if (
+            entry := _manifest_entry(
+                unit,
+                chapter_title=chapter_titles.get(unit.chapter_position, "Untitled"),
+                directory=directory,
+            )
+        )
     ]
     manifest: dict[str, object] = {
         **dict(ownership),
@@ -261,14 +268,18 @@ def rebuild_manifest_and_playlist(
         "sample_rate": SAMPLE_RATE,
         "files": entries,
     }
-    atomic_write_json(directory / "manifest.json", manifest, indent=2, ensure_ascii=True)
+    atomic_write_json(
+        directory / "manifest.json", manifest, indent=2, ensure_ascii=True
+    )
     playlist_lines = ["#EXTM3U", *(str(entry["file"]) for entry in entries)]
     playlist = directory / "playlist.m3u8"
     fd, temp_name = tempfile.mkstemp(prefix=".playlist.", suffix=".part", dir=directory)
     os.close(fd)
     temp_path = Path(temp_name)
     try:
-        temp_path.write_text("\n".join(playlist_lines) + "\n", encoding="utf-8", newline="\n")
+        temp_path.write_text(
+            "\n".join(playlist_lines) + "\n", encoding="utf-8", newline="\n"
+        )
         os.replace(temp_path, playlist)
     finally:
         temp_path.unlink(missing_ok=True)

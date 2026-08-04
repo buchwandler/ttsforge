@@ -65,9 +65,9 @@ def test_manifest_playlist_are_ordered_and_owned(tmp_path: Path):
     assert [entry["file"] for entry in manifest["files"]] == sorted(
         entry["file"] for entry in manifest["files"]
     )
-    assert (directory / "playlist.m3u8").read_text(encoding="utf-8").splitlines()[1:] == [
-        entry["file"] for entry in manifest["files"]
-    ]
+    assert (directory / "playlist.m3u8").read_text(encoding="utf-8").splitlines()[
+        1:
+    ] == [entry["file"] for entry in manifest["files"]]
     persisted = json.loads((directory / "manifest.json").read_text(encoding="utf-8"))
     assert persisted["workspace_id"] == "workspace"
     assert not list(directory.glob("*.part"))
@@ -83,4 +83,3 @@ def test_unowned_existing_directory_is_rejected(tmp_path: Path):
         assert "ownership" in str(exc)
     else:  # pragma: no cover
         raise AssertionError("unowned paragraph directory was accepted")
-

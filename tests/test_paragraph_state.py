@@ -34,7 +34,9 @@ def test_schema5_state_round_trip_and_legacy_chapter_load(tmp_path: Path):
         conversion_unit="paragraph",
         paragraphs_dir=str(tmp_path / "Book_paragraphs"),
         source_selection=[2],
-        chapters=[ChapterState(index=2, title="Title", content_hash="hash", units=[_unit()])],
+        chapters=[
+            ChapterState(index=2, title="Title", content_hash="hash", units=[_unit()])
+        ],
     )
     state.save(path)
     loaded = ConversionState.load(path)

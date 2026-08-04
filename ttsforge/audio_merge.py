@@ -256,7 +256,9 @@ class AudioMerger:
         if not ordered:
             raise ValueError("At least one ordered audio input is required")
         if any(item.sequence_index != index for index, item in enumerate(ordered)):
-            raise ValueError("Ordered audio inputs must have contiguous sequence indices")
+            raise ValueError(
+                "Ordered audio inputs must have contiguous sequence indices"
+            )
         for item in ordered:
             if not item.path.is_file():
                 raise FileNotFoundError(item.path)
@@ -285,17 +287,37 @@ class AudioMerger:
                 "".join(f"file {self._concat_path(item.path)}\n" for item in ordered),
                 encoding="utf-8",
             )
-            command = [ffmpeg, "-y", "-f", "concat", "-safe", "0", "-i", str(concat_file)]
+            command = [
+                ffmpeg,
+                "-y",
+                "-f",
+                "concat",
+                "-safe",
+                "0",
+                "-i",
+                str(concat_file),
+            ]
             if effective_meta.fmt == "m4b":
                 if effective_meta.cover_image and effective_meta.cover_image.exists():
                     command += [
-                        "-i", str(effective_meta.cover_image),
-                        "-map", "0:a", "-map", "1", "-c:v", "copy",
-                        "-disposition:v", "attached_pic",
+                        "-i",
+                        str(effective_meta.cover_image),
+                        "-map",
+                        "0:a",
+                        "-map",
+                        "1",
+                        "-c:v",
+                        "copy",
+                        "-disposition:v",
+                        "attached_pic",
                     ]
                 command += [
-                    "-c:a", "aac", "-q:a", "2",
-                    "-movflags", "+faststart+use_metadata_tags",
+                    "-c:a",
+                    "aac",
+                    "-q:a",
+                    "2",
+                    "-movflags",
+                    "+faststart+use_metadata_tags",
                 ]
                 if effective_meta.title:
                     command += ["-metadata", f"title={effective_meta.title}"]
@@ -317,7 +339,11 @@ class AudioMerger:
             self.add_chapters_to_m4b(
                 output_path,
                 [
-                    {"title": boundary.title, "start": boundary.start, "end": boundary.end}
+                    {
+                        "title": boundary.title,
+                        "start": boundary.start,
+                        "end": boundary.end,
+                    }
                     for boundary in chapter_boundaries
                 ],
                 effective_meta.cover_image,

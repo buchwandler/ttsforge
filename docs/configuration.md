@@ -54,8 +54,8 @@ deprecated compatibility alias.
 
 The global spaCy settings apply to audiobook conversion and phoneme export:
 
-- `use_spacy` (nullable boolean, default `null`) selects automatic local-model
-  selection with fallback; `true` is strict and `false` disables spaCy.
+- `use_spacy` (nullable boolean, default `null`) selects automatic local-model selection
+  with fallback; `true` is strict and `false` disables spaCy.
 - `spacy_model` (nullable string, default `null`) requests one exact local package.
 - `spacy_model_size` (nullable `sm`, `md`, `lg`, or `trf`, default `null`) requests one
   exact tier.
@@ -64,10 +64,10 @@ When both model and tier are unset, TTSForge selects the highest installed compa
 model for each effective language and falls back without a local model. This is
 local-only and never downloads a package. An exact model or tier is strict even when
 `use_spacy` is null; `use_spacy=false` disables model discovery and makes both model
-fields inactive. The requested tri-state value and concrete sentence/G2P selections
-are persisted as resume identity.
-The conversion summary shows the request; preflight and persisted state show concrete
-sentence/G2P selections. Those selections are part of resume identity.
+fields inactive. The requested tri-state value and concrete sentence/G2P selections are
+persisted as resume identity. The conversion summary shows the request; preflight and
+persisted state show concrete sentence/G2P selections. Those selections are part of
+resume identity.
 
 Examples:
 
@@ -83,12 +83,12 @@ ttsforge config --set use_spacy false
 ttsforge config --set use_spacy auto
 ```
 
-Paragraph conversion retains one WAV per render unit: an optional chapter-title unit
-and the spoken paragraph units that follow it. The workspace fixes the conversion
-unit, generation fingerprint, and selected chapters; use `--fresh` to change them.
-Valid units are skipped on resume, and a complete paragraph workspace can rebuild a
-missing final audiobook without ONNX initialization. See `examples/paragraph_manifest.py`
-for inspection-only validation.
+Paragraph conversion retains one WAV per render unit: an optional chapter-title unit and
+the spoken paragraph units that follow it. The workspace fixes the conversion unit,
+generation fingerprint, and selected chapters; use `--fresh` to change them. Valid units
+are skipped on resume, and a complete paragraph workspace can rebuild a missing final
+audiobook without ONNX initialization. See `examples/paragraph_manifest.py` for
+inspection-only validation.
 
 Name extraction additionally accepts `--spacy-model`, `--spacy-model-size`, and
 `--language`; its output metadata records the concrete NER-capable package. Existing

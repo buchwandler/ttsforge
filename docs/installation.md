@@ -23,12 +23,12 @@ AudioSig does not replace TTSForge's file, FFmpeg, or audiobook orchestration la
 ### PyKokoro and spaCy model policy
 
 The package requires released PyKokoro `>=0.8.1,<0.9`, SSMD `>=0.8.0,<0.9`, and
-phrasplit `>=0.3.4,<0.4`. These releases provide the public spaCy request/resolution
-and memory-ownership APIs used by TTSForge. TTSForge selects only already installed
-spaCy packages and never downloads them automatically. The default `use_spacy=null`
-policy selects the highest compatible local model and falls back to non-spaCy splitting
-when no compatible model is installed. `use_spacy=true`, `--spacy`, an exact package,
-or an exact tier is strict; `use_spacy=false` and `--no-spacy` disable spaCy.
+phrasplit `>=0.3.4,<0.4`. These releases provide the public spaCy request/resolution and
+memory-ownership APIs used by TTSForge. TTSForge selects only already installed spaCy
+packages and never downloads them automatically. The default `use_spacy=null` policy
+selects the highest compatible local model and falls back to non-spaCy splitting when no
+compatible model is installed. `use_spacy=true`, `--spacy`, an exact package, or an
+exact tier is strict; `use_spacy=false` and `--no-spacy` disable spaCy.
 
 Install one or more compatible local spaCy packages when strict behavior or higher
 quality automatic selection is wanted:
@@ -37,9 +37,9 @@ quality automatic selection is wanted:
 python -m spacy download en_core_web_lg
 ```
 
-With multiple tiers installed, automatic conversion may use a different model after
-an environment change. The concrete model is recorded in state; an incompatible old
-run is rejected rather than mixing model identities. Use an explicit `spacy_model` or
+With multiple tiers installed, automatic conversion may use a different model after an
+environment change. The concrete model is recorded in state; an incompatible old run is
+rejected rather than mixing model identities. Use an explicit `spacy_model` or
 `spacy_model_size` to make a workflow reproducible.
 
 ### ffmpeg (Required for MP3/FLAC/OPUS/M4B)
@@ -183,8 +183,8 @@ pip install "ttsforge[gpu]"
 ttsforge config --set onnx_provider cuda
 ```
 
-For Termux/Android with the declared PyKokoro release and an ONNX Runtime build
-exposing NNAPI or XNNPACK:
+For Termux/Android with the declared PyKokoro release and an ONNX Runtime build exposing
+NNAPI or XNNPACK:
 
 ```bash
 ttsforge config --set model_source github --set onnx_provider nnapi

@@ -28,7 +28,8 @@ with support for 54 neural voices across 9 languages.
 - **EPUB Structure Preservation**: Markdown extraction keeps chapter headings,
   paragraphs, scene breaks, and inline emphasis in generated SSMD
 - **Streaming Read**: Listen to EPUB/text directly with the `read` command
-- **Bounded Paragraph Rendering**: Retain ordered paragraph/title render units for low-memory resume
+- **Bounded Paragraph Rendering**: Retain ordered paragraph/title render units for
+  low-memory resume
 
 ## Installation
 
@@ -53,11 +54,10 @@ pip install "ttsforge[static_ffmpeg]"
 pip install "ttsforge[gpu]"
 ```
 
-TTSForge requires released PyKokoro `>=0.8.1,<0.9`. It uses compact
-segment results and releases completed chapter audio before the next chapter starts.
-Chapter conversion remains chapter-buffered. Paragraph conversion prepares each
-chapter once, renders bounded units sequentially, and retains each unit immediately
-for low-memory resume.
+TTSForge requires released PyKokoro `>=0.8.1,<0.9`. It uses compact segment results and
+releases completed chapter audio before the next chapter starts. Chapter conversion
+remains chapter-buffered. Paragraph conversion prepares each chapter once, renders
+bounded units sequentially, and retains each unit immediately for low-memory resume.
 
 To log opt-in process-memory snapshots during conversion:
 
@@ -73,8 +73,8 @@ native allocator high-water behavior and does not by itself prove a provider lea
 
 - **ffmpeg**: Required for MP3/FLAC/OPUS/M4B output and chapter merging
 - **espeak-ng**: Required for phonemization
-- **spaCy (optional)**: Automatic mode uses the highest compatible installed local
-  model and falls back when none is available; strict requests require a model
+- **spaCy (optional)**: Automatic mode uses the highest compatible installed local model
+  and falls back when none is available; strict requests require a model
 - **sounddevice (optional)**: Required for audio playback (`--play`, `read`)
 
 **Ubuntu/Debian:**
@@ -123,8 +123,8 @@ ttsforge read book.epub
 
 ### Paragraph-wise conversion
 
-Chapter output remains the default. Use `--conversion-unit paragraph` for one
-retained WAV per render unit and paragraph-level resume:
+Chapter output remains the default. Use `--conversion-unit paragraph` for one retained
+WAV per render unit and paragraph-level resume:
 
 ```bash
 ttsforge convert book.epub --conversion-unit paragraph
@@ -133,17 +133,17 @@ ttsforge convert book.epub --fresh --conversion-unit paragraph
 ```
 
 `--split-mode paragraph` controls internal splitting and batching; it does not choose
-output files or resume granularity. The conversion unit is saved when the workspace
-is created, restored on resume, and cannot be changed without `--fresh`.
+output files or resume granularity. The conversion unit is saved when the workspace is
+created, restored on resume, and cannot be changed without `--fresh`.
 
 Paragraph WAVs remain in `<output-stem>_paragraphs/` with `manifest.json`, marker
-sidecars, and `playlist.m3u8`. A render unit is an optional announced chapter-title
-unit followed by spoken paragraph units. Fixed-width global sequence prefixes make
-lexical order playback order. PyKokoro owns paragraph and boundary pauses;
-TTSForge-owned interchapter silence is stored only in the final unit of each
-non-final selected chapter. A complete workspace can be merged without initializing
-ONNX. See [`examples/README.md`](examples/README.md) and the conversion, resume, and
-manifest examples.
+sidecars, and `playlist.m3u8`. A render unit is an optional announced chapter-title unit
+followed by spoken paragraph units. Fixed-width global sequence prefixes make lexical
+order playback order. PyKokoro owns paragraph and boundary pauses; TTSForge-owned
+interchapter silence is stored only in the final unit of each non-final selected
+chapter. A complete workspace can be merged without initializing ONNX. See
+[`examples/README.md`](examples/README.md) and the conversion, resume, and manifest
+examples.
 
 ### Basic Conversion
 
@@ -457,8 +457,8 @@ prosody such as `[fast words]{rate="fast"}` remains active in plain emphasis mod
 
 ### spaCy model policy
 
-TTSForge uses the released PyKokoro/phrasplit model policy for sentence segmentation
-and G2P. When no exact model or tier is configured, it selects the highest installed
+TTSForge uses the released PyKokoro/phrasplit model policy for sentence segmentation and
+G2P. When no exact model or tier is configured, it selects the highest installed
 compatible local model for each effective language; model packages are never downloaded
 by this selection, and conversion falls back without a local model. `--spacy` (or
 `use_spacy=true`), an exact package, and an exact tier are strict; `--no-spacy` is
@@ -708,10 +708,9 @@ ttsforge convert book.epub --gpu
 ttsforge convert book.epub --provider xnnpack
 ```
 
-For Termux/Android, install an ONNX Runtime build compatible with the declared
-PyKokoro release, then use
-`--provider nnapi` or `--provider xnnpack`. Configure GitHub model assets explicitly
-when using that source:
+For Termux/Android, install an ONNX Runtime build compatible with the declared PyKokoro
+release, then use `--provider nnapi` or `--provider xnnpack`. Configure GitHub model
+assets explicitly when using that source:
 
 ```bash
 ttsforge config --set model_source github --set onnx_provider nnapi

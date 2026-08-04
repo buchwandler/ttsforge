@@ -245,10 +245,10 @@ Book_paragraphs/
 └── playlist.m3u8
 ```
 
-The fixed-width global sequence prefix is authoritative, so lexical sorting is
-playback order even with sparse selections or duplicate titles. The chapter and
-paragraph fields are identity metadata; the sanitized slug does not affect ordering.
-Temporary files never use a `.wav` suffix.
+The fixed-width global sequence prefix is authoritative, so lexical sorting is playback
+order even with sparse selections or duplicate titles. The chapter and paragraph fields
+are identity metadata; the sanitized slug does not affect ordering. Temporary files
+never use a `.wav` suffix.
 
 During conversion, ttsforge creates a hidden work directory to store chapter files and
 state information:

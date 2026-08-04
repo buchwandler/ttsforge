@@ -93,7 +93,9 @@ def test_conversion_state_backward_compat(tmp_path: Path) -> None:
 def test_conversion_state_preserves_tri_state_spacy_values(tmp_path: Path) -> None:
     for value in (None, True, False):
         state_file = tmp_path / f"state-{value}.json"
-        state_file.write_text(json.dumps({"version": 5, "use_spacy": value}), encoding="utf-8")
+        state_file.write_text(
+            json.dumps({"version": 5, "use_spacy": value}), encoding="utf-8"
+        )
         loaded = ConversionState.load(state_file)
         assert loaded is not None
         assert loaded.use_spacy is value

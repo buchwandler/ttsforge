@@ -267,8 +267,10 @@ def resolve_spacy_model_for_component(
                     f"capability for {component} extraction."
                 )
             continue
-        selection = "explicit model" if request.model else (
-            f"exact {request.size} tier" if request.size else "highest installed"
+        selection = (
+            "explicit model"
+            if request.model
+            else (f"exact {request.size} tier" if request.size else "highest installed")
         )
         return ResolvedSpacyModel(
             language=normalized_language,

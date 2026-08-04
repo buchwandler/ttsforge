@@ -216,15 +216,21 @@ class RenderUnitState:
             char_count=int(allowed["char_count"]),
             completed=bool(allowed.get("completed", False)),
             audio_file=(
-                str(allowed["audio_file"]) if allowed.get("audio_file") is not None else None
+                str(allowed["audio_file"])
+                if allowed.get("audio_file") is not None
+                else None
             ),
             marker_file=(
-                str(allowed["marker_file"]) if allowed.get("marker_file") is not None else None
+                str(allowed["marker_file"])
+                if allowed.get("marker_file") is not None
+                else None
             ),
             sample_rate=int(allowed.get("sample_rate", 24000)),
             duration=float(allowed.get("duration", 0.0)),
             content_duration=float(allowed.get("content_duration", 0.0)),
-            trailing_chapter_silence=float(allowed.get("trailing_chapter_silence", 0.0)),
+            trailing_chapter_silence=float(
+                allowed.get("trailing_chapter_silence", 0.0)
+            ),
             render_wall_seconds=float(allowed.get("render_wall_seconds", 0.0)),
         )
 
@@ -266,7 +272,9 @@ def map_descriptors(
     for offset, raw in enumerate(descriptors):
         descriptor = descriptor_from_public(raw)
         is_title = announced_title and offset == 0
-        chapter_unit_index = 0 if is_title else (offset if announced_title else offset + 1)
+        chapter_unit_index = (
+            0 if is_title else (offset if announced_title else offset + 1)
+        )
         source_paragraph_index = descriptor.paragraph_index
         kind: RenderUnitKind = "title" if is_title else "paragraph"
         mapped.append(
@@ -359,7 +367,7 @@ class UnitRateEstimator:
     def add(self, wall_seconds: float, char_count: int) -> None:
         if wall_seconds >= 0 and char_count >= 0:
             self.observations.append((wall_seconds, char_count))
-            del self.observations[:-self.max_observations]
+            del self.observations[: -self.max_observations]
 
     def estimate(self, remaining_units: int, remaining_chars: int) -> float:
         if remaining_units <= 0:

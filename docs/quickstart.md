@@ -141,13 +141,13 @@ Use paragraph conversion for visible, independently resumable render-unit WAV ar
 ttsforge convert mybook.epub --conversion-unit paragraph --yes
 ```
 
-This creates `mybook_paragraphs/` with fixed-width globally sequenced WAV names,
-marker sidecars, `manifest.json`, and `playlist.m3u8`. A render unit is an optional
-announced chapter title followed by a spoken paragraph. The files sort in playback
-order and remain after the merged audiobook succeeds. `--split-mode paragraph` is a
-separate internal batching setting. The saved conversion unit, selected chapters,
-and generation fingerprint cannot be changed during resume; use `--fresh` to start
-a new workspace. A complete workspace supports merge-only recovery without ONNX.
+This creates `mybook_paragraphs/` with fixed-width globally sequenced WAV names, marker
+sidecars, `manifest.json`, and `playlist.m3u8`. A render unit is an optional announced
+chapter title followed by a spoken paragraph. The files sort in playback order and
+remain after the merged audiobook succeeds. `--split-mode paragraph` is a separate
+internal batching setting. The saved conversion unit, selected chapters, and generation
+fingerprint cannot be changed during resume; use `--fresh` to start a new workspace. A
+complete workspace supports merge-only recovery without ONNX.
 
 Inspect the retained output without loading TTS models:
 

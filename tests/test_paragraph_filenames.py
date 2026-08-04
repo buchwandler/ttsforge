@@ -36,4 +36,3 @@ def test_title_and_unicode_duplicate_titles_keep_identity_prefix():
     )
     assert "__p000000__title__ETE_SEVEN.wav" == first[first.index("__p") :]
     assert first != second
-

@@ -142,7 +142,9 @@ def test_automatic_request_falls_back_when_no_model_is_installed(monkeypatch) ->
     assert selection.available is False
 
 
-def test_strict_boolean_and_exact_tier_requests_fail_without_a_model(monkeypatch) -> None:
+def test_strict_boolean_and_exact_tier_requests_fail_without_a_model(
+    monkeypatch,
+) -> None:
     monkeypatch.setattr(
         "ttsforge.spacy_policy.resolve_spacy_model",
         lambda **_: SimpleNamespace(candidates=()),

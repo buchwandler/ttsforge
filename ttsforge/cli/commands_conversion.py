@@ -344,13 +344,19 @@ def convert(  # noqa: C901
                 else config.get("mixed_language_confidence", 0.7)
             ),
             silence_between_chapters=(
-                silence if silence is not None else config.get("silence_between_chapters", 2.0)
+                silence
+                if silence is not None
+                else config.get("silence_between_chapters", 2.0)
             ),
             pause_clause=(
-                pause_clause if pause_clause is not None else config.get("pause_clause", 0.3)
+                pause_clause
+                if pause_clause is not None
+                else config.get("pause_clause", 0.3)
             ),
             pause_sentence=(
-                pause_sentence if pause_sentence is not None else config.get("pause_sentence", 0.5)
+                pause_sentence
+                if pause_sentence is not None
+                else config.get("pause_sentence", 0.5)
             ),
             pause_paragraph=(
                 pause_paragraph
@@ -512,9 +518,12 @@ def convert(  # noqa: C901
         saved_unit = validate_conversion_unit(resume_candidate.state.conversion_unit)
         if conversion_unit is not None and conversion_unit != saved_unit:
             console.print(
-                f"[red]This conversion workspace was created in {saved_unit} mode.[/red]\n"
-                "The conversion unit cannot be changed while resuming.\n"
-                f"Use --fresh --conversion-unit {conversion_unit} to start a new conversion."
+                f"[red]This conversion workspace was created"
+                f" in {saved_unit} mode.[/red]\n"
+                "The conversion unit cannot be changed"
+                " while resuming.\n"
+                f"Use --fresh --conversion-unit"
+                f" {conversion_unit} to start a new conversion."
             )
             raise typer.Exit(code=2)
         effective_conversion_unit = saved_unit
@@ -526,7 +535,11 @@ def convert(  # noqa: C901
     elif yes:
         effective_conversion_unit = "chapter"
     else:
-        answer = console.input("Conversion unit [chapter/paragraph] (chapter): ").strip().lower()
+        answer = (
+            console.input("Conversion unit [chapter/paragraph] (chapter): ")
+            .strip()
+            .lower()
+        )
         try:
             effective_conversion_unit = validate_conversion_unit(answer or "chapter")
         except ValueError as exc:
@@ -535,7 +548,8 @@ def convert(  # noqa: C901
 
     if generate_ssmd_only and effective_conversion_unit == "paragraph":
         console.print(
-            "[red]--generate-ssmd cannot be combined with --conversion-unit paragraph[/red]"
+            "[red]--generate-ssmd cannot be combined"
+            " with --conversion-unit paragraph[/red]"
         )
         raise typer.Exit(code=2)
 
@@ -607,8 +621,10 @@ def convert(  # noqa: C901
     if resume_candidate is not None and not fresh and output is not None:
         if output.resolve() != resume_candidate.saved_output.resolve():
             console.print(
-                "[red]The output path cannot change while resuming this conversion workspace.[/red]\n"
-                "Use --fresh to start a new conversion at the requested output path."
+                "[red]The output path cannot change while"
+                " resuming this conversion workspace.[/red]\n"
+                "Use --fresh to start a new conversion"
+                " at the requested output path."
             )
             raise typer.Exit(code=2)
 
@@ -872,7 +888,9 @@ def convert(  # noqa: C901
                 f"{state.get_total_unit_count()}"
             )
         else:
-            console.print(f"  Conversion unit: Chapter\n  Progress: {completed}/{total} complete")
+            console.print(
+                f"  Conversion unit: Chapter\n  Progress: {completed}/{total} complete"
+            )
         if next_chapter_num:
             console.print(
                 f"  Next: chapter {next_chapter_num} \u2014 {next_chapter_title}"
@@ -992,7 +1010,9 @@ def convert(  # noqa: C901
             total = prog.total_chapters
             current_chapter_text = f"Chapter {ch}/{total}: {prog.chapter_name}"
             if prog.unit_kind == "title":
-                current_chapter_text = f"Chapter {ch}/{total} · Title: {prog.chapter_name}"
+                current_chapter_text = (
+                    f"Chapter {ch}/{total} · Title: {prog.chapter_name}"
+                )
             elif prog.unit_kind:
                 current_chapter_text = (
                     f"Chapter {ch}/{total} · Paragraph {prog.current_paragraph}/"

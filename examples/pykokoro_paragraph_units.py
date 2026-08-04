@@ -9,7 +9,7 @@ from pathlib import Path
 import numpy as np
 import soundfile as sf
 
-from ttsforge.kokoro_runner import KokoroRunOptions, KokoroRunner
+from ttsforge.kokoro_runner import KokoroRunner, KokoroRunOptions
 
 DOCUMENT = """---
 title: Unit boundary demo
@@ -27,7 +27,9 @@ This is the second paragraph ...500ms with an explicit break.
 
 def main() -> int:
     parser = argparse.ArgumentParser(description=__doc__)
-    parser.add_argument("-o", "--output-dir", type=Path, default=Path("paragraph_units"))
+    parser.add_argument(
+        "-o", "--output-dir", type=Path, default=Path("paragraph_units")
+    )
     parser.add_argument("--voice", default="af_heart")
     args = parser.parse_args()
 
@@ -44,7 +46,9 @@ def main() -> int:
     )
     args.output_dir.mkdir(parents=True, exist_ok=True)
 
-    with KokoroRunner(options, log=lambda message, level="info": print(f"[{level}] {message}")) as runner:
+    with KokoroRunner(
+        options, log=lambda message, level="info": print(f"[{level}] {message}")
+    ) as runner:
         with runner.prepare_paragraph_units(
             DOCUMENT,
             lang_code="en-us",

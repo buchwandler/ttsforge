@@ -273,7 +273,9 @@ class ConversionState:
             }
             for chapter_data in data.get("chapters", []):
                 chapter_values = {
-                    key: value for key, value in chapter_data.items() if key in chapter_fields
+                    key: value
+                    for key, value in chapter_data.items()
+                    if key in chapter_fields
                 }
                 chapter_values["units"] = [
                     RenderUnitState.from_dict(unit)
@@ -438,10 +440,7 @@ class ConversionState:
 
     def get_completed_unit_count(self) -> int:
         return sum(
-            1
-            for chapter in self.chapters
-            for unit in chapter.units
-            if unit.completed
+            1 for chapter in self.chapters for unit in chapter.units if unit.completed
         )
 
     def get_total_unit_count(self) -> int:
@@ -703,7 +702,7 @@ def _ssmd_policy_payload(policy: SSMDPolicy) -> dict[str, Any]:
         "audio_max_duration_s": policy.audio_max_duration_s,
         # This changes when the public renderer contract changes and prevents
         # older artifacts from being reused under a different policy model.
-            "renderer_contract": renderer_contract_payload(),
+        "renderer_contract": renderer_contract_payload(),
     }
 
 
@@ -1342,7 +1341,10 @@ class TTSConverter:
                     sample_rate=unit.sample_rate,
                     expected_duration=unit.duration if unit.duration else None,
                 )
-                if unit.marker_file and not owned_path(directory, unit.marker_file).is_file():
+                if (
+                    unit.marker_file
+                    and not owned_path(directory, unit.marker_file).is_file()
+                ):
                     return False
             except (OSError, ValueError):
                 return False
@@ -1358,7 +1360,9 @@ class TTSConverter:
                 if unit.marker_file:
                     marker_path = owned_path(directory, unit.marker_file)
                     try:
-                        marker_data = json.loads(marker_path.read_text(encoding="utf-8"))
+                        marker_data = json.loads(
+                            marker_path.read_text(encoding="utf-8")
+                        )
                     except (OSError, json.JSONDecodeError):
                         marker_data = {}
                     for marker in marker_data.get("markers", []):
@@ -1394,7 +1398,8 @@ class TTSConverter:
         if not all_units or not self._paragraph_units_valid(all_units, paragraph_dir):
             return ConversionResult(
                 success=False,
-                error_message="Paragraph output contains incomplete or invalid unit files",
+                error_message="Paragraph output contains"
+                " incomplete or invalid unit files",
                 chapters_dir=work_dir,
                 conversion_unit="paragraph",
                 paragraphs_dir=paragraph_dir,
@@ -1428,12 +1433,16 @@ class TTSConverter:
             if not chapter.units:
                 continue
             chapter_start = timeline
-            content_end = timeline + sum(unit.content_duration for unit in chapter.units)
+            content_end = timeline + sum(
+                unit.content_duration for unit in chapter.units
+            )
             timeline += sum(unit.duration for unit in chapter.units)
             boundaries.append(
                 ChapterBoundary(
                     chapter_position=chapter.units[0].chapter_position,
-                    title=chapter_titles.get(chapter.units[0].chapter_position, chapter.title),
+                    title=chapter_titles.get(
+                        chapter.units[0].chapter_position, chapter.title
+                    ),
                     start=chapter_start,
                     end=content_end,
                 )
@@ -1454,7 +1463,11 @@ class TTSConverter:
         aggregate_markers = self._paragraph_marker_records(state, paragraph_dir)
         atomic_write_json(
             output_path.with_suffix(output_path.suffix + ".markers.json"),
-            {"schema_version": 1, "sample_rate": SAMPLE_RATE, "markers": aggregate_markers},
+            {
+                "schema_version": 1,
+                "sample_rate": SAMPLE_RATE,
+                "markers": aggregate_markers,
+            },
             indent=2,
             ensure_ascii=True,
         )
@@ -1488,11 +1501,17 @@ class TTSConverter:
             state=state, output_path=output_path, work_dir=work_dir
         )
         ensure_owned_directory(paragraph_dir, ownership=ownership)
-        chapter_titles = {position: chapter.title for position, chapter in enumerate(chapters)}
+        chapter_titles = {
+            position: chapter.title for position, chapter in enumerate(chapters)
+        }
         all_units = [unit for chapter in state.chapters for unit in chapter.units]
 
         # Merge-only recovery deliberately does not initialize PyKokoro.
-        if state.is_complete() and all_units and self._paragraph_units_valid(all_units, paragraph_dir):
+        if (
+            state.is_complete()
+            and all_units
+            and self._paragraph_units_valid(all_units, paragraph_dir)
+        ):
             return self._merge_paragraph_state(
                 state=state,
                 output_path=output_path,
@@ -1503,7 +1522,9 @@ class TTSConverter:
 
         self._init_runner()
         assert self._runner is not None
-        effective_lang = self.options.lang if self.options.lang else self.options.language
+        effective_lang = (
+            self.options.lang if self.options.lang else self.options.language
+        )
         lang_code = get_onnx_lang_code(effective_lang)
         resolver_root = work_dir
         resolver = LocalSSMDAudioResolver(
@@ -1555,7 +1576,9 @@ class TTSConverter:
             with self._runner.prepare_paragraph_units(
                 ssmd_content,
                 lang_code=lang_code,
-                pause_mode=cast(Literal["tts", "manual", "auto"], self.options.pause_mode),
+                pause_mode=cast(
+                    Literal["tts", "manual", "auto"], self.options.pause_mode
+                ),
                 ssmd_policy=self.options.ssmd_policy,
                 audio_resolver=resolver,
             ) as prepared:
@@ -1565,7 +1588,9 @@ class TTSConverter:
                     source_chapter_index=chapter.index,
                     chapter_fingerprint=chapter_state.render_fingerprint,
                     sequence_start=sequence_start,
-                    announced_title=(self.options.announce_chapters and not chapter.is_ssmd),
+                    announced_title=(
+                        self.options.announce_chapters and not chapter.is_ssmd
+                    ),
                     sample_rate=SAMPLE_RATE,
                 )
                 for unit in planned:
@@ -1601,9 +1626,12 @@ class TTSConverter:
                             sample_rate=unit.sample_rate,
                             expected_duration=unit.duration if unit.duration else None,
                         )
-                        if unit.marker_file and not owned_path(
-                            paragraph_dir, unit.marker_file
-                        ).is_file():
+                        if (
+                            unit.marker_file
+                            and not owned_path(
+                                paragraph_dir, unit.marker_file
+                            ).is_file()
+                        ):
                             raise ValueError("marker sidecar missing")
                     except (OSError, ValueError):
                         first_invalid = index
@@ -1682,7 +1710,9 @@ class TTSConverter:
                         )
                         unit.render_wall_seconds = time.monotonic() - started
                         unit.completed = True
-                        chapter_state.completed = all(item.completed for item in chapter_state.units)
+                        chapter_state.completed = all(
+                            item.completed for item in chapter_state.units
+                        )
                         state.save(state_file)
                         rebuild_manifest_and_playlist(
                             paragraph_dir,
@@ -1733,7 +1763,10 @@ class TTSConverter:
                         try:
                             result.release_audio()
                         except Exception as exc:
-                            self.log(f"Failed to release PyKokoro unit audio: {exc}", "warning")
+                            self.log(
+                                f"Failed to release PyKokoro unit audio: {exc}",
+                                "warning",
+                            )
                 aggregate_metadata.update(prepared.document_metadata)
             sequence_start += len(chapter_state.units)
             chapter_state.completed = not chapter_state.units or all(
@@ -1887,7 +1920,10 @@ class TTSConverter:
         if output_path is not None and state.output_file:
             saved_output = Path(state.output_file)
             if saved_output.resolve() != output_path.resolve():
-                self.log("Output path changed, use --fresh to start a new conversion", "warning")
+                self.log(
+                    "Output path changed, use --fresh to start a new conversion",
+                    "warning",
+                )
                 return ResumeValidation(reusable=False, reason="output-path-changed")
         if state.onnx_provider is None:
             self.log(
@@ -2201,7 +2237,10 @@ class TTSConverter:
                     ),
                     started_at=time.strftime("%Y-%m-%d %H:%M:%S"),
                     paragraphs_dir=(
-                        str(output_path.with_suffix("" ).parent / f"{output_path.stem}_paragraphs")
+                        str(
+                            output_path.with_suffix("").parent
+                            / f"{output_path.stem}_paragraphs"
+                        )
                         if self.options.conversion_unit == "paragraph"
                         else None
                     ),

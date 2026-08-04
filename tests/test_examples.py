@@ -5,7 +5,6 @@ from __future__ import annotations
 import importlib
 from pathlib import Path
 
-
 ROOT = Path(__file__).resolve().parents[1]
 EXAMPLES = ROOT / "examples"
 MAINTAINED = (

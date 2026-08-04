@@ -38,7 +38,8 @@ class TestTokenizerConfig:
         """Test default config values."""
         config = TokenizerConfig()
         assert config.use_espeak_fallback is True
-        assert config.use_spacy is True
+        # pykokoro 0.8.2 uses None for automatic local-model selection.
+        assert config.use_spacy is None
         assert config.use_dictionary is True
 
     def test_custom_values(self):
@@ -353,7 +354,7 @@ class TestCreateTokenizer:
         """Test creating tokenizer with defaults."""
         tokenizer = create_tokenizer()
         assert tokenizer.config.use_espeak_fallback is True
-        assert tokenizer.config.use_spacy is True
+        assert tokenizer.config.use_spacy is None
 
     def test_create_custom(self):
         """Test creating tokenizer with custom settings."""
