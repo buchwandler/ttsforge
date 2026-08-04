@@ -80,6 +80,12 @@ def parse_config_cli_value(key: str, raw: str, default: object) -> object:
             raise ValueError("must be true, false, 1, 0, yes, no, on, or off")
         return boolean_values[normalized]
 
+    if key in {"spacy_model", "spacy_model_size"}:
+        normalized = raw.strip()
+        if normalized.lower() in {"null", "none", "auto", ""}:
+            return None
+        return normalized
+
     if key == "prosody_hop_length":
         normalized = raw.strip().lower()
         if normalized in {"null", "none"}:
@@ -236,6 +242,23 @@ def validate_config_value(key: str, value: Any) -> None:
             )
         return
 
+    if key == "use_spacy":
+        if not isinstance(value, bool):
+            raise ValueError("must be a boolean")
+        return
+
+    if key == "spacy_model":
+        if value is not None and not isinstance(value, str):
+            raise ValueError("must be a model package string or null")
+        return
+
+    if key == "spacy_model_size":
+        if value is not None:
+            from .spacy_policy import normalize_spacy_model_size
+
+            normalize_spacy_model_size(value)
+        return
+
     if key in _BOOLEAN_CONFIG_KEYS:
         if not isinstance(value, bool):
             raise ValueError("must be a boolean")
@@ -378,6 +401,11 @@ def resolve_conversion_defaults(
         "use_gpu": resolve("use_gpu", "use_gpu", "use_gpu"),
         "onnx_provider": resolve("onnx_provider", "onnx_provider", "onnx_provider"),
         "lang": resolve("lang", "phonemization_lang", "phonemization_lang"),
+        "use_spacy": resolve("use_spacy", "use_spacy", "use_spacy"),
+        "spacy_model": resolve("spacy_model", "spacy_model", "spacy_model"),
+        "spacy_model_size": resolve(
+            "spacy_model_size", "spacy_model_size", "spacy_model_size"
+        ),
     }
 
 

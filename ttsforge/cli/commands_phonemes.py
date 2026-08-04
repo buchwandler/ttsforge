@@ -30,6 +30,11 @@ from ..chapter_selection import parse_chapter_selection
 from ..constants import (
     LANGUAGE_DESCRIPTIONS,
 )
+from ..spacy_policy import (
+    SPACY_POLICY_VERSION,
+    SpacyModelRequest,
+    resolve_spacy_model_for_component,
+)
 from ..text_postprocessing import resolve_text_postprocess_options
 from ..utils import (
     format_chapters_range,
@@ -86,6 +91,9 @@ def phonemes_export(
     output: Path | None,
     readable: bool,
     language: str,
+    spacy_model: str | None,
+    spacy_model_size: str | None,
+    use_spacy: bool | None,
     chapters: str | None,
     vocab_version: str,
     split_mode: str,
@@ -119,6 +127,17 @@ def phonemes_export(
     from ..phonemes import PhonemeBook
 
     config = load_config()
+    effective_use_spacy = (
+        use_spacy if use_spacy is not None else bool(config.get("use_spacy", True))
+    )
+    effective_model = (
+        spacy_model if spacy_model is not None else config.get("spacy_model")
+    )
+    effective_size = (
+        spacy_model_size
+        if spacy_model_size is not None
+        else config.get("spacy_model_size")
+    )
     text_postprocess_options = resolve_text_postprocess_options(
         config,
         subchapter_markers=subchapter_markers,
@@ -183,6 +202,17 @@ def phonemes_export(
 
     espeak_lang = LANG_CODE_TO_ONNX.get(language, "en-us")
 
+    spacy_selection = resolve_spacy_model_for_component(
+        language=espeak_lang,
+        request=SpacyModelRequest(
+            use_spacy=effective_use_spacy,
+            model=effective_model,
+            size=effective_size,
+        ),
+        component="sentence",
+        require=effective_use_spacy,
+    )
+
     # Initialize tokenizer
     console.print(f"[dim]Initializing tokenizer (vocab: {vocab_version})...[/dim]")
     try:
@@ -202,6 +232,14 @@ def phonemes_export(
             "split_mode": split_mode,
             "chapters_range": chapters_range,
             "total_source_chapters": len(epub_chapters),
+            "spacy": {
+                "policy": SPACY_POLICY_VERSION,
+                "requested_model": effective_model,
+                "requested_size": effective_size,
+                "use_spacy": effective_use_spacy,
+                "language": espeak_lang,
+                "resolved_sentence_model": spacy_selection.model,
+            },
         },
     )
 
@@ -241,6 +279,10 @@ def phonemes_export(
                     lang=espeak_lang,
                     split_mode=split_mode,
                     max_chars=max_chars,
+                    language=espeak_lang,
+                    language_model=effective_model,
+                    spacy_model_size=effective_size,
+                    use_spacy=effective_use_spacy,
                     warn_callback=warn_callback,
                 )
 

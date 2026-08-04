@@ -159,6 +159,16 @@ ttsforge ssmd inspect FILE --json
 
 `--resume / --no-resume` : Enable or disable resume capability. Default: enabled.
 
+`--use-spacy / --no-spacy` : Enable or disable spaCy in sentence/G2P processing.
+When enabled, automatic selection uses the highest installed compatible local model.
+
+`--spacy-model PACKAGE` : Require one exact local spaCy package. This is strict and
+overrides `--spacy-model-size`.
+
+`--spacy-model-size sm|md|lg|trf` : Require one exact local spaCy tier. If neither
+this nor `--spacy-model` is set, TTSForge selects the highest installed compatible
+model. Selection never downloads packages.
+
 `--fresh` : Discard any previous progress and start conversion from scratch.
 
 `--generate-ssmd` : Generate only SSMD files without creating audio (for manual
@@ -192,6 +202,11 @@ detection (e.g., `de,en-us`). Required when `--use-mixed-language` is enabled.
 `--mixed-language-confidence FLOAT` : Detection confidence threshold for mixed-language
 mode (0.0-1.0). Default: `0.7`. Higher values require more confidence for language
 switches.
+
+Phoneme export exposes the same spaCy request options and stores the concrete sentence
+model in export metadata. Name extraction exposes `--spacy-model`,
+`--spacy-model-size`, and `--language`; it validates that the selected package supports
+PERSON NER (and POS tagging when `--include-all` is used).
 
 ### Examples
 

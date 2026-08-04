@@ -184,6 +184,9 @@ def convert(  # noqa: C901
     voice: str | None,
     language: str | None,
     lang: str | None,
+    use_spacy: bool | None,
+    spacy_model: str | None,
+    spacy_model_size: str | None,
     speed: float | None,
     use_gpu: bool | None,
     provider: str | None,
@@ -252,6 +255,17 @@ def convert(  # noqa: C901
         )
 
     config = load_config()
+    effective_use_spacy = (
+        use_spacy if use_spacy is not None else bool(config.get("use_spacy", True))
+    )
+    effective_spacy_model = (
+        spacy_model if spacy_model is not None else config.get("spacy_model")
+    )
+    effective_spacy_model_size = (
+        spacy_model_size
+        if spacy_model_size is not None
+        else config.get("spacy_model_size")
+    )
     effective_detect_emphasis = (
         detect_emphasis
         if detect_emphasis is not None
@@ -729,6 +743,9 @@ def convert(  # noqa: C901
                 else config.get("silence_between_chapters", 2.0)
             ),
             lang=(lang if lang is not None else config.get("phonemization_lang")),
+            use_spacy=effective_use_spacy,
+            spacy_model=effective_spacy_model,
+            spacy_model_size=effective_spacy_model_size,
             use_mixed_language=(
                 use_mixed_language
                 if use_mixed_language is not None
@@ -884,6 +901,9 @@ def convert(  # noqa: C901
         title=effective_title,
         author=effective_author,
         lang=options.lang,
+        use_spacy=options.use_spacy,
+        spacy_model=options.spacy_model,
+        spacy_model_size=options.spacy_model_size,
         use_mixed_language=options.use_mixed_language,
         mixed_language_primary=options.mixed_language_primary,
         mixed_language_allowed=options.mixed_language_allowed,
@@ -1418,6 +1438,9 @@ def _show_conversion_summary(
     conversion_unit: str = "chapter",
     paragraphs_dir: Path | None = None,
     lang: str | None = None,
+    use_spacy: bool = True,
+    spacy_model: str | None = None,
+    spacy_model_size: str | None = None,
     use_mixed_language: bool = False,
     mixed_language_primary: str | None = None,
     mixed_language_allowed: list[str] | None = None,
@@ -1456,6 +1479,14 @@ def _show_conversion_summary(
     table.add_row("Model Quality", str(model_quality))
     if lang:
         table.add_row("Phonemization Lang", f"{lang} (override)")
+    if not use_spacy:
+        table.add_row("spaCy request", "Disabled")
+    elif spacy_model:
+        table.add_row("spaCy request", f"Exact {spacy_model}")
+    elif spacy_model_size:
+        table.add_row("spaCy request", f"Exact {spacy_model_size} tier")
+    else:
+        table.add_row("spaCy request", "Automatic, highest installed")
     if use_mixed_language:
         table.add_row("Mixed-Language", "Enabled")
         if mixed_language_primary:

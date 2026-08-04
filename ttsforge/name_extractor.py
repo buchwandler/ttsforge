@@ -13,29 +13,67 @@ from datetime import datetime
 from pathlib import Path
 from typing import Any, cast
 
+from .spacy_policy import (
+    SPACY_POLICY_VERSION,
+    ResolvedSpacyModel,
+    SpacyModelRequest,
+    load_resolved_model,
+    resolve_spacy_model_for_component,
+)
+
 logger = logging.getLogger(__name__)
 
-DEFAULT_SPACY_MODEL = "en_core_web_sm"
-
-
-@functools.lru_cache(maxsize=1)
-def _get_nlp(model_name: str = DEFAULT_SPACY_MODEL) -> Any:
+@functools.lru_cache(maxsize=64)
+def _get_nlp(model_name: str) -> Any:
     """Load and cache the spaCy pipeline."""
+    return load_resolved_model(
+        ResolvedSpacyModel(
+            language="en",
+            model=model_name,
+            requested_model=model_name,
+            requested_size=None,
+            component="name",
+        )
+    )
+
+
+@functools.lru_cache(maxsize=64)
+def resolve_name_model(
+    *,
+    model_name: str | None = None,
+    model_size: str | None = None,
+    language: str | None = None,
+    include_all: bool = False,
+) -> ResolvedSpacyModel:
+    """Resolve an NER/POS-capable model for name extraction."""
+    # Keep lightweight injected spaCy facades usable for callers that provide
+    # their own loader. Concrete spaCy installations expose ``__version__``
+    # and always go through the released phrasplit resolver below.
     try:
         import spacy
-    except ImportError as e:
-        raise ImportError(
-            "spaCy is required for name extraction. "
-            "Install with: pip install spacy && python -m spacy download en_core_web_sm"
-        ) from e
 
-    try:
-        return spacy.load(model_name)
-    except OSError as e:
-        raise ImportError(
-            f"spaCy model '{model_name}' not found. "
-            f"Install with: python -m spacy download {model_name}"
-        ) from e
+        if not hasattr(spacy, "__version__") and model_name is None:
+            return ResolvedSpacyModel(
+                language=language or "en",
+                model="auto",
+                requested_model=None,
+                requested_size=None,
+                component="name",
+                diagnostics=("using injected spaCy loader",),
+            )
+    except ImportError:
+        pass
+    return resolve_spacy_model_for_component(
+        language=language or "en",
+        request=SpacyModelRequest(
+            use_spacy=True,
+            model=model_name,
+            size=model_size,
+        ),
+        component="name",
+        include_all=include_all,
+        require=True,
+    )
 
 
 def _split_text_into_chunks(text: str, chunk_size: int = 100000) -> list[str]:
@@ -83,8 +121,11 @@ def extract_names_from_text(
     include_all: bool = False,
     chunk_size: int = 100000,
     progress_callback: Callable[[int, int], None] | None = None,
-    model_name: str = DEFAULT_SPACY_MODEL,
+    model_name: str | None = None,
+    model_size: str | None = None,
+    language: str | None = None,
     batch_size: int = 4,
+    model_metadata: dict[str, Any] | None = None,
 ) -> dict[str, int]:
     """Extract proper names from text using spaCy NER and POS tagging.
 
@@ -98,8 +139,11 @@ def extract_names_from_text(
             (default: 100000)
         progress_callback: Optional callback function(current, total) for
             progress updates
-        model_name: spaCy model name to load (default: en_core_web_sm)
+        model_name: Exact spaCy model package, or None for highest installed
+        model_size: Exact spaCy model tier, or None for highest installed
+        language: Source language used for model compatibility selection
         batch_size: Batch size for spaCy pipe processing
+        model_metadata: Optional mapping populated with selection provenance
 
     Returns:
         Dictionary mapping name -> occurrence count, sorted by frequency
@@ -107,7 +151,31 @@ def extract_names_from_text(
     Raises:
         ImportError: If spaCy is not installed
     """
-    nlp = _get_nlp(model_name)
+    selection = resolve_name_model(
+        model_name=model_name,
+        model_size=model_size,
+        language=language,
+        include_all=include_all,
+    )
+    if selection.model is None:  # pragma: no cover - resolver requires a model
+        raise ImportError("No compatible spaCy name-extraction model is installed.")
+    if model_metadata is not None:
+        model_metadata.update(
+            {
+                "policy": SPACY_POLICY_VERSION,
+                "requested_model": selection.requested_model,
+                "requested_size": selection.requested_size,
+                "resolved_model": selection.model,
+                "language": selection.language,
+                "component": selection.component,
+            }
+        )
+    logger.info(
+        "Using spaCy model %s for %s name extraction",
+        selection.model,
+        selection.language,
+    )
+    nlp = _get_nlp(selection.model)
 
     # Split text into manageable chunks
     chunks = _split_text_into_chunks(text, chunk_size)
@@ -208,6 +276,7 @@ def save_phoneme_dictionary(
     output_path: Path,
     source_file: str | None = None,
     language: str = "en-us",
+    spacy_metadata: dict[str, Any] | None = None,
 ) -> None:
     """Save phoneme dictionary to JSON file with metadata.
 
@@ -229,6 +298,8 @@ def save_phoneme_dictionary(
 
     if source_file:
         metadata["generated_from"] = source_file
+    if spacy_metadata:
+        metadata["spacy"] = dict(spacy_metadata)
 
     output_data = {"_metadata": metadata, "entries": names_with_phonemes}
 

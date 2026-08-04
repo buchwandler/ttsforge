@@ -310,6 +310,17 @@ def extract_names_command(
             "-l", "--language", help="Language for phoneme generation (default: a)."
         ),
     ] = "a",
+    spacy_model: Annotated[
+        str | None,
+        typer.Option("--spacy-model", help="Exact local spaCy model package."),
+    ] = None,
+    spacy_model_size: Annotated[
+        Literal["sm", "md", "lg", "trf"] | None,
+        typer.Option(
+            "--spacy-model-size",
+            help="Exact local spaCy tier; unset selects the highest installed compatible model.",
+        ),
+    ] = None,
     include_all: Annotated[
         bool,
         typer.Option(
@@ -347,6 +358,8 @@ def extract_names_command(
         min_count=min_count,
         max_names=max_names,
         language=language,
+        spacy_model=spacy_model,
+        spacy_model_size=spacy_model_size,
         include_all=include_all,
         preview=preview,
         chunk_size=chunk_size,

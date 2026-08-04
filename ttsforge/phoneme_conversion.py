@@ -134,6 +134,7 @@ class PhonemeConversionState:
     # Track selected chapters (0-based indices)
     selected_chapters: list[int] = field(default_factory=list)
     generation_fingerprint: str = ""
+    spacy_metadata: dict[str, Any] | None = None
 
     def get_completed_count(self) -> int:
         """Get number of completed chapters."""
@@ -154,6 +155,7 @@ class PhonemeConversionState:
             data.setdefault("source_hash", "")
             data.setdefault("generation_fingerprint", "")
             data.setdefault("onnx_provider", None)
+            data.setdefault("spacy_metadata", None)
 
             # Handle missing fields for backward compatibility
             if "silence_between_chapters" not in data:
@@ -247,6 +249,7 @@ class PhonemeConversionState:
             "last_updated": self.last_updated,
             "selected_chapters": self.selected_chapters,
             "generation_fingerprint": self.generation_fingerprint,
+            "spacy_metadata": self.spacy_metadata,
         }
         atomic_write_json(state_file, data, indent=2, ensure_ascii=True)
 
@@ -644,6 +647,7 @@ class PhonemeConverter:
                 "enable_short_sentence": options.enable_short_sentence,
                 "prosody_policy": prosody_policy_payload(options.prosody_policy),
                 "short_sentence": options.short_sentence,
+                "spacy": self.book.metadata.get("spacy"),
                 "announce_chapters": options.announce_chapters,
                 "chapter_pause_after_title": options.chapter_pause_after_title,
             }
@@ -825,6 +829,7 @@ class PhonemeConverter:
                     started_at=time.strftime("%Y-%m-%d %H:%M:%S"),
                     selected_chapters=selected_indices,
                     generation_fingerprint=generation_fingerprint,
+                    spacy_metadata=self.book.metadata.get("spacy"),
                 )
                 state.save(state_file)
             else:

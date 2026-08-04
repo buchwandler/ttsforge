@@ -169,6 +169,11 @@ DEFAULT_CONFIG = {
     "default_format": "m4b",
     "onnx_provider": "cpu",
     "use_gpu": False,  # Legacy compatibility key; use onnx_provider instead.
+    # spaCy policy: unset model and tier select the highest installed compatible
+    # local model through the released phrasplit/PyKokoro APIs.
+    "use_spacy": True,
+    "spacy_model": None,
+    "spacy_model_size": None,
     # Model quality: fp32, fp16, q8, q8f16, q4, q4f16, uint8, uint8f16
     "model_quality": "fp32",
     "model_source": DEFAULT_MODEL_SOURCE,

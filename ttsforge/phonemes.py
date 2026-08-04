@@ -83,9 +83,12 @@ class PhonemeChapter:
         text: str,
         tokenizer: Tokenizer,
         lang: str = "en-us",
+        language: str | None = None,
         split_mode: str = "sentence",
         max_chars: int = 300,
-        language_model: str = "en_core_web_sm",
+        language_model: str | None = None,
+        spacy_model_size: str | None = None,
+        use_spacy: bool | None = None,
         max_phoneme_length: int = 510,
         warn_callback: Callable[[str], None] | None = None,
     ) -> list[PhonemeSegment]:
@@ -99,13 +102,17 @@ class PhonemeChapter:
             text: Text to add
             tokenizer: Tokenizer instance
             lang: Language code for phonemization
+            language: Optional phrasplit language override; when supplied it
+                is independent from the phonemizer's ``lang`` value.
             split_mode: How to split the text:
                 - "paragraph": Split on double newlines only
                 - "sentence": Split on sentence boundaries (using spaCy)
                 - "clause": Split on sentences + commas for finer segments
             max_chars: Maximum characters per segment (default 300, used for
                        further splitting if segments are too long)
-            language_model: spaCy language model for sentence/clause splitting
+            language_model: Exact spaCy package, or None for phrasplit policy
+            spacy_model_size: Exact spaCy tier, or None for highest available
+            use_spacy: Whether phrasplit may use spaCy; None selects its default
             max_phoneme_length: Maximum phoneme length (default 510, Kokoro limit)
             warn_callback: Optional callback for warnings (receives warning message)
 
@@ -115,6 +122,8 @@ class PhonemeChapter:
         import re
 
         from phrasplit import split_long_lines, split_text
+
+        split_language = language or lang
 
         # Safety filter: Remove <<CHAPTER: ...>> markers that epub2text might add
         # This provides defense-in-depth even if callers forget to filter
@@ -146,7 +155,14 @@ class PhonemeChapter:
                 if current_max_chars > 50:
                     # Reduce max_chars and retry
                     new_max_chars = current_max_chars // 2
-                    sub_chunks = split_long_lines(chunk, new_max_chars, language_model)
+                    sub_chunks = split_long_lines(
+                        chunk,
+                        new_max_chars,
+                        language_model,
+                        use_spacy,
+                        language=split_language,
+                        model_size=spacy_model_size,
+                    )
                     results = []
                     for sub in sub_chunks:
                         results.extend(
@@ -184,6 +200,9 @@ class PhonemeChapter:
                 language_model=language_model,
                 apply_corrections=True,
                 split_on_colon=True,
+                use_spacy=use_spacy,
+                language=split_language,
+                model_size=spacy_model_size,
             )
         else:
             # Default: treat as single chunk with paragraph 0
@@ -202,7 +221,14 @@ class PhonemeChapter:
 
             # If chunk is still too long, split it further
             if len(chunk) > max_chars:
-                sub_chunks = split_long_lines(chunk, max_chars, language_model)
+                sub_chunks = split_long_lines(
+                    chunk,
+                    max_chars,
+                    language_model,
+                    use_spacy,
+                    language=split_language,
+                    model_size=spacy_model_size,
+                )
             else:
                 sub_chunks = [chunk]
 

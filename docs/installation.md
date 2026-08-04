@@ -20,12 +20,23 @@ NumPy remains a direct dependency for TTSForge arrays, composition, playback buf
 and bounded I/O buffers. SoundFile remains required for audio decoding and encoding;
 AudioSig does not replace TTSForge's file, FFmpeg, or audiobook orchestration layers.
 
-### PyKokoro memory API
+### PyKokoro and spaCy model policy
 
-The package requires PyKokoro `>=0.7.5,<0.8`. This release provides the public
-memory-ownership API used by TTSForge to disable retained segment audio and release
-completed chapter results. Whole chapters are still synthesized into a buffered WAV;
-streaming is not part of this integration.
+The package requires released PyKokoro `>=0.8.1,<0.9`, SSMD `>=0.8.0,<0.9`, and
+phrasplit `>=0.3.4,<0.4`. These releases provide the public spaCy request/resolution
+and memory-ownership APIs used by TTSForge. TTSForge selects only already installed
+spaCy packages and never downloads them automatically.
+
+Install one or more compatible local spaCy packages when using the default policy:
+
+```bash
+python -m spacy download en_core_web_lg
+```
+
+With multiple tiers installed, automatic conversion may use a different model after
+an environment change. The concrete model is recorded in state; an incompatible old
+run is rejected rather than mixing model identities. Use an explicit `spacy_model` or
+`spacy_model_size` to make a workflow reproducible.
 
 ### ffmpeg (Required for MP3/FLAC/OPUS/M4B)
 
@@ -168,8 +179,8 @@ pip install "ttsforge[gpu]"
 ttsforge config --set onnx_provider cuda
 ```
 
-For Termux/Android with PyKokoro v0.7.5 and an ONNX Runtime build exposing NNAPI or
-XNNPACK:
+For Termux/Android with the declared PyKokoro release and an ONNX Runtime build
+exposing NNAPI or XNNPACK:
 
 ```bash
 ttsforge config --set model_source github --set onnx_provider nnapi

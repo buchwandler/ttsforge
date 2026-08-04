@@ -739,6 +739,8 @@ def extract_names(
     min_count: int,
     max_names: int,
     language: str,
+    spacy_model: str | None,
+    spacy_model_size: str | None,
     include_all: bool,
     preview: bool,
     chunk_size: int,
@@ -779,6 +781,7 @@ def extract_names(
     from rich.table import Table
 
     from ..input_reader import InputReader
+    from ..kokoro_lang import get_onnx_lang_code
     from ..name_extractor import (
         extract_names_from_text,
         generate_phoneme_suggestions,
@@ -839,7 +842,7 @@ def extract_names(
             "[red]Error:[/red] spaCy is required for name extraction.\n"
             "[yellow]Install with:[/yellow]\n"
             "  pip install spacy\n"
-            "  python -m spacy download en_core_web_sm"
+            "  install the requested compatible spaCy model package locally"
         )
         raise SystemExit(1) from None
 
@@ -861,6 +864,7 @@ def extract_names(
             )
 
         try:
+            model_metadata: dict[str, Any] = {}
             names = extract_names_from_text(
                 text,
                 min_count=min_count,
@@ -868,6 +872,10 @@ def extract_names(
                 include_all=include_all,
                 chunk_size=chunk_size,
                 progress_callback=update_progress,
+                model_name=spacy_model,
+                model_size=spacy_model_size,
+                language=get_onnx_lang_code(language),
+                model_metadata=model_metadata,
             )
         except ImportError as e:
             console.print(f"[red]Error:[/red] {e}")
@@ -918,8 +926,16 @@ def extract_names(
         console.print("[dim]To save, run without --preview flag.[/dim]")
     else:
         save_phoneme_dictionary(
-            suggestions, output, source_file=str(input_file.name), language=language
+            suggestions,
+            output,
+            source_file=str(input_file.name),
+            language=language,
+            spacy_metadata=model_metadata,
         )
+        if model_metadata.get("resolved_model"):
+            console.print(
+                f"[dim]spaCy name model: {model_metadata['resolved_model']}[/dim]"
+            )
         console.print(f"\n[green]✓ Saved to:[/green] {output}")
         console.print(
             "\n[dim]Next steps:[/dim]\n"

@@ -123,6 +123,24 @@ def convert_command(
             help="Override language for phonemization (e.g., 'de', 'fr', 'en-us'). By default, language is determined from the voice.",
         ),
     ] = None,
+    use_spacy: Annotated[
+        bool | None,
+        typer.Option(
+            "--use-spacy/--no-spacy",
+            help="Use spaCy for sentence/G2P processing (default: enabled).",
+        ),
+    ] = None,
+    spacy_model: Annotated[
+        str | None,
+        typer.Option("--spacy-model", help="Exact local spaCy model package."),
+    ] = None,
+    spacy_model_size: Annotated[
+        Literal["sm", "md", "lg", "trf"] | None,
+        typer.Option(
+            "--spacy-model-size",
+            help="Exact local spaCy tier; unset selects the highest installed compatible model.",
+        ),
+    ] = None,
     speed: Annotated[
         float | None,
         typer.Option(
@@ -544,6 +562,9 @@ def convert_command(
         voice=voice,
         language=language,
         lang=lang,
+        use_spacy=use_spacy,
+        spacy_model=spacy_model,
+        spacy_model_size=spacy_model_size,
         speed=speed,
         use_gpu=use_gpu,
         provider=provider,

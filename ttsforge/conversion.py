@@ -57,6 +57,15 @@ from .render_units import (
 )
 from .short_sentence_config import resolve_short_sentence_config
 from .short_sentence_stats import ShortSentenceStats
+from .spacy_policy import (
+    SPACY_POLICY_VERSION,
+    SpacyModelRequest,
+    SpacyPolicyError,
+    ensure_model_loadable,
+    normalize_language,
+    report_selection,
+    resolve_spacy_model_for_component,
+)
 from .ssmd_audio import LocalSSMDAudioResolver
 from .ssmd_generator import (
     SSMDGenerationError,
@@ -229,6 +238,12 @@ class ConversionState:
     enable_short_sentence: bool | None = None
     short_sentence: str | None = None
     lang: str | None = None  # Language override for phonemization
+    use_spacy: bool = True
+    spacy_model: str | None = None
+    spacy_model_size: str | None = None
+    spacy_policy: str = "highest-installed-v1"
+    resolved_sentence_models: dict[str, str] = field(default_factory=dict)
+    resolved_g2p_models: dict[str, str] = field(default_factory=dict)
     chapters: list[ChapterState] = field(default_factory=list)
     source_selection: list[int] = field(default_factory=list)
     generation_fingerprint: str = ""
@@ -313,6 +328,18 @@ class ConversionState:
                 data["short_sentence"] = None
             if "lang" not in data:
                 data["lang"] = None
+            if "use_spacy" not in data:
+                data["use_spacy"] = True
+            if "spacy_model" not in data:
+                data["spacy_model"] = None
+            if "spacy_model_size" not in data:
+                data["spacy_model_size"] = None
+            if "spacy_policy" not in data:
+                data["spacy_policy"] = "highest-installed-v1"
+            if "resolved_sentence_models" not in data:
+                data["resolved_sentence_models"] = {}
+            if "resolved_g2p_models" not in data:
+                data["resolved_g2p_models"] = {}
             if "model_quality" not in data:
                 data["model_quality"] = DEFAULT_MODEL_QUALITY
             if "model_source" not in data:
@@ -359,6 +386,14 @@ class ConversionState:
             "enable_short_sentence": self.enable_short_sentence,
             "short_sentence": self.short_sentence,
             "lang": self.lang,
+            "use_spacy": self.use_spacy,
+            "spacy_model": self.spacy_model,
+            "spacy_model_size": self.spacy_model_size,
+            "spacy_policy": self.spacy_policy,
+            "resolved_sentence_models": dict(
+                sorted(self.resolved_sentence_models.items())
+            ),
+            "resolved_g2p_models": dict(sorted(self.resolved_g2p_models.items())),
             "chapters": [
                 {
                     "index": ch.index,
@@ -779,6 +814,10 @@ class ConversionOptions:
     # Language override for phonemization (e.g., 'de', 'en-us', 'fr')
     # If None, language is determined from voice prefix
     lang: str | None = None
+    # spaCy model policy. None means highest installed compatible model.
+    use_spacy: bool = True
+    spacy_model: str | None = None
+    spacy_model_size: str | None = None
     # Mixed-language support (auto-detect and handle multiple languages)
     use_mixed_language: bool = False
     mixed_language_primary: str | None = None
@@ -844,6 +883,13 @@ class ConversionOptions:
         return "auto" if self.use_gpu else "cpu"
 
     def __post_init__(self) -> None:
+        from .spacy_policy import normalize_spacy_model, normalize_spacy_model_size
+
+        self.spacy_model = normalize_spacy_model(self.spacy_model)
+        self.spacy_model_size = normalize_spacy_model_size(self.spacy_model_size)
+        if not self.use_spacy:
+            self.spacy_model = None
+            self.spacy_model_size = None
         self.conversion_unit = validate_conversion_unit(self.conversion_unit)
         validate_generation_ranges(
             speed=self.speed,
@@ -917,6 +963,9 @@ class TTSConverter:
         self._cancel_event = threading.Event()
         self._runner: KokoroRunner | None = None
         self._merger = AudioMerger(log=self.log)
+        self._resolved_sentence_models: dict[str, str] = {}
+        self._resolved_g2p_models: dict[str, str] = {}
+        self._spacy_reported: set[tuple[str, str]] = set()
 
     @property
     def _cancelled(self) -> bool:
@@ -961,6 +1010,9 @@ class TTSConverter:
         from pykokoro.tokenizer import TokenizerConfig
 
         tokenizer_config = TokenizerConfig(
+            use_spacy=self.options.use_spacy,
+            spacy_model=self.options.spacy_model,
+            spacy_model_size=self.options.spacy_model_size,
             use_mixed_language=self.options.use_mixed_language,
             mixed_language_primary=self.options.mixed_language_primary,
             mixed_language_allowed=self.options.mixed_language_allowed,
@@ -993,11 +1045,70 @@ class TTSConverter:
             voice_blend=self.options.voice_blend,
             voice_database=self.options.voice_database,
             tokenizer_config=tokenizer_config,
+            use_spacy=self.options.use_spacy,
+            spacy_model=self.options.spacy_model,
+            spacy_model_size=self.options.spacy_model_size,
+            spacy_policy=SPACY_POLICY_VERSION,
+            resolved_sentence_models=dict(self._resolved_sentence_models),
+            resolved_g2p_models=dict(self._resolved_g2p_models),
             ssmd_policy=self.options.ssmd_policy,
             prosody_policy=self.options.prosody_policy,
         )
         self._runner = KokoroRunner(opts, log=self.log)
         self._runner.ensure_ready()
+
+    def _effective_spacy_languages(self) -> tuple[str, ...]:
+        """Return deterministic known languages for conversion preflight."""
+        values: list[str | None] = [self.options.lang or self.options.language]
+        if self.options.use_mixed_language:
+            values.extend(self.options.mixed_language_allowed or ())
+            values.append(self.options.mixed_language_primary)
+        return tuple(sorted({normalize_language(value) for value in values if value}))
+
+    def _preflight_spacy_models(self) -> None:
+        """Resolve and freeze sentence/G2P models before generation begins."""
+        request = SpacyModelRequest(
+            use_spacy=self.options.use_spacy,
+            model=self.options.spacy_model,
+            size=self.options.spacy_model_size,
+        )
+        sentence: dict[str, str] = {}
+        g2p: dict[str, str] = {}
+        for language in self._effective_spacy_languages():
+            sentence_selection = resolve_spacy_model_for_component(
+                language=language,
+                request=request,
+                component="sentence",
+                require=request.use_spacy,
+            )
+            g2p_selection = resolve_spacy_model_for_component(
+                language=language,
+                request=request,
+                component="g2p",
+                require=request.use_spacy,
+            )
+            if sentence_selection.model:
+                sentence[language] = sentence_selection.model
+            if g2p_selection.model:
+                g2p[language] = g2p_selection.model
+            for component, selection in (
+                ("sentence", sentence_selection),
+                ("g2p", g2p_selection),
+            ):
+                marker = (component, language)
+                if marker not in self._spacy_reported:
+                    report_selection(selection, log=self.log)
+                    self._spacy_reported.add(marker)
+        self._resolved_sentence_models = dict(sorted(sentence.items()))
+        self._resolved_g2p_models = dict(sorted(g2p.items()))
+
+    @property
+    def resolved_spacy_models(self) -> dict[str, dict[str, str]]:
+        """Return frozen model maps for state/fingerprint consumers."""
+        return {
+            "sentence": dict(sorted(self._resolved_sentence_models.items())),
+            "g2p": dict(sorted(self._resolved_g2p_models.items())),
+        }
 
     def _build_ssmd_content(
         self,
@@ -1662,6 +1773,16 @@ class TTSConverter:
             "mixed_language_confidence": options.mixed_language_confidence,
             "phoneme_dictionary": dictionary,
             "phoneme_dict_case_sensitive": options.phoneme_dict_case_sensitive,
+            "spacy": {
+                "policy": SPACY_POLICY_VERSION,
+                "use_spacy": options.use_spacy,
+                "requested_model": options.spacy_model,
+                "requested_size": options.spacy_model_size,
+                "resolved_sentence_models": dict(
+                    sorted(self._resolved_sentence_models.items())
+                ),
+                "resolved_g2p_models": dict(sorted(self._resolved_g2p_models.items())),
+            },
             "announce_chapters": options.announce_chapters,
             "chapter_pause_after_title": options.chapter_pause_after_title,
             "split_mode": options.split_mode,
@@ -1777,6 +1898,55 @@ class TTSConverter:
         if state.source_selection != [chapter.index for chapter in chapters]:
             self.log("Chapter selection changed, starting fresh conversion", "warning")
             return ResumeValidation(reusable=False, reason="chapter-selection-changed")
+        if state.spacy_policy != SPACY_POLICY_VERSION:
+            self.log(
+                "spaCy model policy changed; restart is required for resume safety",
+                "warning",
+            )
+            return ResumeValidation(reusable=False, reason="spacy-policy-changed")
+        if state.use_spacy != self.options.use_spacy:
+            self.log("spaCy enablement changed, starting fresh conversion", "warning")
+            return ResumeValidation(reusable=False, reason="spacy-enablement-changed")
+        if (
+            state.spacy_model != self.options.spacy_model
+            or state.spacy_model_size != self.options.spacy_model_size
+        ):
+            self.log(
+                "spaCy model request changed, starting fresh conversion",
+                "warning",
+            )
+            return ResumeValidation(reusable=False, reason="spacy-request-changed")
+        stored_sentence = dict(sorted(state.resolved_sentence_models.items()))
+        stored_g2p = dict(sorted(state.resolved_g2p_models.items()))
+        if (
+            stored_sentence != self._resolved_sentence_models
+            or stored_g2p != self._resolved_g2p_models
+        ):
+            self.log(
+                "Resolved spaCy model set changed; restart is required to avoid "
+                "mixing audio",
+                "warning",
+            )
+            return ResumeValidation(
+                reusable=False, reason="spacy-model-resolution-changed"
+            )
+        for component, models in (
+            ("sentence", stored_sentence),
+            ("G2P", stored_g2p),
+        ):
+            for language, model in models.items():
+                try:
+                    ensure_model_loadable(model)
+                except SpacyPolicyError:
+                    self.log(
+                        f"Stored spaCy {component} model '{model}' for {language} "
+                        "is unavailable; restart is required",
+                        "warning",
+                    )
+                    return ResumeValidation(
+                        reusable=False,
+                        reason=f"spacy-model-unavailable:{language}:{model}",
+                    )
         if state.generation_fingerprint != generation_fingerprint:
             self.log(
                 "Generation settings changed, starting fresh conversion",
@@ -1921,6 +2091,10 @@ class TTSConverter:
                 )
                 state_file = work_dir / "state.json"
             work_dir.mkdir(parents=True, exist_ok=True)
+            # SSMD-only generation does not initialize or use the TTS backend;
+            # defer spaCy preflight until audio generation paths need it.
+            if not self.options.generate_ssmd_only:
+                self._preflight_spacy_models()
             generation_fingerprint = self._generation_fingerprint()
 
             # Load or create state
@@ -1986,6 +2160,12 @@ class TTSConverter:
                     enable_short_sentence=self.options.enable_short_sentence,
                     short_sentence=self.options.short_sentence,
                     lang=self.options.lang,
+                    use_spacy=self.options.use_spacy,
+                    spacy_model=self.options.spacy_model,
+                    spacy_model_size=self.options.spacy_model_size,
+                    spacy_policy=SPACY_POLICY_VERSION,
+                    resolved_sentence_models=dict(self._resolved_sentence_models),
+                    resolved_g2p_models=dict(self._resolved_g2p_models),
                     chapters=[
                         ChapterState(
                             index=ch.index,

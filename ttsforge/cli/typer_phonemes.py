@@ -107,6 +107,24 @@ def phonemes_export_command(
         LanguageCode,
         typer.Option("-l", "--language", help="Language code for phonemization."),
     ] = "a",
+    spacy_model: Annotated[
+        str | None,
+        typer.Option("--spacy-model", help="Exact local spaCy model package."),
+    ] = None,
+    spacy_model_size: Annotated[
+        Literal["sm", "md", "lg", "trf"] | None,
+        typer.Option(
+            "--spacy-model-size",
+            help="Exact local spaCy tier; unset selects the highest installed compatible model.",
+        ),
+    ] = None,
+    use_spacy: Annotated[
+        bool | None,
+        typer.Option(
+            "--use-spacy/--no-spacy",
+            help="Use spaCy for sentence splitting (default: enabled).",
+        ),
+    ] = None,
     chapters: Annotated[
         str | None,
         typer.Option(
@@ -149,6 +167,9 @@ def phonemes_export_command(
         output=output,
         readable=readable,
         language=language,
+        spacy_model=spacy_model,
+        spacy_model_size=spacy_model_size,
+        use_spacy=use_spacy,
         chapters=chapters,
         vocab_version=vocab_version,
         split_mode=split_mode,

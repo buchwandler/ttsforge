@@ -30,6 +30,7 @@ from .memory_diagnostics import log_snapshot
 from .prosody_support import ProsodyPolicy, build_pykokoro_prosody_config
 from .render_units import PreparedUnitDescriptor, descriptor_from_public
 from .short_sentence_stats import ShortSentenceStats
+from .spacy_policy import SPACY_POLICY_VERSION
 from .ssmd_support import SSMDPolicy, build_pykokoro_ssmd_config
 
 
@@ -52,6 +53,12 @@ class KokoroRunOptions:
     voice_blend: str | None = None
     voice_database: Any | None = None
     tokenizer_config: Any | None = None  # pykokoro.tokenizer.TokenizerConfig
+    use_spacy: bool = True
+    spacy_model: str | None = None
+    spacy_model_size: str | None = None
+    spacy_policy: str = SPACY_POLICY_VERSION
+    resolved_sentence_models: dict[str, str] = field(default_factory=dict)
+    resolved_g2p_models: dict[str, str] = field(default_factory=dict)
     short_sentence_config: ShortSentenceConfig | None = None
     onnx_provider: str | None = None
     ssmd_policy: SSMDPolicy = field(default_factory=SSMDPolicy)
@@ -113,6 +120,14 @@ class KokoroRunner:
         self._pipeline: KokoroPipeline | None = None
         self._voice_style: str | VoiceBlend | None = None
         self.short_sentence_stats = ShortSentenceStats()
+
+    @property
+    def spacy_resolutions(self) -> dict[str, dict[str, str]]:
+        """Return frozen, language-keyed model selections for diagnostics."""
+        return {
+            "sentence": dict(sorted(self.opts.resolved_sentence_models.items())),
+            "g2p": dict(sorted(self.opts.resolved_g2p_models.items())),
+        }
 
     def ensure_ready(self) -> None:
         if self._pipeline is not None:

@@ -50,6 +50,36 @@ deprecated compatibility alias.
 
 ## Configuration Options
 
+### spaCy model policy
+
+The global spaCy settings apply to audiobook conversion and phoneme export:
+
+- `use_spacy` (boolean, default `true`) enables the spaCy-backed pipeline.
+- `spacy_model` (nullable string, default `null`) requests one exact local package.
+- `spacy_model_size` (nullable `sm`, `md`, `lg`, or `trf`, default `null`) requests one
+  exact tier.
+
+When both model and tier are unset, TTSForge selects the highest installed compatible
+model for each effective language. This is local-only and never downloads a package.
+An exact model wins over a tier, and `use_spacy=false` makes both model fields inactive.
+The conversion summary shows the request; preflight and persisted state show concrete
+sentence/G2P selections. Those selections are part of resume identity.
+
+Examples:
+
+```bash
+# New quality-first default
+ttsforge config --set spacy_model null --set spacy_model_size null
+
+# Preserve a previous medium or small workflow
+ttsforge config --set spacy_model_size md
+ttsforge config --set spacy_model en_core_web_sm
+```
+
+Name extraction additionally accepts `--spacy-model`, `--spacy-model-size`, and
+`--language`; its output metadata records the concrete NER-capable package. Existing
+configurations without these keys migrate to automatic selection.
+
 ### SSMD 0.8 policies
 
 The following keys configure SSMD rendering. Persistent configuration is lower
@@ -557,7 +587,7 @@ state saves, final merging, and converter cleanup. RSS may remain elevated becau
 native allocators retain high-water pages; that alone is not evidence of a provider
 leak.
 
-TTSForge requires PyKokoro `>=0.7.5,<0.8`, uses compact segment results, and releases
+TTSForge requires PyKokoro `>=0.8.1,<0.9`, uses compact segment results, and releases
 completed chapter audio before the next chapter synthesis. Whole-chapter synthesis
 remains buffered and streaming is future work.
 

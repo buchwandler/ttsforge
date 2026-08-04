@@ -53,7 +53,7 @@ pip install "ttsforge[static_ffmpeg]"
 pip install "ttsforge[gpu]"
 ```
 
-TTSForge requires PyKokoro 0.7.5 or newer within the 0.7 release line. It uses compact
+TTSForge requires released PyKokoro `>=0.8.1,<0.9`. It uses compact
 segment results and releases completed chapter audio before the next chapter starts.
 Whole-chapter synthesis remains buffered; streaming synthesis is future work.
 
@@ -449,6 +449,33 @@ AudioSig's canonical `td_psola`.
 The available policies are `plain`, `approximate`, `warn`, and `error`. Explicit SSMD
 prosody such as `[fast words]{rate="fast"}` remains active in plain emphasis mode.
 
+### spaCy model policy
+
+TTSForge uses the released PyKokoro/phrasplit model policy for sentence segmentation
+and G2P. When no exact model or tier is configured, it selects the highest installed
+compatible local model for each effective language; model packages are never downloaded
+by this selection. The request is visible in the conversion summary and the concrete
+selection is frozen into conversion state and resume identity.
+
+```bash
+# Quality-first automatic behavior (omit both keys)
+ttsforge convert book.epub
+
+# Preserve a previous medium-tier workflow
+ttsforge config --set spacy_model_size md
+
+# Preserve a previous small-model workflow exactly
+ttsforge convert book.epub --spacy-model en_core_web_sm
+
+# Disable spaCy in the conversion pipeline
+ttsforge convert book.epub --no-spacy
+```
+
+Use `--spacy-model` for a strict package request or `--spacy-model-size` for a strict
+`sm`, `md`, `lg`, or `trf` tier request. Explicit packages take precedence over tiers.
+Changing the installed model set can change segmentation, phonemes, and audio; old
+resumable conversions may therefore require `--fresh`.
+
 **Custom Phonemes**:
 
 ```
@@ -512,9 +539,13 @@ For automatic name extraction (optional but recommended):
 
 ```bash
 pip install spacy
-python -m spacy download en_core_web_sm
-python -m spacy download en_core_web_md
+# Install the compatible package(s) you want to make available locally.
+python -m spacy download en_core_web_lg
 ```
+
+Name extraction accepts `--spacy-model`, `--spacy-model-size`, and `--language`; it
+selects the highest installed model with the required NER capability and records the
+concrete package in dictionary metadata.
 
 #### Workflow
 
@@ -669,7 +700,8 @@ ttsforge convert book.epub --gpu
 ttsforge convert book.epub --provider xnnpack
 ```
 
-For Termux/Android, install a PyKokoro v0.7.5-compatible ONNX Runtime build, then use
+For Termux/Android, install an ONNX Runtime build compatible with the declared
+PyKokoro release, then use
 `--provider nnapi` or `--provider xnnpack`. Configure GitHub model assets explicitly
 when using that source:
 
