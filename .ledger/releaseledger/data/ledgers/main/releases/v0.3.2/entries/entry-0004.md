@@ -7,15 +7,16 @@ versioning:
 entry_id: entry-0004
 release_version: v0.3.2
 kind: fixed
-summary: Paragraph-mode resume across processes by persisting an effective preparation
-  seed per chapter before randomized short-sentence processing
+summary:
+  Paragraph-mode resume across processes by persisting an effective preparation seed per
+  chapter before randomized short-sentence processing
 status: accepted
 audience: null
 scopes: []
 source_refs:
-- git:29c2e72
+  - git:29c2e72
 paths:
-- ttsforge
+  - ttsforge
 issues: []
 prs: []
 sources: []

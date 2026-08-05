@@ -7,15 +7,16 @@ versioning:
 entry_id: entry-0001
 release_version: v0.3.2
 kind: fixed
-summary: Recovery after a paragraph output directory is created before the first unit
-  is finalized by establishing ownership metadata immediately
+summary:
+  Recovery after a paragraph output directory is created before the first unit is
+  finalized by establishing ownership metadata immediately
 status: accepted
 audience: null
 scopes: []
 source_refs:
-- git:e26f54f
+  - git:e26f54f
 paths:
-- ttsforge
+  - ttsforge
 issues: []
 prs: []
 sources: []
