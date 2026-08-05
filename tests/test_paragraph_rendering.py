@@ -241,9 +241,9 @@ def test_unseeded_stochastic_hash_does_not_restart_saved_prefix(
     first._runner = first_runner
     first_result = first.convert_chapters_resumable(chapters, output, resume=False)
     assert not first_result.success
-    assert [
-        result.descriptor.index for result in first_runner.prepared[0].results
-    ] == [0]
+    assert [result.descriptor.index for result in first_runner.prepared[0].results] == [
+        0
+    ]
 
     logs: list[str] = []
     second = TTSConverter(

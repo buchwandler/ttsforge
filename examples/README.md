@@ -23,8 +23,8 @@ and `conversion_unit` remain compatible. Valid WAVs are skipped. Paragraph prepa
 uses a hidden persisted seed per chapter when `--seed` is omitted, so randomized
 short-sentence choices remain stable across processes. A complete workspace can be
 merged without initializing ONNX. Each low-level result must be persisted or copied
-before advancing iteration, and `release_audio()` must run on success, cancellation,
-and error paths.
+before advancing iteration, and `release_audio()` must run on success, cancellation, and
+error paths.
 
 Chapter mode remains chapter-buffered. Paragraph mode prepares a chapter once and
 renders bounded units sequentially. Use the CLI examples as the supported high-level
