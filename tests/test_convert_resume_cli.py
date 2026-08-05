@@ -14,7 +14,9 @@ from ttsforge.conversion import (
     ConversionOptions,
     ConversionState,
     ConversionWorkspace,
+    ResumeValidation,
     TTSConverter,
+    _canonical_fingerprint,
     _hash_content,
     discover_resume_candidate,
     resolve_conversion_workspace,
@@ -774,3 +776,53 @@ class TestResolveSavedOutputPath:
         state = ConversionState(output_file="book.m4b")
         result = resolve_saved_output_path(state, state_file)
         assert result == tmp_path / "output" / "book.m4b"
+
+
+def test_strict_resume_mismatch_returns_actionable_error_without_replacement(
+    tmp_path: Path, monkeypatch
+) -> None:
+    chapters = [Chapter(title="Chapter 1", content="Content", index=0)]
+    output = tmp_path / "Book.wav"
+    options = ConversionOptions(title="Book", output_dir=tmp_path)
+    source_hash = _canonical_fingerprint(
+        [{"index": 0, "title": "Chapter 1", "content": "Content"}]
+    )
+    work_dir = tmp_path / f".Book-{source_hash[:12]}_chapters"
+    work_dir.mkdir()
+    state_file = work_dir / "state.json"
+    state_file.write_text("{}", encoding="utf-8")
+    state = ConversionState(
+        version=6,
+        source_hash=source_hash,
+        output_file=str(output.resolve()),
+        source_selection=[0],
+        onnx_provider="cpu",
+        chapters=[ChapterState(index=0, title="Chapter 1", content_hash="hash")],
+    )
+
+    monkeypatch.setattr(
+        ConversionState,
+        "load",
+        classmethod(lambda cls, path: state),
+    )
+    monkeypatch.setattr(TTSConverter, "_preflight_spacy_models", lambda self: None)
+    monkeypatch.setattr(
+        TTSConverter,
+        "_resume_state_matches",
+        lambda *args, **kwargs: ResumeValidation(
+            reusable=False, reason="generation-fingerprint-changed"
+        ),
+    )
+
+    result = TTSConverter(options).convert_chapters_resumable(
+        chapters,
+        output,
+        resume=True,
+        resume_mismatch="error",
+    )
+
+    assert not result.success
+    assert "generation-fingerprint-changed" in (result.error_message or "")
+    assert "--fresh" in (result.error_message or "")
+    assert not output.exists()
+    assert state_file.read_text(encoding="utf-8") == "{}"

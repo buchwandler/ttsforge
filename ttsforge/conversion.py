@@ -490,6 +490,9 @@ class ResumeValidation:
     reason: str | None = None
 
 
+ResumeMismatchPolicy = Literal["error", "fresh"]
+
+
 @dataclass(frozen=True)
 class ResumeCandidate:
     """A discovered resumable conversion state."""
@@ -1874,6 +1877,23 @@ class TTSConverter:
         )
         return result
 
+    def validate_resume_candidate(
+        self,
+        candidate: ResumeCandidate,
+        chapters: list[Chapter],
+    ) -> ResumeValidation:
+        """Run strong compatibility checks for a discovered candidate."""
+        if not self.options.generate_ssmd_only:
+            self._preflight_spacy_models()
+        return self._resume_state_matches(
+            candidate.state,
+            chapters,
+            candidate.workspace.source_hash,
+            self._generation_fingerprint(),
+            candidate.workspace.work_dir,
+            output_path=candidate.saved_output,
+        )
+
     def _resume_state_matches_bool(
         self,
         state: ConversionState,
@@ -2099,6 +2119,7 @@ class TTSConverter:
         output_path: Path,
         source_file: Path | None = None,
         resume: bool = True,
+        resume_mismatch: ResumeMismatchPolicy = "fresh",
     ) -> ConversionResult:
         """
         Convert chapters to audio with resume capability.
@@ -2111,6 +2132,8 @@ class TTSConverter:
             output_path: Output file path
             source_file: Original source file (for state tracking)
             resume: Whether to resume from previous state
+            resume_mismatch: Whether an incompatible saved state should return
+                an error or be replaced with a fresh state.
 
         Returns:
             ConversionResult with success status and paths
@@ -2201,6 +2224,17 @@ class TTSConverter:
                             f"Resume state incompatible: {validation.reason}",
                             "warning",
                         )
+                        if resume_mismatch == "error":
+                            return ConversionResult(
+                                success=False,
+                                output_path=output_path,
+                                chapters_dir=work_dir,
+                                conversion_unit=self.options.conversion_unit,
+                                error_message=(
+                                    "Saved conversion cannot be resumed: "
+                                    f"{validation.reason}. Use --fresh to restart."
+                                ),
+                            )
                         state = None
 
             if state is None:
@@ -2270,9 +2304,26 @@ class TTSConverter:
                 )
                 state.save(state_file)
             else:
-                completed = state.get_completed_count()
-                total = len(chapters)
-                self.log(f"Resuming conversion: {completed}/{total} chapters completed")
+                if state.conversion_unit == "paragraph":
+                    completed = state.get_completed_unit_count()
+                    total = state.get_total_unit_count()
+                    next_unit = state.get_next_incomplete_unit()
+                    next_text = ""
+                    if next_unit is not None:
+                        next_text = (
+                            f"; Next unit: chapter {next_unit.chapter_position + 1}, "
+                            f"paragraph {int(next_unit.chapter_unit_index or 0) + 1}"
+                        )
+                    self.log(
+                        f"Resuming paragraph conversion: {completed}/{total} "
+                        f"units completed{next_text}"
+                    )
+                else:
+                    completed = state.get_completed_count()
+                    total = len(chapters)
+                    self.log(
+                        f"Resuming conversion: {completed}/{total} chapters completed"
+                    )
 
             if self.options.conversion_unit == "paragraph":
                 phoneme_dict = None

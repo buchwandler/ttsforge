@@ -860,7 +860,38 @@ def convert(  # noqa: C901
         console.print(f"[red]Invalid conversion configuration:[/red] {exc}.")
         raise typer.Exit(code=2) from exc
 
-    # Show resume summary when a valid candidate was found.
+    # Strongly validate a discovered candidate before promising resume. Weak
+    # discovery restores scope only; this check verifies generation identity,
+    # state schema, and retained artifacts without mutating the workspace.
+    if resume_candidate is not None and not fresh:
+        validation_chapters = [
+            Chapter(
+                title=ch.title,
+                content=ch.text,
+                index=ch.index,
+                markdown_body=ch.markdown_body,
+                source_format=ch.source_format,
+                source_id=ch.source_id,
+                parent_id=ch.parent_id,
+                level=ch.level,
+                extraction_schema=ch.extraction_schema,
+                extraction_diagnostics=ch.extraction_diagnostics,
+                is_ssmd=ch.is_ssmd,
+            )
+            for i, ch in enumerate(epub_chapters)
+            if selected_indices is None or i in selected_indices
+        ]
+        validation = TTSConverter(options).validate_resume_candidate(
+            resume_candidate, validation_chapters
+        )
+        if not validation.reusable:
+            console.print(
+                "[red]Saved conversion cannot be resumed:[/red] "
+                f"{validation.reason}. Use --fresh to restart."
+            )
+            raise typer.Exit(code=2)
+
+    # Show resume summary when a strongly validated candidate was found.
     if resume_candidate is not None:
         state = resume_candidate.state
         completed = state.get_completed_count()
@@ -882,10 +913,18 @@ def convert(  # noqa: C901
         console.print(f"  Output: {resume_candidate.saved_output.name}")
         console.print(f"  Selection: chapters {sel_start}-{sel_end}")
         if state.conversion_unit == "paragraph":
+            next_unit = state.get_next_incomplete_unit()
+            next_text = ""
+            if next_unit is not None:
+                next_text = (
+                    f"  Next unit: chapter {next_unit.chapter_position + 1}, "
+                    f"paragraph {int(next_unit.chapter_unit_index or 0) + 1}\n"
+                )
             console.print(
                 f"  Conversion unit: Paragraph\n"
                 f"  Completed units: {state.get_completed_unit_count()}/"
-                f"{state.get_total_unit_count()}"
+                f"{state.get_total_unit_count()}\n"
+                f"{next_text.rstrip()}"
             )
         else:
             console.print(
@@ -1076,6 +1115,7 @@ def convert(  # noqa: C901
                 output_path=output,
                 source_file=epub_file,
                 resume=resume,
+                resume_mismatch=("error" if resume_candidate is not None else "fresh"),
             )
 
             progress.update(task_id, completed=total_chars)

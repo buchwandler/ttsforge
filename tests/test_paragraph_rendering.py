@@ -243,13 +243,22 @@ def test_unseeded_stochastic_hash_does_not_restart_saved_prefix(
     assert not first_result.success
     assert [result.descriptor.index for result in first_runner.prepared[0].results] == [0]
 
-    second = TTSConverter(options)
+    logs: list[str] = []
+    second = TTSConverter(
+        options,
+        log_callback=lambda message, level: logs.append(message),
+    )
     second_runner = StochasticHashRunner()
     second._runner = second_runner
     second_result = second.convert_chapters_resumable(chapters, output, resume=True)
 
     assert second_result.success, second_result.error_message
     assert [result.descriptor.index for result in second_runner.prepared[0].results] == [1]
+    assert any(
+        "Resuming paragraph conversion: 1/2 units completed" in message
+        and "Next unit: chapter 1, paragraph 2" in message
+        for message in logs
+    )
 
 
 def test_seed_is_saved_before_preparation_failure(tmp_path: Path):
