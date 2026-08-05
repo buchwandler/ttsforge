@@ -27,15 +27,21 @@ def _unit() -> RenderUnitState:
     )
 
 
-def test_schema5_state_round_trip_and_legacy_chapter_load(tmp_path: Path):
+def test_schema6_state_round_trip_and_legacy_chapter_load(tmp_path: Path):
     path = tmp_path / "state.json"
     state = ConversionState(
-        version=5,
+        version=6,
         conversion_unit="paragraph",
         paragraphs_dir=str(tmp_path / "Book_paragraphs"),
         source_selection=[2],
         chapters=[
-            ChapterState(index=2, title="Title", content_hash="hash", units=[_unit()])
+            ChapterState(
+                index=2,
+                title="Title",
+                content_hash="hash",
+                paragraph_random_seed=123,
+                units=[_unit()],
+            )
         ],
     )
     state.save(path)
@@ -45,12 +51,14 @@ def test_schema5_state_round_trip_and_legacy_chapter_load(tmp_path: Path):
     assert loaded.chapters[0].units[0].completed
     assert loaded.chapters[0].units[0].source_paragraph_index == 12
     assert loaded.chapters[0].units[0].chapter_unit_index == 0
+    assert loaded.chapters[0].paragraph_random_seed == 123
     assert loaded.get_completed_unit_count() == 1
 
     legacy = json.loads(path.read_text(encoding="utf-8"))
-    legacy["version"] = 4
+    legacy["version"] = 5
     legacy.pop("conversion_unit")
     legacy["chapters"][0].pop("units")
+    legacy["chapters"][0].pop("paragraph_random_seed")
     path.write_text(json.dumps(legacy), encoding="utf-8")
     legacy_state = ConversionState.load(path)
     assert legacy_state is not None

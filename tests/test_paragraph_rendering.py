@@ -6,7 +6,12 @@ from types import SimpleNamespace
 import numpy as np
 import soundfile as sf
 
-from ttsforge.conversion import Chapter, ConversionOptions, TTSConverter
+from ttsforge.conversion import (
+    Chapter,
+    ConversionOptions,
+    ConversionState,
+    TTSConverter,
+)
 from ttsforge.short_sentence_stats import ShortSentenceStats
 
 
@@ -85,8 +90,13 @@ class StochasticHashRunner(FakeRunner):
 
     _unseeded_preparations = 0
 
+    def __init__(self):
+        super().__init__()
+        self.random_seeds: list[int | None] = []
+
     def prepare_paragraph_units(self, text, **kwargs):
         random_seed = kwargs.get("random_seed")
+        self.random_seeds.append(random_seed)
         if random_seed is None:
             type(self)._unseeded_preparations += 1
             identity = f"unseeded-{type(self)._unseeded_preparations}"
@@ -240,3 +250,39 @@ def test_unseeded_stochastic_hash_does_not_restart_saved_prefix(
 
     assert second_result.success, second_result.error_message
     assert [result.descriptor.index for result in second_runner.prepared[0].results] == [1]
+
+
+def test_seed_is_saved_before_preparation_failure(tmp_path: Path):
+    output = tmp_path / "book.wav"
+    options = ConversionOptions(
+        output_format="wav",
+        output_dir=tmp_path,
+        title="Book",
+        conversion_unit="paragraph",
+    )
+
+    class FailingRunner(FakeRunner):
+        def __init__(self):
+            super().__init__()
+            self.random_seeds: list[int | None] = []
+
+        def prepare_paragraph_units(self, text, **kwargs):
+            self.random_seeds.append(kwargs.get("random_seed"))
+            raise RuntimeError("preparation failed")
+
+    runner = FailingRunner()
+    converter = TTSConverter(options)
+    converter._runner = runner
+    result = converter.convert_chapters_resumable(
+        [Chapter(title="One", content="first", index=0)],
+        output,
+        resume=False,
+    )
+
+    assert not result.success
+    assert len(runner.random_seeds) == 1
+    assert runner.random_seeds[0] is not None
+    state_file = next(tmp_path.glob(".Book-*_chapters/state.json"))
+    state = ConversionState.load(state_file)
+    assert state is not None
+    assert state.chapters[0].paragraph_random_seed == runner.random_seeds[0]

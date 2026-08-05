@@ -101,6 +101,38 @@ def test_text_resume_rejects_changed_content_settings_and_legacy_state(
     assert validation.reason == "legacy-state-version"
 
 
+def test_paragraph_schema5_resume_is_rejected_explicitly(tmp_path: Path) -> None:
+    chapter = Chapter(title="Chapter", content="Original", index=0)
+    converter = TTSConverter(
+        ConversionOptions(title="Book", conversion_unit="paragraph")
+    )
+    generation = converter._generation_fingerprint()
+    state = ConversionState(
+        version=5,
+        conversion_unit="paragraph",
+        source_hash="source",
+        onnx_provider=converter.options.effective_onnx_provider(),
+        source_selection=[0],
+        generation_fingerprint=generation,
+        chapters=[
+            ChapterState(
+                index=0,
+                title=chapter.title,
+                content_hash=_hash_content(chapter.content),
+                render_fingerprint=_chapter_render_fingerprint(chapter, generation),
+            )
+        ],
+    )
+
+    validation = converter._resume_state_matches(
+        state, [chapter], "source", generation, tmp_path
+    )
+
+    assert validation == ResumeValidation(
+        reusable=False, reason="paragraph-resume-schema-upgrade"
+    )
+
+
 def test_renderer_contract_uses_pykokoro_081_and_rejects_old_identity() -> None:
     contract = renderer_contract_payload()
     assert contract["pykokoro"] == "0.8.1"

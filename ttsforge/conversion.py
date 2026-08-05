@@ -6,6 +6,7 @@ import hashlib
 import json
 import os
 import re
+import secrets
 import tempfile
 import threading
 import time
@@ -206,6 +207,7 @@ class ChapterState:
     ssmd_diagnostics_file: str | None = None
     ssmd_markers_file: str | None = None
     ssmd_document_title: str | None = None
+    paragraph_random_seed: int | None = None
     units: list[RenderUnitState] = field(default_factory=list)
 
 
@@ -416,6 +418,7 @@ class ConversionState:
                     "ssmd_diagnostics_file": ch.ssmd_diagnostics_file,
                     "ssmd_markers_file": ch.ssmd_markers_file,
                     "ssmd_document_title": ch.ssmd_document_title,
+                    "paragraph_random_seed": ch.paragraph_random_seed,
                     "units": [unit.to_dict() for unit in ch.units],
                 }
                 for ch in self.chapters
@@ -1573,6 +1576,16 @@ class TTSConverter:
                 state.save(state_file)
                 return ConversionResult(success=False, error_message="Cancelled")
 
+            effective_seed = self.options.random_seed
+            if effective_seed is None:
+                if chapter_state.paragraph_random_seed is None:
+                    chapter_state.paragraph_random_seed = secrets.randbits(63)
+                    state.save(state_file)
+                effective_seed = chapter_state.paragraph_random_seed
+            elif chapter_state.paragraph_random_seed != effective_seed:
+                chapter_state.paragraph_random_seed = effective_seed
+                state.save(state_file)
+
             with self._runner.prepare_paragraph_units(
                 ssmd_content,
                 lang_code=lang_code,
@@ -1581,6 +1594,7 @@ class TTSConverter:
                 ),
                 ssmd_policy=self.options.ssmd_policy,
                 audio_resolver=resolver,
+                random_seed=effective_seed,
             ) as prepared:
                 planned = map_descriptors(
                     prepared.units,
@@ -1911,6 +1925,15 @@ class TTSConverter:
                 "Legacy resume state is unsafe; starting fresh conversion", "warning"
             )
             return ResumeValidation(reusable=False, reason="legacy-state-version")
+        if state.conversion_unit == "paragraph" and state.version < 6:
+            self.log(
+                "Paragraph resume state predates persisted preparation seeds; "
+                "use --fresh to start a new conversion",
+                "warning",
+            )
+            return ResumeValidation(
+                reusable=False, reason="paragraph-resume-schema-upgrade"
+            )
         if state.source_hash != source_hash:
             self.log(
                 "Source file or chapter inputs changed, starting fresh conversion",
@@ -2185,7 +2208,7 @@ class TTSConverter:
                 state = ConversionState(
                     source_file=str(source_file) if source_file else "",
                     source_hash=source_hash,
-                    version=5,
+                    version=6,
                     output_file=str(output_path.resolve()),
                     work_dir=str(work_dir),
                     voice=self.options.voice,

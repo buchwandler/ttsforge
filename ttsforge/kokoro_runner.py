@@ -301,6 +301,7 @@ class KokoroRunner:
         pause_mode: Literal["tts", "manual", "auto"],
         ssmd_policy: SSMDPolicy | None = None,
         audio_resolver: object | None = None,
+        random_seed: int | None = None,
     ) -> PreparedParagraphUnits:
         """Prepare a complete document using PyKokoro's public unit API."""
         self.ensure_ready()
@@ -310,6 +311,9 @@ class KokoroRunner:
                 "Installed PyKokoro does not provide the public paragraph-unit API; "
                 "install pykokoro>=0.8.1,<0.9."
             )
+        effective_seed = (
+            random_seed if random_seed is not None else self.opts.random_seed
+        )
         gen = GenerationConfig(
             speed=self.opts.speed,
             lang=lang_code,
@@ -319,7 +323,7 @@ class KokoroRunner:
             pause_sentence=self.opts.pause_sentence,
             pause_paragraph=self.opts.pause_paragraph,
             pause_variance=self.opts.pause_variance,
-            random_seed=self.opts.random_seed,
+            random_seed=effective_seed,
         )
         overrides: dict[str, Any] = {"generation": gen}
         if ssmd_policy is not None or audio_resolver is not None:
