@@ -90,6 +90,16 @@ def ensure_owned_directory(
     """Create or validate a paragraph directory without deleting user files."""
     if not directory.exists():
         directory.mkdir(parents=True)
+        # Establish ownership before preparation or inference starts.  The
+        # empty manifest and playlist are both written atomically, so an
+        # interruption before the first finalized unit leaves a resumable
+        # directory instead of an ambiguous user-owned path.
+        rebuild_manifest_and_playlist(
+            directory,
+            ownership=ownership,
+            units=(),
+            chapter_titles={},
+        )
         return
     if not directory.is_dir():
         raise ValueError(f"Paragraph output path is not a directory: {directory}")

@@ -295,3 +295,14 @@ def test_seed_is_saved_before_preparation_failure(tmp_path: Path):
     state = ConversionState.load(state_file)
     assert state is not None
     assert state.chapters[0].paragraph_random_seed == runner.random_seeds[0]
+
+    retry_runner = StochasticHashRunner()
+    retry = TTSConverter(options)
+    retry._runner = retry_runner
+    retry_result = retry.convert_chapters_resumable(
+        [Chapter(title="One", content="first", index=0)],
+        output,
+        resume=True,
+    )
+    assert retry_result.success, retry_result.error_message
+    assert retry_runner.random_seeds == [runner.random_seeds[0]]

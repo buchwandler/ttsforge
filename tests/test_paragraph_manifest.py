@@ -24,6 +24,9 @@ def test_manifest_playlist_are_ordered_and_owned(tmp_path: Path):
         "conversion_unit": "paragraph",
     }
     ensure_owned_directory(directory, ownership=ownership)
+    initial = json.loads((directory / "manifest.json").read_text(encoding="utf-8"))
+    assert initial["files"] == []
+    assert (directory / "playlist.m3u8").read_text(encoding="utf-8") == "#EXTM3U\n"
     units = []
     for sequence in (0, 1):
         name = canonical_filename(
