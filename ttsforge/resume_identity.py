@@ -216,6 +216,7 @@ def _common_generation_payload(
     legacy_paths: bool = False,
 ) -> dict[str, JsonValue]:
     """Build the explicit field list shared by current and legacy identity."""
+
     def file_value(value: Any, *, required: bool = False) -> JsonValue:
         if legacy_paths:
             return cast(JsonValue, _legacy_path_identity(value))
@@ -239,9 +240,7 @@ def _common_generation_payload(
         "model_variant": str(_attribute(options, "model_variant")),
         "model_path": file_value(_attribute(options, "model_path"), required=True),
         "voices_path": file_value(_attribute(options, "voices_path"), required=True),
-        "silence_between_chapters": _attribute(
-            options, "silence_between_chapters"
-        ),
+        "silence_between_chapters": _attribute(options, "silence_between_chapters"),
         "pause_clause": _attribute(options, "pause_clause"),
         "pause_sentence": _attribute(options, "pause_sentence"),
         "pause_paragraph": _attribute(options, "pause_paragraph"),
@@ -253,9 +252,7 @@ def _common_generation_payload(
         "use_mixed_language": _attribute(options, "use_mixed_language"),
         "mixed_language_primary": _attribute(options, "mixed_language_primary"),
         "mixed_language_allowed": _attribute(options, "mixed_language_allowed"),
-        "mixed_language_confidence": _attribute(
-            options, "mixed_language_confidence"
-        ),
+        "mixed_language_confidence": _attribute(options, "mixed_language_confidence"),
         "phoneme_dictionary": file_value(
             _attribute(options, "phoneme_dictionary_path"), required=True
         ),
@@ -271,9 +268,7 @@ def _common_generation_payload(
             "resolved_g2p_models": dict(sorted(resolved_g2p_models.items())),
         },
         "announce_chapters": _attribute(options, "announce_chapters"),
-        "chapter_pause_after_title": _attribute(
-            options, "chapter_pause_after_title"
-        ),
+        "chapter_pause_after_title": _attribute(options, "chapter_pause_after_title"),
         "split_mode": _attribute(options, "split_mode"),
         "conversion_unit": _attribute(options, "conversion_unit"),
         "paragraph_output_schema": PARAGRAPH_OUTPUT_SCHEMA,

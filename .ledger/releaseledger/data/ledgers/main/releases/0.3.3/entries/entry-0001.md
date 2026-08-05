@@ -7,17 +7,18 @@ versioning:
 entry_id: entry-0001
 release_version: 0.3.3
 kind: fixed
-summary: Fixed safe paragraph conversion resume from saved generation settings with
-  field-level mismatch diagnostics
+summary:
+  Fixed safe paragraph conversion resume from saved generation settings with field-level
+  mismatch diagnostics
 status: accepted
 audience: null
 scopes: []
 source_refs:
-- tl:task-0023
+  - tl:task-0023
 paths:
-- ttsforge/resume_identity.py
-- ttsforge/conversion.py
-- ttsforge/cli/commands_conversion.py
+  - ttsforge/resume_identity.py
+  - ttsforge/conversion.py
+  - ttsforge/cli/commands_conversion.py
 issues: []
 prs: []
 sources: []
