@@ -80,6 +80,43 @@ class FakeRunner:
         return ShortSentenceStats()
 
 
+class StochasticHashRunner(FakeRunner):
+    """Model PyKokoro's unstable descriptor identity when no seed is given."""
+
+    _unseeded_preparations = 0
+
+    def prepare_paragraph_units(self, text, **kwargs):
+        random_seed = kwargs.get("random_seed")
+        if random_seed is None:
+            type(self)._unseeded_preparations += 1
+            identity = f"unseeded-{type(self)._unseeded_preparations}"
+        else:
+            identity = f"seeded-{random_seed}"
+        descriptors = [
+            SimpleNamespace(
+                index=0,
+                paragraph_idx=0,
+                text="Title",
+                text_hash=f"title-{identity}",
+                char_start=0,
+                char_end=5,
+                marker_names=(),
+            ),
+            SimpleNamespace(
+                index=1,
+                paragraph_idx=1,
+                text="Body",
+                text_hash=f"body-{identity}",
+                char_start=6,
+                char_end=10,
+                marker_names=(),
+            ),
+        ]
+        prepared = FakePrepared(descriptors)
+        self.prepared.append(prepared)
+        return prepared
+
+
 def test_paragraph_conversion_writes_ordered_units_and_merges(tmp_path: Path):
     output = tmp_path / "book.wav"
     options = ConversionOptions(
@@ -170,3 +207,36 @@ def test_resumed_progress_includes_retained_unit_characters(tmp_path: Path):
     assert result.success, result.error_message
     assert progress
     assert progress[-1].chars_processed == len("Title") + len("Body")
+
+
+def test_unseeded_stochastic_hash_does_not_restart_saved_prefix(
+    tmp_path: Path,
+):
+    """A new process must reuse the effective preparation seed on resume."""
+    output = tmp_path / "book.wav"
+    options = ConversionOptions(
+        output_format="wav",
+        output_dir=tmp_path,
+        title="Book",
+        conversion_unit="paragraph",
+    )
+    chapters = [Chapter(title="One", content="first", index=0)]
+
+    def cancel_after_first(progress):
+        if progress.current_unit == 1:
+            first._cancelled = True
+
+    first = TTSConverter(options, progress_callback=cancel_after_first)
+    first_runner = StochasticHashRunner()
+    first._runner = first_runner
+    first_result = first.convert_chapters_resumable(chapters, output, resume=False)
+    assert not first_result.success
+    assert [result.descriptor.index for result in first_runner.prepared[0].results] == [0]
+
+    second = TTSConverter(options)
+    second_runner = StochasticHashRunner()
+    second._runner = second_runner
+    second_result = second.convert_chapters_resumable(chapters, output, resume=True)
+
+    assert second_result.success, second_result.error_message
+    assert [result.descriptor.index for result in second_runner.prepared[0].results] == [1]
