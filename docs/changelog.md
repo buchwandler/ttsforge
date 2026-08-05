@@ -1,5 +1,21 @@
 # Changelog
 
+## [Unreleased]
+
+### Fixed
+
+- Fixed paragraph-mode resume across processes by persisting an effective preparation
+  seed per chapter before randomized short-sentence processing
+- Fixed resume orchestration so incompatible state reports an actionable reason instead
+  of silently starting a fresh conversion
+- Fixed recovery after a paragraph output directory is created before the first unit is
+  finalized by establishing ownership metadata immediately
+
+### Documentation
+
+- Documented paragraph unit progress, automatic and explicit seeds, `--fresh` restart
+  behavior, schema 5 limitations, and an interruption-based resume example
+
 ## [0.3.1] - 2026-08-04
 
 ### Added

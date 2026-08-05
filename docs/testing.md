@@ -15,9 +15,11 @@ pytest -q tests/test_pykokoro_unit_contract.py tests/test_conversion_unit_cli.py
   tests/test_paragraph_merge.py tests/test_paragraph_manifest.py
 ```
 
-These tests cover public PyKokoro streaming, schema-5 migration, atomic output and
-ownership, unit resume boundaries, filename ordering, timing parity, no-gap merging, and
-merge-only recovery.
+These tests cover public PyKokoro streaming, schema-6 seed persistence and explicit
+schema-5 paragraph rejection, atomic output and ownership, unit resume boundaries,
+filename ordering, timing parity, no-gap merging, strict CLI mismatch handling, and
+merge-only recovery. The main regression test models a changed stochastic descriptor
+hash and verifies that a saved prefix is not rendered again.
 
 The maintained coverage policy is staged so high-risk code has explicit gates while the
 repository-wide target can be raised as the large CLI modules are decomposed:

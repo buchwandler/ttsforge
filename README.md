@@ -145,6 +145,14 @@ chapter. A complete workspace can be merged without initializing ONNX. See
 [`examples/README.md`](examples/README.md) and the conversion, resume, and manifest
 examples.
 
+Paragraph mode saves progress after every finalized unit. When `--seed` is omitted,
+TTSForge creates and persists a hidden non-negative preparation seed for each chapter
+before stochastic short-sentence processing begins, then reuses it across processes.
+Fresh conversions receive new automatic seeds; `--seed 42` supplies the same explicit
+seed to every chapter. A resume mismatch reports the reason and tells you to use
+`--fresh`; it never silently starts over. Paragraph workspaces created with state schema
+5 cannot guarantee deterministic preparation and require a fresh run.
+
 ### Basic Conversion
 
 ```bash
@@ -207,6 +215,10 @@ Conversions are resumable by default. If interrupted, re-run the same command:
 ttsforge convert book.epub  # Resumes from last chapter
 ttsforge convert book.epub --fresh  # Start over
 ```
+
+For paragraph conversion, the resume summary reports completed units and the next
+chapter/paragraph. Valid WAV and marker artifacts are retained, while a damaged unit
+invalidates only its ordered suffix.
 
 ### Phoneme Workflow
 

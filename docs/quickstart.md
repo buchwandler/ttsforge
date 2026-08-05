@@ -149,6 +149,13 @@ internal batching setting. The saved conversion unit, selected chapters, and gen
 fingerprint cannot be changed during resume; use `--fresh` to start a new workspace. A
 complete workspace supports merge-only recovery without ONNX.
 
+Paragraph resume persists a per-chapter preparation seed before randomized processing,
+so a second process skips already finalized units even when the default short-sentence
+handling is enabled. Pass `--seed 42` for an explicit reproducible seed. If saved state
+is incompatible, TTSForge reports the reason and stops; use `--fresh` to deliberately
+discard progress and begin again. See `python examples/paragraph_resume.py --help` for
+an example that cancels after a configurable number of units before restarting.
+
 Inspect the retained output without loading TTS models:
 
 ```bash

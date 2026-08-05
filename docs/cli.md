@@ -172,6 +172,11 @@ Selection never downloads packages. Exact package and tier requests are strict.
 
 `--fresh` : Discard any previous progress and start conversion from scratch.
 
+When a discovered resume candidate fails strong compatibility validation, the CLI exits
+with the reason and an instruction to use `--fresh`; it does not announce a resume and
+then silently create a replacement state. Paragraph summaries use completed/total unit
+counts and show the next chapter and paragraph.
+
 `--generate-ssmd` : Generate only SSMD files without creating audio (for manual
 editing).
 
@@ -261,6 +266,11 @@ are always retained, so `--keep-chapters` is redundant in that mode. A complete
 paragraph workspace can rebuild a missing final audiobook without initializing
 inference. The maintained inspection workflow is
 `python examples/paragraph_manifest.py book_paragraphs/manifest.json`.
+
+Paragraph mode persists an effective preparation seed per chapter before stochastic
+short-sentence handling. Omit `--seed` to receive a hidden durable seed for each fresh
+chapter, or pass `--seed 42` to use an explicit seed. State schema 5 paragraph
+workspaces cannot safely reconstruct this identity and require `--fresh`.
 
 ## list
 

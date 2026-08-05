@@ -90,6 +90,14 @@ are skipped on resume, and a complete paragraph workspace can rebuild a missing 
 audiobook without ONNX initialization. See `examples/paragraph_manifest.py` for
 inspection-only validation.
 
+Progress is saved after every finalized WAV unit. Randomized paragraph preparation uses
+a hidden persisted seed per chapter when no `--seed` value is supplied, making the
+prepared descriptor identity stable across process restarts while keeping fresh
+conversions independently randomized. `--seed 42` records and reuses the explicit seed
+for every chapter. A strong resume mismatch is an actionable error; use `--fresh` for an
+intentional restart. Paragraph state schema 5 lacks this seed and must be restarted
+fresh rather than being silently migrated.
+
 Name extraction additionally accepts `--spacy-model`, `--spacy-model-size`, and
 `--language`; its output metadata records the concrete NER-capable package. Existing
 configurations without these keys migrate to automatic selection.
