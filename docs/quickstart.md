@@ -149,12 +149,26 @@ internal batching setting. The saved conversion unit, selected chapters, and gen
 fingerprint cannot be changed during resume; use `--fresh` to start a new workspace. A
 complete workspace supports merge-only recovery without ONNX.
 
+The canonical interrupted paragraph workflow is:
+
+```bash
+ttsforge convert "Platform Decay - Martha Wells.epub" --fresh --conversion-unit paragraph
+# Interrupt, then resume without repeating options:
+ttsforge convert "Platform Decay - Martha Wells.epub"
+```
+
+Resume restores the saved chapter selection, paragraph mode, output path, and omitted
+audio-affecting settings. An explicit changed setting is rejected with its field name;
+use the saved value or choose `--fresh` for a new workspace.
+
 Paragraph resume persists a per-chapter preparation seed before randomized processing,
 so a second process skips already finalized units even when the default short-sentence
 handling is enabled. Pass `--seed 42` for an explicit reproducible seed. If saved state
-is incompatible, TTSForge reports the reason and stops; use `--fresh` to deliberately
-discard progress and begin again. See `python examples/paragraph_resume.py --help` for
-an example that cancels after a configurable number of units before restarting.
+is incompatible, TTSForge reports the changed fields and stops; use `--fresh` to
+deliberately discard progress and begin again. Verifiable schema-6 state is migrated to
+schema 7, while unverifiable state and existing paragraph WAVs are preserved. See
+`python examples/paragraph_resume.py --help` for an example that cancels after a
+configurable number of units before restarting.
 
 Inspect the retained output without loading TTS models:
 

@@ -44,10 +44,9 @@ from .paragraph_output import (
     rebuild_manifest_and_playlist,
     validate_wav,
 )
-from .prosody_support import ProsodyPolicy, prosody_policy_payload
+from .prosody_support import ProsodyPolicy
 from .render_units import (
     PARAGRAPH_MANIFEST_SCHEMA,
-    PARAGRAPH_OUTPUT_SCHEMA,
     UNIT_FILENAME_SCHEMA,
     ConversionUnit,
     RenderUnitState,
@@ -56,6 +55,18 @@ from .render_units import (
     reconcile_units,
     renderer_contract_payload,
     validate_conversion_unit,
+)
+from .resume_identity import (
+    GENERATION_IDENTITY_SCHEMA,
+    GenerationIdentity,
+    IdentityDifference,
+    JsonValue,
+    build_generation_identity,
+    build_generation_identity_v1_legacy,
+    diff_generation_identity,
+    generation_fingerprint,
+    generation_fingerprint_v1_legacy,
+    validate_saved_generation_identity,
 )
 from .short_sentence_config import resolve_short_sentence_config
 from .short_sentence_stats import ShortSentenceStats
@@ -249,6 +260,8 @@ class ConversionState:
     resolved_g2p_models: dict[str, str] = field(default_factory=dict)
     chapters: list[ChapterState] = field(default_factory=list)
     source_selection: list[int] = field(default_factory=list)
+    generation_identity_schema: int = GENERATION_IDENTITY_SCHEMA
+    generation_identity: dict[str, JsonValue] = field(default_factory=dict)
     generation_fingerprint: str = ""
     ssmd_policy_fingerprint: str = ""
     started_at: str = ""
@@ -286,6 +299,11 @@ class ConversionState:
                 chapters.append(ChapterState(**chapter_values))
             data["chapters"] = chapters
             data.setdefault("source_selection", [])
+            # Version-6 records have only an opaque digest.  A missing schema
+            # marker is retained as 0 so the migration path can distinguish
+            # them from a corrupt schema-7 identity.
+            data.setdefault("generation_identity_schema", 0)
+            data.setdefault("generation_identity", {})
             data.setdefault("generation_fingerprint", "")
             data.setdefault("ssmd_policy_fingerprint", "")
 
@@ -366,6 +384,12 @@ class ConversionState:
     def save(self, state_file: Path) -> None:
         """Save state to a JSON file."""
         self.last_updated = time.strftime("%Y-%m-%d %H:%M:%S")
+        if self.generation_identity:
+            if self.generation_identity_schema != GENERATION_IDENTITY_SCHEMA:
+                raise ValueError("unsupported generation identity schema")
+            self.generation_fingerprint = generation_fingerprint(
+                self.generation_identity
+            )
         data = {
             "version": self.version,
             "source_file": self.source_file,
@@ -426,6 +450,8 @@ class ConversionState:
             "started_at": self.started_at,
             "last_updated": self.last_updated,
             "source_selection": self.source_selection,
+            "generation_identity_schema": self.generation_identity_schema,
+            "generation_identity": self.generation_identity,
             "generation_fingerprint": self.generation_fingerprint,
             "ssmd_policy_fingerprint": self.ssmd_policy_fingerprint,
             "conversion_unit": self.conversion_unit,
@@ -488,6 +514,7 @@ class ResumeValidation:
 
     reusable: bool
     reason: str | None = None
+    differences: tuple[IdentityDifference, ...] = ()
 
 
 ResumeMismatchPolicy = Literal["error", "fresh"]
@@ -1801,73 +1828,24 @@ class TTSConverter:
             aggregate_metadata=aggregate_metadata,
         )
 
+    def _generation_identity(self) -> GenerationIdentity:
+        """Build the complete current generation identity."""
+        return build_generation_identity(
+            self.options,
+            resolved_sentence_models=self._resolved_sentence_models,
+            resolved_g2p_models=self._resolved_g2p_models,
+        )
+
     def _generation_fingerprint(self) -> str:
-        """Fingerprint every option that can affect generated audio."""
-        options = self.options
-        dictionary = _path_identity(options.phoneme_dictionary_path)
-        payload = {
-            "voice": options.voice,
-            "voice_blend": options.voice_blend,
-            "voice_database": _path_identity(options.voice_database),
-            "language": options.language,
-            "lang": options.lang,
-            "speed": options.speed,
-            "output_format": options.output_format,
-            "use_gpu": options.use_gpu,
-            "onnx_provider": options.effective_onnx_provider(),
-            "model_quality": str(options.model_quality),
-            "model_source": str(options.model_source),
-            "model_variant": str(options.model_variant),
-            "model_path": _path_identity(options.model_path),
-            "voices_path": _path_identity(options.voices_path),
-            "silence_between_chapters": options.silence_between_chapters,
-            "pause_clause": options.pause_clause,
-            "pause_sentence": options.pause_sentence,
-            "pause_paragraph": options.pause_paragraph,
-            "pause_variance": options.pause_variance,
-            "random_seed": options.random_seed,
-            "pause_mode": options.pause_mode,
-            "enable_short_sentence": options.enable_short_sentence,
-            "short_sentence": options.short_sentence,
-            "use_mixed_language": options.use_mixed_language,
-            "mixed_language_primary": options.mixed_language_primary,
-            "mixed_language_allowed": options.mixed_language_allowed,
-            "mixed_language_confidence": options.mixed_language_confidence,
-            "phoneme_dictionary": dictionary,
-            "phoneme_dict_case_sensitive": options.phoneme_dict_case_sensitive,
-            "spacy": {
-                "policy": SPACY_POLICY_VERSION,
-                "use_spacy": options.use_spacy,
-                "requested_model": options.spacy_model,
-                "requested_size": options.spacy_model_size,
-                "resolved_sentence_models": dict(
-                    sorted(self._resolved_sentence_models.items())
-                ),
-                "resolved_g2p_models": dict(sorted(self._resolved_g2p_models.items())),
-            },
-            "announce_chapters": options.announce_chapters,
-            "chapter_pause_after_title": options.chapter_pause_after_title,
-            "split_mode": options.split_mode,
-            "conversion_unit": options.conversion_unit,
-            "paragraph_output_schema": PARAGRAPH_OUTPUT_SCHEMA,
-            "paragraph_pause_ownership": "following-boundary-owned-by-previous-v1",
-            "generate_ssmd_only": options.generate_ssmd_only,
-            "detect_emphasis": options.detect_emphasis,
-            "epub_content_mode": options.epub_content_mode,
-            "epub_heading_policy": "minimum_body_heading_level=2",
-            "epub_scene_break_policy": "preserve",
-            "text_postprocess_options": vars(options.text_postprocess_options),
-            "ssmd_policy": _ssmd_policy_payload(options.ssmd_policy),
-            "prosody_policy": prosody_policy_payload(options.prosody_policy),
-        }
-        return _canonical_fingerprint(payload)
+        """Compatibility wrapper returning the current identity digest."""
+        return self._generation_identity().fingerprint
 
     def _resume_state_matches(
         self,
         state: ConversionState,
         chapters: list[Chapter],
         source_hash: str,
-        generation_fingerprint: str,
+        generation_fingerprint: str | GenerationIdentity,
         work_dir: Path,
         output_path: Path | None = None,
     ) -> ResumeValidation:
@@ -1889,7 +1867,7 @@ class TTSConverter:
             candidate.state,
             chapters,
             candidate.workspace.source_hash,
-            self._generation_fingerprint(),
+            self._generation_identity(),
             candidate.workspace.work_dir,
             output_path=candidate.saved_output,
         )
@@ -1899,7 +1877,7 @@ class TTSConverter:
         state: ConversionState,
         chapters: list[Chapter],
         source_hash: str,
-        generation_fingerprint: str,
+        generation_fingerprint: str | GenerationIdentity,
         work_dir: Path,
         output_path: Path | None = None,
     ) -> bool:
@@ -1918,11 +1896,19 @@ class TTSConverter:
         state: ConversionState,
         chapters: list[Chapter],
         source_hash: str,
-        generation_fingerprint: str,
+        generation_fingerprint: str | GenerationIdentity,
         work_dir: Path,
         output_path: Path | None = None,
     ) -> ResumeValidation:
-        """Allow reuse only when v2 inputs and completed artifacts still match."""
+        """Allow reuse only when inputs and completed artifacts still match."""
+        current_identity = (
+            generation_fingerprint
+            if isinstance(generation_fingerprint, GenerationIdentity)
+            else self._generation_identity()
+        )
+        current_fingerprint = current_identity.fingerprint
+        if isinstance(generation_fingerprint, str):
+            current_fingerprint = generation_fingerprint
         has_markdown_source = any(
             chapter.source_format == "markdown" for chapter in chapters
         )
@@ -2038,7 +2024,47 @@ class TTSConverter:
                         reusable=False,
                         reason=f"spacy-model-unavailable:{language}:{model}",
                     )
-        if state.generation_fingerprint != generation_fingerprint:
+        if state.version >= 7:
+            if not validate_saved_generation_identity(
+                schema=state.generation_identity_schema,
+                payload=state.generation_identity,
+                fingerprint=state.generation_fingerprint,
+            ):
+                self.log("Saved generation identity is corrupt", "warning")
+                return ResumeValidation(
+                    reusable=False, reason="generation-identity-corrupt"
+                )
+            differences = diff_generation_identity(
+                state.generation_identity, current_identity.payload
+            )
+            if differences or state.generation_fingerprint != current_fingerprint:
+                self.log(
+                    "Generation settings changed, starting fresh conversion",
+                    "warning",
+                )
+                return ResumeValidation(
+                    reusable=False,
+                    reason="generation-fingerprint-changed",
+                    differences=differences,
+                )
+        elif state.version == 6:
+            legacy_payload = build_generation_identity_v1_legacy(
+                self.options,
+                resolved_sentence_models=self._resolved_sentence_models,
+                resolved_g2p_models=self._resolved_g2p_models,
+            )
+            legacy_fingerprint = generation_fingerprint_v1_legacy(legacy_payload)
+            if state.generation_fingerprint != legacy_fingerprint:
+                self.log(
+                    "Version-6 generation identity cannot be verified safely",
+                    "warning",
+                )
+                return ResumeValidation(
+                    reusable=False,
+                    reason="legacy-generation-identity-unverifiable",
+                )
+            current_fingerprint = legacy_fingerprint
+        elif state.generation_fingerprint != current_fingerprint:
             self.log(
                 "Generation settings changed, starting fresh conversion",
                 "warning",
@@ -2053,7 +2079,7 @@ class TTSConverter:
         for saved, chapter in zip(state.chapters, chapters, strict=True):
             content_hash = _hash_content(chapter.content)
             render_fingerprint = _chapter_render_fingerprint(
-                chapter, generation_fingerprint
+                chapter, current_fingerprint
             )
             if (
                 saved.index != chapter.index
@@ -2189,7 +2215,8 @@ class TTSConverter:
             # defer spaCy preflight until audio generation paths need it.
             if not self.options.generate_ssmd_only:
                 self._preflight_spacy_models()
-            generation_fingerprint = self._generation_fingerprint()
+            generation_identity = self._generation_identity()
+            generation_fingerprint = generation_identity.fingerprint
 
             # Load or create state
             state: ConversionState | None = None
@@ -2200,7 +2227,7 @@ class TTSConverter:
                         state,
                         chapters,
                         source_hash,
-                        generation_fingerprint,
+                        generation_identity,
                         work_dir,
                         output_path=output_path,
                     )
@@ -2236,13 +2263,28 @@ class TTSConverter:
                                 ),
                             )
                         state = None
+                    elif state.version < 7:
+                        # A verified version-6 state is upgraded in memory and
+                        # written atomically with the next progress save.
+                        state.version = 7
+                        state.generation_identity_schema = generation_identity.schema
+                        state.generation_identity = generation_identity.payload
+                        state.generation_fingerprint = generation_fingerprint
+                        for chapter_state, chapter in zip(
+                            state.chapters, chapters, strict=True
+                        ):
+                            chapter_state.render_fingerprint = (
+                                _chapter_render_fingerprint(
+                                    chapter, generation_fingerprint
+                                )
+                            )
 
             if state is None:
                 # Create new state
                 state = ConversionState(
                     source_file=str(source_file) if source_file else "",
                     source_hash=source_hash,
-                    version=6,
+                    version=7,
                     output_file=str(output_path.resolve()),
                     work_dir=str(work_dir),
                     voice=self.options.voice,
@@ -2288,6 +2330,8 @@ class TTSConverter:
                         for ch in chapters
                     ],
                     source_selection=[chapter.index for chapter in chapters],
+                    generation_identity_schema=generation_identity.schema,
+                    generation_identity=generation_identity.payload,
                     generation_fingerprint=generation_fingerprint,
                     ssmd_policy_fingerprint=_canonical_fingerprint(
                         _ssmd_policy_payload(self.options.ssmd_policy)

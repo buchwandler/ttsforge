@@ -85,18 +85,22 @@ ttsforge config --set use_spacy auto
 
 Paragraph conversion retains one WAV per render unit: an optional chapter-title unit and
 the spoken paragraph units that follow it. The workspace fixes the conversion unit,
-generation fingerprint, and selected chapters; use `--fresh` to change them. Valid units
-are skipped on resume, and a complete paragraph workspace can rebuild a missing final
-audiobook without ONNX initialization. See `examples/paragraph_manifest.py` for
-inspection-only validation.
+selected chapters, and a schema-2 canonical generation identity; use `--fresh` to change
+them. `--fresh` controls workspace lifecycle and is not part of generation identity.
+Valid units are skipped on resume, and a complete paragraph workspace can rebuild a
+missing final audiobook without ONNX initialization. See
+`examples/paragraph_manifest.py` for inspection-only validation.
 
 Progress is saved after every finalized WAV unit. Randomized paragraph preparation uses
 a hidden persisted seed per chapter when no `--seed` value is supplied, making the
 prepared descriptor identity stable across process restarts while keeping fresh
 conversions independently randomized. `--seed 42` records and reuses the explicit seed
-for every chapter. A strong resume mismatch is an actionable error; use `--fresh` for an
-intentional restart. Paragraph state schema 5 lacks this seed and must be restarted
-fresh rather than being silently migrated.
+for every chapter. On resume, omitted audio-affecting settings come from the saved
+identity rather than current configuration defaults; an explicit changed setting is
+reported by field and rejected. A strong resume mismatch is an actionable error; use
+`--fresh` for an intentional restart. Verifiable schema-6 state is migrated to schema 7
+on its next atomic save. Unverifiable legacy state and its completed artifacts are
+preserved rather than silently replaced.
 
 Name extraction additionally accepts `--spacy-model`, `--spacy-model-size`, and
 `--language`; its output metadata records the concrete NER-capable package. Existing

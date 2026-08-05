@@ -134,7 +134,8 @@ ttsforge convert book.epub --fresh --conversion-unit paragraph
 
 `--split-mode paragraph` controls internal splitting and batching; it does not choose
 output files or resume granularity. The conversion unit is saved when the workspace is
-created, restored on resume, and cannot be changed without `--fresh`.
+created, restored on resume, and cannot be changed without `--fresh`. `--fresh` is a
+workspace lifecycle command, not a generation setting.
 
 Paragraph WAVs remain in `<output-stem>_paragraphs/` with `manifest.json`, marker
 sidecars, and `playlist.m3u8`. A render unit is an optional announced chapter-title unit
@@ -145,13 +146,26 @@ chapter. A complete workspace can be merged without initializing ONNX. See
 [`examples/README.md`](examples/README.md) and the conversion, resume, and manifest
 examples.
 
-Paragraph mode saves progress after every finalized unit. When `--seed` is omitted,
-TTSForge creates and persists a hidden non-negative preparation seed for each chapter
-before stochastic short-sentence processing begins, then reuses it across processes.
-Fresh conversions receive new automatic seeds; `--seed 42` supplies the same explicit
-seed to every chapter. A resume mismatch reports the reason and tells you to use
-`--fresh`; it never silently starts over. Paragraph workspaces created with state schema
-5 cannot guarantee deterministic preparation and require a fresh run.
+Paragraph mode saves progress after every finalized unit. To start and resume a
+paragraph conversion, use:
+
+```bash
+ttsforge convert "Platform Decay - Martha Wells.epub" --fresh --conversion-unit paragraph
+# Interrupt the conversion, then run the normal command:
+ttsforge convert "Platform Decay - Martha Wells.epub"
+```
+
+The second command restores the saved paragraph mode, chapter selection, output path,
+and omitted audio-affecting settings. When `--seed` is omitted, TTSForge creates and
+persists a hidden non-negative preparation seed for each chapter before stochastic
+short-sentence processing begins, then reuses it across processes. Fresh conversions
+receive new automatic seeds; `--seed 42` supplies the same explicit seed to every
+chapter. An explicitly changed audio-affecting option rejects resume and reports the
+changed field; remove the override to use the saved value or use `--fresh` to
+deliberately start a new workspace. Verifiable schema-6 workspaces migrate to schema 7;
+unverifiable legacy workspaces and their artifacts are preserved. Paragraph workspaces
+created with older than schema 6 cannot guarantee deterministic preparation and require
+a fresh run.
 
 ### Basic Conversion
 

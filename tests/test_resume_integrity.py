@@ -29,6 +29,11 @@ from ttsforge.phoneme_conversion import (
 from ttsforge.phonemes import PhonemeBook, PhonemeChapter, PhonemeSegment
 from ttsforge.prosody_support import ProsodyPolicy
 from ttsforge.render_units import renderer_contract_payload
+from ttsforge.resume_identity import (
+    GENERATION_IDENTITY_SCHEMA,
+    build_generation_identity_v1_legacy,
+    generation_fingerprint_v1_legacy,
+)
 
 
 def _text_state(
@@ -99,6 +104,133 @@ def test_text_resume_rejects_changed_content_settings_and_legacy_state(
     )
     assert validation.reusable is False
     assert validation.reason == "legacy-state-version"
+
+
+def test_schema7_state_persists_self_consistent_generation_identity(
+    tmp_path: Path,
+) -> None:
+    converter = TTSConverter(ConversionOptions(title="Book"))
+    identity = converter._generation_identity()
+    state_file = tmp_path / "state.json"
+    state = ConversionState(
+        version=7,
+        source_hash="source",
+        output_file=str(tmp_path / "book.m4b"),
+        source_selection=[0],
+        onnx_provider=converter.options.effective_onnx_provider(),
+        generation_identity_schema=GENERATION_IDENTITY_SCHEMA,
+        generation_identity=identity.payload,
+        generation_fingerprint=identity.fingerprint,
+    )
+    state.save(state_file)
+    loaded = ConversionState.load(state_file)
+    assert loaded is not None
+    assert loaded.version == 7
+    assert loaded.generation_identity_schema == GENERATION_IDENTITY_SCHEMA
+    assert loaded.generation_identity == identity.payload
+    assert loaded.generation_fingerprint == identity.fingerprint
+
+
+def test_verifiable_schema6_state_can_be_checked_with_legacy_identity(
+    tmp_path: Path,
+) -> None:
+    audio_path = tmp_path / "chapter.wav"
+    sf.write(audio_path, np.zeros(2400, dtype=np.float32), 24000)
+    chapter = Chapter(title="Chapter", content="Original", index=0)
+    converter = TTSConverter(ConversionOptions(title="Book"))
+    legacy_payload = build_generation_identity_v1_legacy(
+        converter.options,
+        resolved_sentence_models={},
+        resolved_g2p_models={},
+    )
+    legacy_fingerprint = generation_fingerprint_v1_legacy(legacy_payload)
+    state = ConversionState(
+        version=6,
+        source_hash="source",
+        output_file=str(tmp_path / "book.m4b"),
+        work_dir=str(tmp_path),
+        onnx_provider="cpu",
+        source_selection=[0],
+        generation_fingerprint=legacy_fingerprint,
+        chapters=[
+            ChapterState(
+                index=0,
+                title="Chapter",
+                content_hash=_hash_content(chapter.content),
+                render_fingerprint=_chapter_render_fingerprint(
+                    chapter, legacy_fingerprint
+                ),
+                completed=True,
+                audio_file=audio_path.name,
+            )
+        ],
+    )
+    validation = converter._resume_state_matches(
+        state,
+        [chapter],
+        "source",
+        converter._generation_identity(),
+        tmp_path,
+        output_path=Path(state.output_file),
+    )
+    assert validation.reusable is True
+
+    state.generation_fingerprint = "cannot-reconstruct"
+    validation = converter._resume_state_matches(
+        state,
+        [chapter],
+        "source",
+        converter._generation_identity(),
+        tmp_path,
+        output_path=Path(state.output_file),
+    )
+    assert validation.reason == "legacy-generation-identity-unverifiable"
+
+
+def test_schema7_resume_reports_field_level_generation_differences() -> None:
+    saved_converter = TTSConverter(ConversionOptions(title="Book", voice="af_heart"))
+    identity = saved_converter._generation_identity()
+    state = ConversionState(
+        version=7,
+        source_hash="source",
+        source_selection=[],
+        onnx_provider="cpu",
+        generation_identity_schema=GENERATION_IDENTITY_SCHEMA,
+        generation_identity=identity.payload,
+        generation_fingerprint=identity.fingerprint,
+    )
+    changed_converter = TTSConverter(ConversionOptions(title="Book", voice="af_bella"))
+    validation = changed_converter._resume_state_matches(
+        state,
+        [],
+        "source",
+        changed_converter._generation_identity(),
+        Path("."),
+    )
+    assert validation.reason == "generation-fingerprint-changed"
+    assert [difference.path for difference in validation.differences] == ["voice"]
+
+
+def test_schema7_resume_rejects_corrupt_saved_identity() -> None:
+    converter = TTSConverter(ConversionOptions(title="Book"))
+    identity = converter._generation_identity()
+    state = ConversionState(
+        version=7,
+        source_hash="source",
+        source_selection=[],
+        onnx_provider="cpu",
+        generation_identity_schema=GENERATION_IDENTITY_SCHEMA,
+        generation_identity=identity.payload,
+        generation_fingerprint="corrupt",
+    )
+    validation = converter._resume_state_matches(
+        state,
+        [],
+        "source",
+        identity,
+        Path("."),
+    )
+    assert validation.reason == "generation-identity-corrupt"
 
 
 def test_paragraph_schema5_resume_is_rejected_explicitly(tmp_path: Path) -> None:

@@ -15,7 +15,7 @@ import tempfile
 from collections.abc import Mapping
 from pathlib import Path
 from types import FrameType
-from typing import Literal, TypedDict, cast
+from typing import Any, Literal, TypedDict, cast
 
 import numpy as np
 import typer
@@ -56,6 +56,7 @@ from ..prosody_support import (
     build_pykokoro_prosody_config,
 )
 from ..render_units import validate_conversion_unit
+from ..resume_identity import IdentityDifference, JsonValue
 from ..short_sentence_config import (
     DEFAULT_SHORT_SENTENCE,
     resolve_short_sentence_config,
@@ -161,6 +162,140 @@ def _resolve_prosody_policy(
     )
 
 
+def _saved_identity_value(
+    payload: Mapping[str, JsonValue], key: str, default: object
+) -> object:
+    """Read one saved identity field while tolerating legacy payloads."""
+    return payload[key] if key in payload else default
+
+
+def _saved_path(payload: Mapping[str, JsonValue], key: str) -> Path | None:
+    value = payload.get(key)
+    if not isinstance(value, Mapping):
+        return None
+    path = value.get("path")
+    return Path(path) if isinstance(path, str) else None
+
+
+def _prosody_policy_from_identity(payload: Mapping[str, JsonValue]) -> ProsodyPolicy:
+    raw_value = payload.get("prosody_policy")
+    if not isinstance(raw_value, Mapping):
+        return ProsodyPolicy()
+    value = cast(Mapping[str, Any], raw_value)
+    fallback = value.get("prosody_fallback_methods", ["wsola", "phase_vocoder"])
+    if not isinstance(fallback, (list, tuple)):
+        fallback = ["wsola", "phase_vocoder"]
+    return ProsodyPolicy(
+        method=cast(
+            Literal["phase_vocoder", "wsola", "esola", "td_psola", "psola"],
+            str(value.get("prosody_method", "wsola")),
+        ),
+        fallback_methods=cast(
+            tuple[Literal["phase_vocoder", "wsola", "esola", "td_psola", "psola"], ...],
+            tuple(str(item) for item in fallback if isinstance(item, str)),
+        ),
+        strict=bool(value.get("prosody_strict", False)),
+        clip=bool(value.get("prosody_clip", False)),
+        n_fft=int(value.get("prosody_n_fft", 2048)),
+        hop_length=(
+            int(value["prosody_hop_length"])
+            if value.get("prosody_hop_length") is not None
+            else None
+        ),
+        filter_width=int(value.get("prosody_filter_width", 32)),
+        rolloff=float(value.get("prosody_rolloff", 0.945)),
+        boundary_blend_ms=float(value.get("prosody_boundary_blend_ms", 5.0)),
+    )
+
+
+def _ssmd_policy_from_identity(payload: Mapping[str, JsonValue]) -> SSMDPolicy:
+    raw_value = payload.get("ssmd_policy")
+    if not isinstance(raw_value, Mapping):
+        return SSMDPolicy()
+    value = cast(Mapping[str, Any], raw_value)
+    pause_value = value.get("pause_overrides")
+    pause = (
+        SSMDPauseOverrideOptions(
+            enabled=(
+                bool(pause_value.get("enabled"))
+                if isinstance(pause_value, Mapping)
+                and pause_value.get("enabled") is not None
+                else None
+            ),
+            sentence=(
+                str(pause_value.get("sentence"))
+                if isinstance(pause_value, Mapping)
+                and pause_value.get("sentence") is not None
+                else None
+            ),
+            paragraph=(
+                str(pause_value.get("paragraph"))
+                if isinstance(pause_value, Mapping)
+                and pause_value.get("paragraph") is not None
+                else None
+            ),
+            voice_change=(
+                str(pause_value.get("voice_change"))
+                if isinstance(pause_value, Mapping)
+                and pause_value.get("voice_change") is not None
+                else None
+            ),
+        )
+        if isinstance(pause_value, Mapping)
+        else None
+    )
+    bindings_value = value.get("voice_bindings", {})
+    bindings = (
+        {
+            str(provider): {
+                str(reference): str(target)
+                for reference, target in provider_bindings.items()
+            }
+            for provider, provider_bindings in bindings_value.items()
+            if isinstance(provider_bindings, Mapping)
+        }
+        if isinstance(bindings_value, Mapping)
+        else {}
+    )
+    audio_root = _saved_path(value, "audio_root")
+    return SSMDPolicy(
+        parse_header=bool(value.get("parse_header", True)),
+        unknown_header=cast(
+            Literal["warn", "error", "ignore"], value.get("unknown_header", "warn")
+        ),
+        missing_voice=cast(
+            Literal["error", "use-default"], value.get("missing_voice", "error")
+        ),
+        validate_profile=bool(value.get("validate_profile", True)),
+        emphasis_mode=cast(
+            Literal["plain", "approximate", "warn", "error"],
+            value.get("emphasis_mode", "plain"),
+        ),
+        fail_on_warning=bool(value.get("fail_on_warning", False)),
+        voice_bindings=bindings,
+        pause_overrides=pause,
+        audio_root=audio_root,
+        allow_remote_audio=bool(value.get("allow_remote_audio", False)),
+        audio_timeout_s=float(value.get("audio_timeout_s", 10.0)),
+        audio_max_bytes=int(value.get("audio_max_bytes", 20_000_000)),
+        audio_max_duration_s=float(value.get("audio_max_duration_s", 120.0)),
+    )
+
+
+def _format_identity_differences(
+    differences: tuple[IdentityDifference, ...], *, verbose: bool
+) -> str:
+    shown = differences if verbose else differences[:8]
+    lines = [
+        f"  {difference.path}: saved {difference.saved!r}, "
+        f"current {difference.current!r}"
+        for difference in shown
+    ]
+    if not verbose and len(differences) > len(shown):
+        lines.append(f"  ... and {len(differences) - len(shown)} more (use --verbose)")
+    return "\n".join(lines)
+
+
 class ContentItem(TypedDict):
     title: str
     text: str
@@ -255,6 +390,8 @@ def convert(  # noqa: C901
         )
 
     config = load_config()
+    explicit_voice = voice
+    explicit_language = language
     effective_use_spacy = (
         use_spacy
         if use_spacy is not None
@@ -512,6 +649,224 @@ def convert(  # noqa: C901
             ],
         )
 
+    saved_identity_payload: Mapping[str, JsonValue] | None = None
+    saved_mixed_language_allowed: list[str] | None = None
+    if resume_candidate is not None and not fresh:
+        candidate_state = resume_candidate.state
+        if (
+            candidate_state.generation_identity_schema == 2
+            and candidate_state.generation_identity
+        ):
+            saved_identity_payload = candidate_state.generation_identity
+
+    # A schema-7 workspace owns the effective generation settings.  Restore
+    # omitted values before constructing ConversionOptions; explicit values
+    # remain in place so the shared strong validator can report differences.
+    if saved_identity_payload is not None:
+        saved = saved_identity_payload
+
+        def restore(key: str, current: object, explicit: object) -> object:
+            return (
+                current
+                if explicit is not None
+                else _saved_identity_value(saved, key, current)
+            )
+
+        voice = cast(str | None, restore("voice", voice, explicit_voice))
+        language = cast(str | None, restore("language", language, explicit_language))
+        effective_language = language or "a"
+        resolved_defaults["voice"] = voice or resolved_defaults["voice"]
+        resolved_defaults["language"] = effective_language
+        resolved_defaults["speed"] = restore("speed", resolved_defaults["speed"], speed)
+        resolved_defaults["split_mode"] = restore(
+            "split_mode", resolved_defaults["split_mode"], split_mode
+        )
+        resolved_defaults["lang"] = restore("lang", resolved_defaults["lang"], lang)
+        if provider is None:
+            resolved_provider = cast(
+                str, _saved_identity_value(saved, "onnx_provider", resolved_provider)
+            )
+        if use_gpu is None:
+            use_gpu = cast(bool, _saved_identity_value(saved, "use_gpu", use_gpu))
+        model_quality = cast(
+            ModelQuality,
+            _saved_identity_value(saved, "model_quality", model_quality),
+        )
+        model_source = cast(
+            str, _saved_identity_value(saved, "model_source", model_source)
+        )
+        model_variant = cast(
+            str, _saved_identity_value(saved, "model_variant", model_variant)
+        )
+        if voice_blend is None:
+            voice_blend = cast(str | None, saved.get("voice_blend"))
+        if model_path is None:
+            model_path = _saved_path(saved, "model_path")
+        if voices_path is None:
+            voices_path = _saved_path(saved, "voices_path")
+        if voice_database is None:
+            voice_database = _saved_path(saved, "voice_database")
+        if phoneme_dictionary_path is None:
+            dictionary_path = _saved_path(saved, "phoneme_dictionary")
+            phoneme_dictionary_path = str(dictionary_path) if dictionary_path else None
+        for name, explicit in (
+            ("silence_between_chapters", silence),
+            ("pause_clause", pause_clause),
+            ("pause_sentence", pause_sentence),
+            ("pause_paragraph", pause_paragraph),
+            ("pause_variance", pause_variance),
+            ("random_seed", random_seed),
+            ("pause_mode", pause_mode),
+            ("enable_short_sentence", enable_short_sentence),
+            ("short_sentence", short_sentence),
+            ("announce_chapters", announce_chapters),
+            ("chapter_pause_after_title", chapter_pause),
+            ("use_mixed_language", use_mixed_language),
+            ("mixed_language_primary", mixed_language_primary),
+            ("mixed_language_confidence", mixed_language_confidence),
+            ("phoneme_dict_case_sensitive", phoneme_dict_case_sensitive),
+        ):
+            if explicit is None:
+                value = _saved_identity_value(saved, name, None)
+                if name == "silence_between_chapters":
+                    silence = cast(float | None, value)
+                elif name == "pause_clause":
+                    pause_clause = cast(float | None, value)
+                elif name == "pause_sentence":
+                    pause_sentence = cast(float | None, value)
+                elif name == "pause_paragraph":
+                    pause_paragraph = cast(float | None, value)
+                elif name == "pause_variance":
+                    pause_variance = cast(float | None, value)
+                elif name == "random_seed":
+                    random_seed = cast(int | None, value)
+                elif name == "pause_mode":
+                    pause_mode = cast(str | None, value)
+                elif name == "enable_short_sentence":
+                    enable_short_sentence = cast(bool | None, value)
+                elif name == "short_sentence":
+                    short_sentence = cast(str | None, value)
+                elif name == "announce_chapters":
+                    announce_chapters = cast(bool | None, value)
+                elif name == "chapter_pause_after_title":
+                    chapter_pause = cast(float | None, value)
+                elif name == "use_mixed_language":
+                    use_mixed_language = cast(bool | None, value)
+                elif name == "mixed_language_primary":
+                    mixed_language_primary = cast(str | None, value)
+                elif name == "mixed_language_confidence":
+                    mixed_language_confidence = cast(float | None, value)
+                elif name == "phoneme_dict_case_sensitive":
+                    phoneme_dict_case_sensitive = cast(bool | None, value)
+        saved_allowed = saved.get("mixed_language_allowed")
+        if mixed_language_allowed is None and isinstance(saved_allowed, list):
+            saved_mixed_language_allowed = [str(item) for item in saved_allowed]
+        saved_short_enable = enable_short_sentence
+        effective_enable_short_sentence = saved_short_enable
+        effective_short_sentence = short_sentence
+        if epub_content_mode is None:
+            effective_epub_content_mode = cast(
+                Literal["markdown", "plain"],
+                _saved_identity_value(
+                    saved, "epub_content_mode", effective_epub_content_mode
+                ),
+            )
+        if detect_emphasis is None:
+            effective_detect_emphasis = cast(
+                bool,
+                _saved_identity_value(
+                    saved, "detect_emphasis", effective_detect_emphasis
+                ),
+            )
+        if not subchapter_markers:
+            text_options_value = saved.get("text_postprocess_options")
+            if isinstance(text_options_value, Mapping):
+                saved_markers = text_options_value.get("subchapter_markers")
+                if isinstance(saved_markers, list):
+                    text_postprocess_options = resolve_text_postprocess_options(
+                        {},
+                        subchapter_markers=tuple(str(item) for item in saved_markers),
+                    )
+
+    if (
+        resume_candidate is not None
+        and not fresh
+        and saved_identity_payload is None
+        and resume_candidate.state.version == 6
+    ):
+        # Schema 6 retained these fields directly but not the complete
+        # generation payload.  Restore only values it actually persisted;
+        # the converter's legacy digest check remains conservative.
+        legacy_state = resume_candidate.state
+        if explicit_voice is None:
+            voice = legacy_state.voice
+            resolved_defaults["voice"] = legacy_state.voice
+        if explicit_language is None:
+            language = legacy_state.language
+            effective_language = language or "a"
+            resolved_defaults["language"] = effective_language
+        if speed is None:
+            resolved_defaults["speed"] = legacy_state.speed
+        if split_mode is None:
+            resolved_defaults["split_mode"] = legacy_state.split_mode
+        if lang is None:
+            resolved_defaults["lang"] = legacy_state.lang
+        if provider is None:
+            resolved_provider = legacy_state.onnx_provider or resolved_provider
+        if use_spacy is None:
+            effective_use_spacy = legacy_state.use_spacy
+        if spacy_model is None:
+            effective_spacy_model = legacy_state.spacy_model
+        if spacy_model_size is None:
+            effective_spacy_model_size = legacy_state.spacy_model_size
+        model_quality = legacy_state.model_quality
+        if output_format is None:
+            output_format = legacy_state.output_format
+        if silence is None:
+            silence = legacy_state.silence_between_chapters
+        if pause_clause is None:
+            pause_clause = legacy_state.pause_clause
+        if pause_sentence is None:
+            pause_sentence = legacy_state.pause_sentence
+        if pause_paragraph is None:
+            pause_paragraph = legacy_state.pause_paragraph
+        if pause_variance is None:
+            pause_variance = legacy_state.pause_variance
+        if random_seed is None:
+            random_seed = legacy_state.random_seed
+        if pause_mode is None:
+            pause_mode = legacy_state.pause_mode
+        if enable_short_sentence is None:
+            enable_short_sentence = legacy_state.enable_short_sentence
+        if short_sentence is None:
+            short_sentence = legacy_state.short_sentence
+        if phoneme_dict_case_sensitive is None:
+            phoneme_dict_case_sensitive = False
+        effective_enable_short_sentence = enable_short_sentence
+        effective_short_sentence = short_sentence
+
+    if saved_identity_payload is not None:
+        # Re-extract with the saved text/emphasis policy.  The initial read is
+        # needed for workspace discovery, but must not become the source for
+        # rendering when configuration changed between invocations.
+        try:
+            reader = InputReader(
+                epub_file,
+                postprocess_options=text_postprocess_options,
+                epub_options=EpubReadOptions(
+                    content_mode=cast(
+                        Literal["markdown", "plain"], effective_epub_content_mode
+                    ),
+                    preserve_emphasis=effective_detect_emphasis,
+                ),
+            )
+            epub_chapters = reader.get_chapters()
+        except Exception as exc:
+            console.print(
+                f"[red]Error reloading saved conversion settings:[/red] {exc}"
+            )
+            raise typer.Exit(code=1) from exc
+
     # Conversion granularity is a workspace property. Resolve it only after
     # discovering a resumable workspace so resume never prompts.
     if resume_candidate is not None and not fresh:
@@ -630,7 +985,19 @@ def convert(  # noqa: C901
 
     # Get format from output extension if not specified
     if output_format is None:
-        output_format = output.suffix.lstrip(".") or config.get("default_format", "m4b")
+        if saved_identity_payload is not None:
+            output_format = cast(
+                str,
+                _saved_identity_value(
+                    saved_identity_payload,
+                    "output_format",
+                    output.suffix.lstrip(".") or config.get("default_format", "m4b"),
+                ),
+            )
+        else:
+            output_format = output.suffix.lstrip(".") or config.get(
+                "default_format", "m4b"
+            )
 
     # Parse mixed_language_allowed from comma-separated string
     parsed_mixed_language_allowed = None
@@ -638,6 +1005,8 @@ def convert(  # noqa: C901
         parsed_mixed_language_allowed = [
             lang.strip() for lang in mixed_language_allowed.split(",")
         ]
+    elif saved_mixed_language_allowed is not None:
+        parsed_mixed_language_allowed = saved_mixed_language_allowed
 
     effective_ssmd_emphasis = _resolve_ssmd_emphasis_mode(
         configured=config.get("ssmd_emphasis_mode", "plain"),
@@ -736,6 +1105,34 @@ def convert(  # noqa: C901
             else float(config.get("ssmd_audio_max_duration_s", 120.0))
         ),
     )
+    if saved_identity_payload is not None:
+        explicit_ssmd_policy = (
+            any(
+                value is not None
+                for value in (
+                    ssmd_header,
+                    ssmd_unknown_header,
+                    ssmd_missing_voice,
+                    ssmd_emphasis,
+                    ssmd_profile_validation,
+                    ssmd_fail_on_warning,
+                    ssmd_voice,
+                    ssmd_pause_defaults,
+                    pause_voice_change,
+                    ssmd_audio_root,
+                    ssmd_remote_audio,
+                    ssmd_audio_max_bytes,
+                    ssmd_audio_max_duration,
+                )
+            )
+            or enable_ssmd_emphasis
+        )
+        if not explicit_ssmd_policy:
+            ssmd_policy = _ssmd_policy_from_identity(saved_identity_payload)
+        if prosody_method is None and prosody_strict is None:
+            effective_prosody_policy = _prosody_policy_from_identity(
+                saved_identity_payload
+            )
 
     # Validate all effective settings before showing a summary or asking for
     # confirmation. Config-derived values do not pass through Typer's bounds.
@@ -885,10 +1282,35 @@ def convert(  # noqa: C901
             resume_candidate, validation_chapters
         )
         if not validation.reusable:
-            console.print(
-                "[red]Saved conversion cannot be resumed:[/red] "
-                f"{validation.reason}. Use --fresh to restart."
-            )
+            if validation.reason == "generation-fingerprint-changed":
+                console.print(
+                    "[red]Saved conversion cannot be resumed:[/red] "
+                    "generation settings changed."
+                )
+                if validation.differences:
+                    console.print("\nChanged settings:")
+                    console.print(
+                        _format_identity_differences(
+                            validation.differences, verbose=verbose
+                        )
+                    )
+                console.print(
+                    "\nRemove the conflicting override to use the saved workspace "
+                    "settings, or use --fresh to start a new conversion."
+                )
+            elif validation.reason == "legacy-generation-identity-unverifiable":
+                console.print(
+                    "[red]Saved conversion cannot be resumed:[/red] the version-6 "
+                    "workspace does not contain enough generation identity data "
+                    "for safe verification.\n"
+                    "Existing paragraph WAVs and state were preserved. Use --fresh "
+                    "only if you intend to discard this workspace."
+                )
+            else:
+                console.print(
+                    "[red]Saved conversion cannot be resumed:[/red] "
+                    f"{validation.reason}. Use --fresh to restart."
+                )
             raise typer.Exit(code=2)
 
     # Show resume summary when a strongly validated candidate was found.
