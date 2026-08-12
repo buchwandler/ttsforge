@@ -21,8 +21,7 @@ def test_pykokoro_release_metadata_uses_published_ssmd_floor() -> None:
         pytest.skip("sibling pykokoro checkout is not present")
     data = tomllib.loads(pykokoro_pyproject.read_text(encoding="utf-8"))
     dependencies = data["project"]["dependencies"]
-    assert "ssmd>=0.8.0,<0.9" in dependencies
-    assert not any("ssmd>=0.8.1" in dependency for dependency in dependencies)
+    assert "ssmd>=0.8.1,<0.9" in dependencies
     assert data["tool"]["setuptools_scm"]["fallback_version"] == "0.8.1"
 
 
@@ -46,7 +45,7 @@ def test_pykokoro_dependency_floor_is_released_handoff() -> None:
         (Path(__file__).parents[1] / "pyproject.toml").read_text(encoding="utf-8")
     )
     dependencies = project["project"]["dependencies"]
-    assert "pykokoro[cpu]>=0.8.1,<0.9" in dependencies
+    assert "pykokoro[cpu]>=0.8.2,<0.9" in dependencies
     assert not any("pykokoro[cpu]>=0.7.3" in dependency for dependency in dependencies)
     assert not any("pykokoro[cpu]>=0.6.6" in dependency for dependency in dependencies)
 

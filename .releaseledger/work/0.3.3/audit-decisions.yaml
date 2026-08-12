@@ -1,0 +1,29 @@
+rows:
+  - sha: 4050236110c61944c2b267fd77c938719c3a37fa
+    inspected: true
+    inspected_paths:
+      - ttsforge/cli/commands_conversion.py
+      - ttsforge/conversion.py
+      - ttsforge/resume_identity.py
+      - tests/test_resume_identity.py
+      - tests/test_resume_integrity.py
+      - README.md
+      - docs/changelog.md
+      - docs/configuration.md
+      - docs/quickstart.md
+    observed_behavior:
+      Adds paragraph conversion resume from saved generation settings with field-level
+      mismatch diagnostics, new tests, and documentation updates
+    public_impact: public
+    decision: accepted
+    target_entry_key: entry-0001
+    notes: Main feature commit for v0.3.3
+  - sha: df9f7492ff4593c798c5607334b0105c0a856bba
+    inspected: true
+    inspected_paths:
+      - ttsforge/resume_identity.py
+    observed_behavior: Pre-commit cleanup and releaseledger entry formatting
+    public_impact: none
+    decision: accepted
+    target_entry_key: entry-0001
+    notes: Chore commit with no public-facing changes

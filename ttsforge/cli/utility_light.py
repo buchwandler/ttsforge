@@ -82,7 +82,10 @@ def _show_model_status(config: dict[str, Any]) -> None:
     )
     if assets.complete:
         console.print("[bold]ONNX Models:[/bold] Downloaded")
-        console.print(f"  config.json: {assets.config}")
+        if assets.config is None:
+            console.print("  config.json: embedded / not required")
+        else:
+            console.print(f"  config.json: {assets.config}")
         console.print(f"  model: {assets.model}")
         console.print(f"  voices: {assets.voices}")
     else:

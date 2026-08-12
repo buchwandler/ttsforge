@@ -16,7 +16,7 @@ class _Assets:
     source: str
     variant: str
     quality: str
-    config: Path
+    config: Path | None
     model: Path
     voices: Path
     missing: tuple[str, ...] = ()
@@ -26,13 +26,17 @@ class _Assets:
         return not self.missing
 
 
-def _assets(source: str, *, complete: bool) -> _Assets:
+def _assets(source: str, *, complete: bool, config: Path | None = None) -> _Assets:
     missing = () if complete else ("model", "voices")
     return _Assets(
         source=source,
         variant="v1.0",
         quality="fp32",
-        config=Path(f"/{source}/config.json"),
+        config=(
+            config
+            if config is not None
+            else (None if source == "github" else Path(f"/{source}/config.json"))
+        ),
         model=Path(f"/{source}/model.onnx"),
         voices=Path(f"/{source}/voices.bin"),
         missing=missing,
@@ -50,6 +54,7 @@ def test_github_complete_set_is_reported_downloaded(monkeypatch, capsys) -> None
     output = capsys.readouterr().out
     assert "github / v1.0 / fp32" in output
     assert "ONNX Models" in output and "Downloaded" in output
+    assert "config.json: embedded / not required" in output
 
 
 def test_pykokoro_asset_api_owns_source_specific_voice_filenames() -> None:

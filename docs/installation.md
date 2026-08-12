@@ -22,7 +22,7 @@ AudioSig does not replace TTSForge's file, FFmpeg, or audiobook orchestration la
 
 ### PyKokoro and spaCy model policy
 
-The package requires released PyKokoro `>=0.8.1,<0.9`, SSMD `>=0.8.0,<0.9`, and
+The package requires released PyKokoro `>=0.8.2,<0.9`, SSMD `>=0.8.0,<0.9`, and
 phrasplit `>=0.3.4,<0.4`. These releases provide the public spaCy request/resolution and
 memory-ownership APIs used by TTSForge. TTSForge selects only already installed spaCy
 packages and never downloads them automatically. The default `use_spacy=null` policy
@@ -183,18 +183,26 @@ pip install "ttsforge[gpu]"
 ttsforge config --set onnx_provider cuda
 ```
 
-For Termux/Android with the declared PyKokoro release and an ONNX Runtime build exposing
-NNAPI or XNNPACK:
+For Termux/Android, use the declared PyKokoro release with an ONNX Runtime build
+exposing NNAPI or XNNPACK:
 
 ```bash
-ttsforge config --set model_source github --set onnx_provider nnapi
+ttsforge config \
+  --set model_source github \
+  --set model_variant v1.0 \
+  --set model_quality fp32 \
+  --set onnx_provider nnapi
 ttsforge config --show
+ttsforge download
 ttsforge sample "Termux provider test" --provider nnapi
 ```
 
 Use `--gpu` as a compatibility shortcut for `--provider auto` or `--no-gpu` for
 `--provider cpu`. Provider availability and the documented `ONNX_PROVIDER` environment
-override are handled by PyKokoro.
+override are handled by PyKokoro. With the required patched PyKokoro release, GitHub
+`v1.0` uses the embedded standard vocabulary and does not download Hugging Face
+`config.json`. NNAPI is not guaranteed; use a provider exposed by the installed Android
+ONNX Runtime build.
 
 ## Memory diagnostics
 

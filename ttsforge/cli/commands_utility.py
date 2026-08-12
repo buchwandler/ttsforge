@@ -11,13 +11,11 @@ import numpy as np
 import typer
 from audiosig import generate_silence
 from pykokoro import GenerationConfig, KokoroPipeline, PipelineConfig
+from pykokoro.model_assets import get_model_asset_paths
 from pykokoro.onnx_backend import (
     DEFAULT_MODEL_QUALITY,
     DEFAULT_MODEL_SOURCE,
     DEFAULT_MODEL_VARIANT,
-    GITHUB_VOICES_FILENAME_V1_0,
-    GITHUB_VOICES_FILENAME_V1_1_DE,
-    GITHUB_VOICES_FILENAME_V1_1_ZH,
     LANG_CODE_TO_ONNX,
     VOICE_NAMES_BY_VARIANT,
     Kokoro,
@@ -28,10 +26,6 @@ from pykokoro.onnx_backend import (
     download_model,
     download_model_github,
     download_voices_github,
-    get_config_path,
-    get_model_dir,
-    get_model_path,
-    get_voices_dir,
     is_config_downloaded,
 )
 from pykokoro.onnx_backend import VOICE_NAMES_V1_0 as VOICE_NAMES
@@ -507,15 +501,6 @@ def _resolve_model_source_and_variant(cfg: dict) -> tuple[ModelSource, ModelVari
     if variant not in ("v1.0", "v1.1-zh", "v1.1-de"):
         variant = DEFAULT_MODEL_VARIANT
 
-    # v1.1-de is typically GitHub-only in your backend.
-    if variant == "v1.1-de" and source == "huggingface":
-        console.print(
-            "[yellow]Note:[/yellow] model_variant 'v1.1-de' is not available via "
-            "Hugging Face in this backend. Switching model_source to 'github' "
-            "for the download."
-        )
-        source = "github"
-
     return cast(ModelSource, source), cast(ModelVariant, variant)
 
 
@@ -527,27 +512,13 @@ def _resolve_voice_names(
     return list(VOICE_NAMES_BY_VARIANT.get(model_variant, VOICE_NAMES))
 
 
-def _get_cache_voices_path(
-    model_source: ModelSource,
-    model_variant: ModelVariant,
-) -> Path:
-    """Return the *actual* voices archive path used by the backend."""
-    voices_dir: Path = Path(
-        str(get_voices_dir(source=model_source, variant=model_variant))
-    )
-    if model_source == "huggingface":
-        return voices_dir / "voices.bin.npz"
-
-    # github: filename depends on variant
-    if model_variant == "v1.0":
-        return voices_dir / str(GITHUB_VOICES_FILENAME_V1_0)
-    if model_variant == "v1.1-zh":
-        return voices_dir / str(GITHUB_VOICES_FILENAME_V1_1_ZH)
-    return voices_dir / str(GITHUB_VOICES_FILENAME_V1_1_DE)
-
-
 def _exists_nonempty(path: Path) -> bool:
     return path.exists() and path.is_file() and path.stat().st_size > 0
+
+
+def _required_file_exists(path: Path | None) -> bool:
+    """Return whether an optional or required asset is present."""
+    return path is None or _exists_nonempty(path)
 
 
 def _copy_to_target(src: Path, dst: Path) -> None:
@@ -582,13 +553,13 @@ def download(ctx: typer.Context, force: bool, quality: str | None) -> None:
 
     model_source, model_variant = _resolve_model_source_and_variant(cfg)
 
-    # Paths where pykokoro actually stores files (cache)
-    cache_model_dir = get_model_dir(source=model_source, variant=model_variant)
-    cache_model_path = get_model_path(
+    assets = get_model_asset_paths(
         quality=model_quality, source=model_source, variant=model_variant
     )
-    cache_config_path = get_config_path(variant=model_variant)
-    cache_voices_path = _get_cache_voices_path(model_source, model_variant)
+    cache_config_path = assets.config
+    cache_model_path = assets.model
+    cache_voices_path = assets.voices
+    cache_model_dir = cache_model_path.parent
 
     # Optional CLI overrides (set by your root Typer app)
     model_path_override: Path | None = None
@@ -606,17 +577,25 @@ def download(ctx: typer.Context, force: bool, quality: str | None) -> None:
     console.print(f"[bold]Cache model dir:[/bold] {cache_model_dir}")
     console.print(f"[bold]Model path:[/bold] {target_model_path}")
     console.print(f"[bold]Voices path:[/bold] {target_voices_path}")
-    console.print(f"[bold]Config path:[/bold] {cache_config_path}")
+    if cache_config_path is None:
+        console.print("[bold]Config path:[/bold] embedded / not required")
+    else:
+        console.print(f"[bold]Config path:[/bold] {cache_config_path}")
 
     # Check if already downloaded
     already_downloaded = (
-        _exists_nonempty(cache_config_path)
+        _required_file_exists(cache_config_path)
         and _exists_nonempty(target_model_path)
         and _exists_nonempty(target_voices_path)
     )
     if already_downloaded and not force:
         console.print("[green]All required files are already present.[/green]")
-        console.print(f"  config.json: {format_size(cache_config_path.stat().st_size)}")
+        if cache_config_path is None:
+            console.print("  config.json: embedded / not required")
+        else:
+            console.print(
+                f"  config.json: {format_size(cache_config_path.stat().st_size)}"
+            )
         model_size = format_size(target_model_path.stat().st_size)
         voices_size = format_size(target_voices_path.stat().st_size)
         console.print(f"  {target_model_path.name}: {model_size}")
@@ -631,7 +610,9 @@ def download(ctx: typer.Context, force: bool, quality: str | None) -> None:
         console=console,
     ) as progress:
         # ---- config.json (no byte-level callback in new backend)
-        if not is_config_downloaded(variant=model_variant) or force:
+        if cache_config_path is None:
+            console.print("  [dim]config.json: embedded / not required[/dim]")
+        elif not is_config_downloaded(variant=model_variant) or force:
             config_task = progress.add_task("Downloading config.json...", total=1)
             try:
                 download_config(variant=model_variant, force=force)

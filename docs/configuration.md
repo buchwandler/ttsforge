@@ -613,7 +613,7 @@ state saves, final merging, and converter cleanup. RSS may remain elevated becau
 native allocators retain high-water pages; that alone is not evidence of a provider
 leak.
 
-TTSForge requires PyKokoro `>=0.8.1,<0.9`, uses compact segment results, and releases
+TTSForge requires PyKokoro `>=0.8.2,<0.9`, uses compact segment results, and releases
 completed chapter audio before the next chapter synthesis. Whole-chapter synthesis
 remains buffered and streaming is future work.
 
@@ -631,4 +631,11 @@ On Termux/Android, a typical setup is:
 ttsforge config --set model_source github --set model_variant v1.0 \
    --set model_quality fp32 --set onnx_provider nnapi
 ttsforge config --show
+ttsforge download
+ttsforge sample "Termux provider test" --provider nnapi
 ```
+
+With the required patched PyKokoro release, GitHub `v1.0` uses the embedded standard
+vocabulary and does not download Hugging Face `config.json`. The configured source is
+never switched automatically. Provider availability depends on the installed Android
+ONNX Runtime build, so use another available provider if NNAPI is not exposed.

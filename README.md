@@ -54,7 +54,7 @@ pip install "ttsforge[static_ffmpeg]"
 pip install "ttsforge[gpu]"
 ```
 
-TTSForge requires released PyKokoro `>=0.8.1,<0.9`. It uses compact segment results and
+TTSForge requires released PyKokoro `>=0.8.2,<0.9`. It uses compact segment results and
 releases completed chapter audio before the next chapter starts. Chapter conversion
 remains chapter-buffered. Paragraph conversion prepares each chapter once, renders
 bounded units sequentially, and retains each unit immediately for low-memory resume.
@@ -735,17 +735,25 @@ ttsforge convert book.epub --provider xnnpack
 ```
 
 For Termux/Android, install an ONNX Runtime build compatible with the declared PyKokoro
-release, then use `--provider nnapi` or `--provider xnnpack`. Configure GitHub model
-assets explicitly when using that source:
+release, then configure the GitHub assets explicitly:
 
 ```bash
-ttsforge config --set model_source github --set onnx_provider nnapi
+ttsforge config \
+  --set model_source github \
+  --set model_variant v1.0 \
+  --set model_quality fp32 \
+  --set onnx_provider nnapi
 ttsforge config --show
+ttsforge download
+ttsforge sample "Termux provider test" --provider nnapi
 ```
 
 `config --show` reports the configured source/variant/quality. If that set is incomplete
 but the other supported source has a complete set, it reports the alternate without
-switching sources automatically.
+switching sources automatically. With the required patched PyKokoro release, GitHub
+`v1.0` uses the embedded standard vocabulary and does not download Hugging Face
+`config.json`. Provider availability depends on the installed Android ONNX Runtime
+build; use another available provider if NNAPI is not exposed.
 
 ## Configuration Options
 

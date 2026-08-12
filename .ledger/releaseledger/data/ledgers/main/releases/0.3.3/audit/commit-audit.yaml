@@ -1,0 +1,71 @@
+schema_version: 1
+object_type: commit_audit_sheet
+versioning:
+  schema_version: 1
+  revision: 3
+release_version: 0.3.3
+git_base_ref: v0.3.2
+git_base_sha: 2675960c64ce0058028b8f931b5e829445cebdc6
+git_head_ref: v0.3.3
+git_head_sha: df9f7492ff4593c798c5607334b0105c0a856bba
+git_range: 2675960c64ce0058028b8f931b5e829445cebdc6..df9f7492ff4593c798c5607334b0105c0a856bba
+commit_count: 2
+rows:
+  - sha: 4050236110c61944c2b267fd77c938719c3a37fa
+    source_ref: git:4050236110c61944c2b267fd77c938719c3a37fa
+    short_sha: "4050236"
+    changed_paths:
+      - .ledger/releaseledger/data/ledgers/main/events/events.jsonl
+      - .ledger/releaseledger/data/ledgers/main/releases/0.3.3/entries/entry-0001.md
+      - .ledger/releaseledger/data/ledgers/main/releases/0.3.3/release.md
+      - README.md
+      - docs/changelog.md
+      - docs/configuration.md
+      - docs/quickstart.md
+      - tests/test_resume_identity.py
+      - tests/test_resume_integrity.py
+      - ttsforge/cli/commands_conversion.py
+      - ttsforge/conversion.py
+      - ttsforge/resume_identity.py
+    stats:
+      files_changed: 0
+      insertions: 1329
+      deletions: 95
+    inspected: true
+    inspected_paths:
+      - ttsforge/cli/commands_conversion.py
+      - ttsforge/conversion.py
+      - ttsforge/resume_identity.py
+      - tests/test_resume_identity.py
+      - tests/test_resume_integrity.py
+      - README.md
+      - docs/changelog.md
+      - docs/configuration.md
+      - docs/quickstart.md
+    observed_behavior:
+      Adds paragraph conversion resume from saved generation settings with field-level
+      mismatch diagnostics, new tests, and documentation updates
+    public_impact: public
+    decision: accepted
+    evidence_subject: "feat: improve resume"
+    target_entry_key: entry-0001
+    notes: Main feature commit for v0.3.3
+  - sha: df9f7492ff4593c798c5607334b0105c0a856bba
+    source_ref: git:df9f7492ff4593c798c5607334b0105c0a856bba
+    short_sha: df9f749
+    changed_paths:
+      - .ledger/releaseledger/data/ledgers/main/releases/0.3.3/entries/entry-0001.md
+      - ttsforge/resume_identity.py
+    stats:
+      files_changed: 0
+      insertions: 11
+      deletions: 15
+    inspected: true
+    inspected_paths:
+      - ttsforge/resume_identity.py
+    observed_behavior: Pre-commit cleanup and releaseledger entry formatting
+    public_impact: none
+    decision: accepted
+    evidence_subject: "chore: pre-commit"
+    target_entry_key: entry-0001
+    notes: Chore commit with no public-facing changes
