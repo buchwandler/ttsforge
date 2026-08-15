@@ -5,18 +5,17 @@ versioning:
   schema_version: 1
   revision: 1
 entry_id: entry-0004
-release_version: v0.3.2
-kind: fixed
+release_version: 0.3.0
+kind: added
 summary:
-  Paragraph-mode resume across processes by persisting an effective preparation seed per
-  chapter before randomized short-sentence processing
+  Added EPUB chapter structure and emphasis preservation through epub2text Markdown
+  extraction
 status: accepted
 audience: null
 scopes: []
 source_refs:
-  - git:29c2e72
-paths:
-  - ttsforge
+  - git:58aa0b86d0c807a991b7e9beacada1303c71771a
+paths: []
 issues: []
 prs: []
 sources: []

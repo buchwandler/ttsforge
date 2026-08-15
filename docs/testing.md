@@ -21,6 +21,26 @@ filename ordering, timing parity, no-gap merging, strict CLI mismatch handling, 
 merge-only recovery. The main regression test models a changed stochastic descriptor
 hash and verifies that a saved prefix is not rendered again.
 
+## Minimum dependency contract
+
+Release CI separately installs the exact lower-bound generation stack:
+
+- PyKokoro 0.8.3
+- kokorog2p 0.8.0
+
+The minimum-dependency job proves that the package's declared lower bounds install and
+that representative written-to-spoken source reaches the upstream preparation/G2P
+boundary. The normal OS/Python matrix continues to test currently resolved compatible
+dependencies.
+
+The focused local equivalent is:
+
+```bash
+pytest -q tests/test_packaging.py tests/test_dependency_contract.py \
+  tests/test_pykokoro_unit_contract.py tests/test_name_extractor.py \
+  tests/test_resume_identity.py tests/test_resume_integrity.py
+```
+
 The maintained coverage policy is staged so high-risk code has explicit gates while the
 repository-wide target can be raised as the large CLI modules are decomposed:
 

@@ -4,24 +4,21 @@ object_type: release_entry
 versioning:
   schema_version: 1
   revision: 1
-entry_id: entry-0002
-release_version: v0.3.2
-kind: fixed
-summary:
-  Resume orchestration so incompatible state reports an actionable reason instead of
-  silently starting a fresh conversion
+entry_id: entry-0001
+release_version: 0.3.0
+kind: added
+summary: Added AudioSig integration for audio processing
 status: accepted
 audience: null
 scopes: []
 source_refs:
-  - git:d36f0b3
-paths:
-  - ttsforge
+  - git:e26bed3c15fce6b81be6a9e18fd3535e325051ca
+paths: []
 issues: []
 prs: []
 sources: []
 contributors: []
 breaking: false
 internal: false
-order: 2
+order: 1
 ---

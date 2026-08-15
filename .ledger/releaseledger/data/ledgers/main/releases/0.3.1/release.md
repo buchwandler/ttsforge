@@ -3,12 +3,12 @@ schema_version: 2
 object_type: release
 versioning:
   schema_version: 1
-  revision: 14
+  revision: 16
 version: 0.3.1
 status: released
 title: Release 0.3.1
-released_at: "2026-08-04"
-previous_version: 0.2.0
+released_at: "2026-08-05"
+previous_version: 0.3.0
 cancel_reason: null
 superseded_by: null
 changelog_file: docs/changelog.md

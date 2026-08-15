@@ -54,10 +54,16 @@ pip install "ttsforge[static_ffmpeg]"
 pip install "ttsforge[gpu]"
 ```
 
-TTSForge requires released PyKokoro `>=0.8.2,<0.9`. It uses compact segment results and
-releases completed chapter audio before the next chapter starts. Chapter conversion
-remains chapter-buffered. Paragraph conversion prepares each chapter once, renders
-bounded units sequentially, and retains each unit immediately for low-memory resume.
+TTSForge uses `pykokoro[cpu]>=0.8.3,<0.9` and `kokorog2p[espeak,en]>=0.8.0,<0.9`. The
+supported stack prepares ordinary written forms such as dates, times, measurements,
+currency, ordinals, and abbreviations for speech in kokorog2p before G2P. TTSForge does
+not duplicate that normalization, and explicit SSMD `say-as` remains an
+author-controlled override.
+
+It uses compact segment results and releases completed chapter audio before the next
+chapter starts. Chapter conversion remains chapter-buffered. Paragraph conversion
+prepares each chapter once, renders bounded units sequentially, and retains each unit
+immediately for low-memory resume.
 
 To log opt-in process-memory snapshots during conversion:
 

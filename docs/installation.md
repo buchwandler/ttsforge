@@ -20,15 +20,23 @@ NumPy remains a direct dependency for TTSForge arrays, composition, playback buf
 and bounded I/O buffers. SoundFile remains required for audio decoding and encoding;
 AudioSig does not replace TTSForge's file, FFmpeg, or audiobook orchestration layers.
 
-### PyKokoro and spaCy model policy
+### PyKokoro, kokorog2p, and spaCy model policy
 
-The package requires released PyKokoro `>=0.8.2,<0.9`, SSMD `>=0.8.0,<0.9`, and
-phrasplit `>=0.3.4,<0.4`. These releases provide the public spaCy request/resolution and
-memory-ownership APIs used by TTSForge. TTSForge selects only already installed spaCy
-packages and never downloads them automatically. The default `use_spacy=null` policy
-selects the highest compatible local model and falls back to non-spaCy splitting when no
-compatible model is installed. `use_spacy=true`, `--spacy`, an exact package, or an
-exact tier is strict; `use_spacy=false` and `--no-spacy` disable spaCy.
+The package requires released PyKokoro `>=0.8.3,<0.9`, kokorog2p `>=0.8.0,<0.9`, SSMD
+`>=0.8.1,<0.9`, and phrasplit `>=0.3.4,<0.4`. TTSForge directly owns the PyKokoro and
+kokorog2p runtime boundary; the ownership chain is
+`TTSForge -> PyKokoro -> kokorog2p -> Spokenform/abbr2words`. These releases provide the
+public spaCy request/resolution and memory-ownership APIs used by TTSForge. TTSForge
+selects only already installed spaCy packages and never downloads them automatically.
+The default `use_spacy=null` policy selects the highest compatible local model and falls
+back to non-spaCy splitting when no compatible model is installed. `use_spacy=true`,
+`--spacy`, an exact package, or an exact tier is strict; `use_spacy=false` and
+`--no-spacy` disable spaCy.
+
+Users should not install `spokenform` separately for TTSForge. The compatible kokorog2p
+release owns its Spokenform and abbr2words constraints. The exact PyKokoro 0.8.3 and
+kokorog2p 0.8.0 releases must be available from the package index before installing the
+TTSForge 0.3.4 release.
 
 Install one or more compatible local spaCy packages when strict behavior or higher
 quality automatic selection is wanted:

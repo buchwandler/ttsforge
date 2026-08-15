@@ -10,6 +10,7 @@ from pathlib import Path
 import pytest
 
 from ttsforge.conversion import ConversionOptions
+from ttsforge.render_units import renderer_contract_payload
 from ttsforge.resume_identity import (
     GENERATION_IDENTITY_SCHEMA,
     build_generation_identity,
@@ -77,6 +78,15 @@ def test_saved_payload_hash_must_match_saved_digest() -> None:
         payload=identity.payload,
         fingerprint="corrupt",
     )
+
+
+def test_identity_contains_current_renderer_contract() -> None:
+    identity = _identity(ConversionOptions(conversion_unit="paragraph"))
+    contract = identity.payload["ssmd_policy"]["renderer_contract"]
+    assert contract == renderer_contract_payload()
+    assert contract["schema"] == 3
+    assert contract["pykokoro"] == "0.8.3"
+    assert contract["kokorog2p"] == "0.8.0"
 
 
 def test_fresh_and_resume_flags_are_identity_neutral() -> None:

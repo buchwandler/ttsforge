@@ -3,18 +3,18 @@ schema_version: 2
 object_type: release_entry
 versioning:
   schema_version: 1
-  revision: 1
-entry_id: entry-0001
-release_version: v0.3.2
+  revision: 2
+entry_id: entry-0002
+release_version: 0.3.2
 kind: fixed
 summary:
-  Recovery after a paragraph output directory is created before the first unit is
-  finalized by establishing ownership metadata immediately
+  Resume orchestration so incompatible state reports an actionable reason instead of
+  silently starting a fresh conversion
 status: accepted
 audience: null
 scopes: []
 source_refs:
-  - git:e26f54f
+  - git:d36f0b365706a6d670b61edba796e72310615e91
 paths:
   - ttsforge
 issues: []
@@ -23,5 +23,5 @@ sources: []
 contributors: []
 breaking: false
 internal: false
-order: 1
+order: 2
 ---

@@ -70,6 +70,19 @@ such as `[fast words]{rate="fast"}` remains active in plain mode. Language, voic
 prosody, say-as, substitution, phoneme, break, mark, paragraph, heading, and supported
 audio attributes are passed to the renderer.
 
+### Automatic written-to-spoken preparation vs explicit say-as
+
+Ordinary unannotated text flows through the PyKokoro/kokorog2p 0.8.x preparation
+boundary. For supported languages and forms, kokorog2p may prepare dates, times,
+measurements, currency, ordinals, and abbreviations as speakable text before G2P.
+TTSForge does not rewrite source SSMD into automatic annotations or duplicate that
+upstream normalization.
+
+Explicit author intent remains separate: annotations such as `[100]{as="cardinal"}` and
+other SSMD `say-as` values are document semantics and remain active overrides. The
+renderer applies explicit SSMD intent according to its upstream contract rather than
+treating every ordinary source form as an author annotation.
+
 ## Direct SSMD input
 
 An exact leading `---` line opens front matter and a matching `---` or `...` closes it.

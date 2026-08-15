@@ -35,3 +35,35 @@ def test_spacy_model_cached(monkeypatch) -> None:
     name_extractor.extract_names_from_text(text)
 
     assert calls["count"] == 1
+
+
+def test_generate_phoneme_suggestions_uses_kokorog2p_boundary() -> None:
+    names = {"Alice": 4, "Wonderland": 2}
+    suggestions = name_extractor.generate_phoneme_suggestions(names)
+    repeated = name_extractor.generate_phoneme_suggestions(names)
+
+    assert set(suggestions) == {"Alice", "Wonderland"}
+    assert suggestions["Alice"]["occurrences"] == 4
+    assert suggestions["Alice"]["phoneme"]
+    assert suggestions["Alice"]["suggestion_quality"] == "auto"
+    assert suggestions["Wonderland"]["phoneme"]
+    assert repeated == suggestions
+
+
+def test_generate_phoneme_suggestions_preserves_existing_error_policy(
+    monkeypatch,
+) -> None:
+    def fail_phonemize(*_args, **_kwargs):
+        raise RuntimeError("phonemizer unavailable")
+
+    import kokorog2p
+
+    monkeypatch.setattr(kokorog2p, "phonemize", fail_phonemize)
+    suggestions = name_extractor.generate_phoneme_suggestions({"Alice": 1})
+
+    assert suggestions["Alice"] == {
+        "phoneme": "FIXME",
+        "occurrences": 1,
+        "suggestion_quality": "error",
+        "error": "phonemizer unavailable",
+    }

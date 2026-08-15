@@ -1,5 +1,6 @@
 """Regression coverage for conservative v2 resume matching."""
 
+from copy import deepcopy
 from dataclasses import replace
 from pathlib import Path
 
@@ -32,6 +33,7 @@ from ttsforge.render_units import renderer_contract_payload
 from ttsforge.resume_identity import (
     GENERATION_IDENTITY_SCHEMA,
     build_generation_identity_v1_legacy,
+    generation_fingerprint,
     generation_fingerprint_v1_legacy,
 )
 
@@ -265,13 +267,46 @@ def test_paragraph_schema5_resume_is_rejected_explicitly(tmp_path: Path) -> None
     )
 
 
-def test_renderer_contract_uses_pykokoro_081_and_rejects_old_identity() -> None:
+def test_renderer_contract_uses_pykokoro_083_and_kokorog2p_080() -> None:
     contract = renderer_contract_payload()
-    assert contract["pykokoro"] == "0.8.1"
-    assert contract["schema"] == 2
-    assert contract != {
-        "ssmd_contract": "ssmd-0.8-pykokoro-0.7.2",
-    }
+    assert contract["pykokoro"] == "0.8.3"
+    assert contract["kokorog2p"] == "0.8.0"
+    assert contract["schema"] == 3
+
+
+def test_schema7_resume_rejects_pre_spokenform_renderer_contract_safely() -> None:
+    converter = TTSConverter(ConversionOptions(title="Book"))
+    current = converter._generation_identity()
+    saved_payload = deepcopy(current.payload)
+    renderer = saved_payload["ssmd_policy"]["renderer_contract"]
+    renderer["schema"] = 2
+    renderer["pykokoro"] = "0.8.1"
+    renderer.pop("kokorog2p", None)
+    saved_fingerprint = generation_fingerprint(saved_payload)
+    state = ConversionState(
+        version=7,
+        source_hash="source",
+        source_selection=[],
+        onnx_provider="cpu",
+        generation_identity_schema=GENERATION_IDENTITY_SCHEMA,
+        generation_identity=saved_payload,
+        generation_fingerprint=saved_fingerprint,
+    )
+
+    validation = converter._resume_state_matches(
+        state,
+        [],
+        "source",
+        current,
+        Path("."),
+    )
+
+    assert validation.reason == "generation-fingerprint-changed"
+    assert validation.reason != "generation-identity-corrupt"
+    paths = {difference.path for difference in validation.differences}
+    assert "ssmd_policy.renderer_contract.schema" in paths
+    assert "ssmd_policy.renderer_contract.pykokoro" in paths
+    assert "ssmd_policy.renderer_contract.kokorog2p" in paths
 
 
 def test_text_resume_rejects_missing_or_corrupt_audio(tmp_path: Path) -> None:

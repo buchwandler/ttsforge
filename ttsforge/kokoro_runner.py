@@ -33,6 +33,8 @@ from .short_sentence_stats import ShortSentenceStats
 from .spacy_policy import SPACY_POLICY_VERSION
 from .ssmd_support import SSMDPolicy, build_pykokoro_ssmd_config
 
+SUPPORTED_PYKOKORO = ">=0.8.3,<0.9"
+
 
 @dataclass(slots=True)
 class KokoroRunOptions:
@@ -309,7 +311,7 @@ class KokoroRunner:
         if pipeline is None or not callable(getattr(pipeline, "prepare_units", None)):
             raise RuntimeError(
                 "Installed PyKokoro does not provide the public paragraph-unit API; "
-                "install pykokoro>=0.8.2,<0.9."
+                f"install pykokoro{SUPPORTED_PYKOKORO}."
             )
         effective_seed = (
             random_seed if random_seed is not None else self.opts.random_seed
@@ -340,7 +342,7 @@ class KokoroRunner:
         except (AttributeError, TypeError) as exc:
             raise RuntimeError(
                 "Installed PyKokoro cannot satisfy the public paragraph-unit API; "
-                "install pykokoro>=0.8.2,<0.9."
+                f"install pykokoro{SUPPORTED_PYKOKORO}."
             ) from exc
         return PreparedParagraphUnits(self, prepared)
 

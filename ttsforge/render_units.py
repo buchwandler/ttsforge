@@ -21,15 +21,17 @@ PARAGRAPH_OUTPUT_SCHEMA = 1
 PARAGRAPH_MANIFEST_SCHEMA = 1
 UNIT_FILENAME_SCHEMA = 1
 PARAGRAPH_PAUSE_OWNERSHIP = "following-boundary-owned-by-previous-v1"
-PYKOKORO_RENDERER_VERSION = "0.8.1"
+PYKOKORO_RENDERER_VERSION = "0.8.3"
+KOKOROG2P_TEXT_PREPARATION_VERSION = "0.8.0"
 
 
 def renderer_contract_payload() -> dict[str, object]:
     """Return the renderer contract that gates resumable paragraph audio."""
     return {
-        "schema": 2,
+        "schema": 3,
         "ssmd": "0.8",
         "pykokoro": PYKOKORO_RENDERER_VERSION,
+        "kokorog2p": KOKOROG2P_TEXT_PREPARATION_VERSION,
         "paragraph_unit": 1,
         "pause_ownership": PARAGRAPH_PAUSE_OWNERSHIP,
         "unit_filename_schema": UNIT_FILENAME_SCHEMA,

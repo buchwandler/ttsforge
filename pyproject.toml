@@ -29,9 +29,10 @@ dependencies = [
     "charset-normalizer",
     "platformdirs>=3.0.0",
     # CPU is the supported default provider; backend modules remain lazy.
-    "pykokoro[cpu]>=0.8.2,<0.9",
+    "pykokoro[cpu]>=0.8.3,<0.9",
+    "kokorog2p[espeak,en]>=0.8.0,<0.9",
     "phrasplit>=0.3.4,<0.4",
-    "ssmd>=0.8.0,<0.9",
+    "ssmd>=0.8.1,<0.9",
 ]
 classifiers=[
     'Intended Audience :: End Users/Desktop',
@@ -72,7 +73,7 @@ ttsforge = "ttsforge.launcher:main"
 
 [tool.setuptools_scm]
 write_to = "ttsforge/_version.py"
-fallback_version = "0.3.0"
+fallback_version = "0.3.4"
 
 [tool.tox]
 legacy_tox_ini = """

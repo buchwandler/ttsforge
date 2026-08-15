@@ -1,0 +1,62 @@
+schema_version: 1
+object_type: commit_audit_sheet
+versioning:
+  schema_version: 1
+  revision: 2
+release_version: 0.3.4
+git_base_ref: v0.3.3
+git_base_sha: df9f7492ff4593c798c5607334b0105c0a856bba
+git_head_ref: v0.3.4
+git_head_sha: 31eb8dd7b6bc49f05a95cf5de197d0b8ef74d49c
+git_range: df9f7492ff4593c798c5607334b0105c0a856bba..31eb8dd7b6bc49f05a95cf5de197d0b8ef74d49c
+commit_count: 1
+rows:
+  - sha: 31eb8dd7b6bc49f05a95cf5de197d0b8ef74d49c
+    source_ref: git:31eb8dd7b6bc49f05a95cf5de197d0b8ef74d49c
+    short_sha: 31eb8dd
+    changed_paths:
+      - .ledger/releaseledger/data/ledgers/main/events/events.jsonl
+      - .ledger/releaseledger/data/ledgers/main/releases/0.3.3/audit/commit-audit.yaml
+      - .ledger/releaseledger/data/ledgers/main/releases/0.3.3/entries/entry-0001.md
+      - .ledger/releaseledger/data/ledgers/main/releases/0.3.3/release.md
+      - .ledger/releaseledger/data/ledgers/main/releases/0.3.4/release.md
+      - .releaseledger/work/0.3.3/audit-decisions.yaml
+      - README.md
+      - docs/changelog.md
+      - docs/configuration.md
+      - docs/installation.md
+      - pyproject.toml
+      - tests/test_download_command_assets.py
+      - tests/test_packaging.py
+      - tests/test_utility_light.py
+      - ttsforge/cli/commands_utility.py
+      - ttsforge/cli/utility_light.py
+      - ttsforge/kokoro_runner.py
+    stats:
+      files_changed: 0
+      insertions: 361
+      deletions: 77
+    inspected: true
+    inspected_paths:
+      - .ledger/releaseledger/data/ledgers/main/events/events.jsonl
+      - .ledger/releaseledger/data/ledgers/main/releases/0.3.3/audit/commit-audit.yaml
+      - .ledger/releaseledger/data/ledgers/main/releases/0.3.3/entries/entry-0001.md
+      - .ledger/releaseledger/data/ledgers/main/releases/0.3.3/release.md
+      - .ledger/releaseledger/data/ledgers/main/releases/0.3.4/release.md
+      - .releaseledger/work/0.3.3/audit-decisions.yaml
+      - README.md
+      - docs/changelog.md
+      - docs/configuration.md
+      - docs/installation.md
+      - pyproject.toml
+      - tests/test_download_command_assets.py
+      - tests/test_packaging.py
+      - tests/test_utility_light.py
+      - ttsforge/cli/commands_utility.py
+      - ttsforge/cli/utility_light.py
+      - ttsforge/kokoro_runner.py
+    observed_behavior: Release preparation commit bumping version and updating changelog
+    public_impact: none
+    decision: internal
+    evidence_subject: "chore: preparr next release"
+    notes: Prep commit for next release; no user-facing changes
