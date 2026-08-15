@@ -74,6 +74,112 @@ def test_enable_flag_conflicts_with_explicit_mode() -> None:
         )
 
 
+def test_convert_wrapper_preserves_omitted_and_explicit_ssmd_voice_values(
+    monkeypatch, tmp_path: Path
+) -> None:
+    captured: list[dict[str, object]] = []
+
+    def fake_convert(**kwargs: object) -> None:
+        captured.append(kwargs)
+
+    monkeypatch.setattr(commands_conversion, "convert", fake_convert)
+    source = tmp_path / "book.epub"
+    source.write_bytes(b"placeholder")
+    runner = CliRunner()
+
+    omitted = runner.invoke(app, ["convert", str(source)])
+    assert omitted.exit_code == 0, omitted.output
+    assert captured[-1]["ssmd_voice"] is None
+
+    explicit = runner.invoke(
+        app,
+        [
+            "convert",
+            str(source),
+            "--ssmd-voice",
+            "narrator=af_heart",
+            "--ssmd-voice",
+            "dialogue=af_bella",
+        ],
+    )
+    assert explicit.exit_code == 0, explicit.output
+    assert captured[-1]["ssmd_voice"] == ["narrator=af_heart", "dialogue=af_bella"]
+
+
+def test_schema7_ssmd_resume_uses_saved_policy_and_keeps_pause_overrides_none() -> None:
+    saved = (
+        TTSConverter(
+            ConversionOptions(
+                pause_sentence=0.5,
+                pause_paragraph=0.9,
+                ssmd_policy=SSMDPolicy(emphasis_mode="approximate"),
+            )
+        )
+        ._generation_identity()
+        .payload
+    )
+
+    resolved = commands_conversion._resolve_ssmd_policy(
+        config={"ssmd_emphasis_mode": "plain"},
+        saved_identity=saved,
+        ssmd_header=None,
+        ssmd_unknown_header=None,
+        ssmd_missing_voice=None,
+        ssmd_emphasis=None,
+        enable_ssmd_emphasis=False,
+        ssmd_profile_validation=None,
+        ssmd_fail_on_warning=None,
+        ssmd_voice=None,
+        ssmd_bindings={},
+        ssmd_pause_defaults=None,
+        explicit_pause_sentence=None,
+        explicit_pause_paragraph=None,
+        pause_voice_change=None,
+        ssmd_audio_root=None,
+        ssmd_remote_audio=None,
+        ssmd_audio_max_bytes=None,
+        ssmd_audio_max_duration=None,
+    )
+
+    assert resolved.emphasis_mode == "approximate"
+    assert resolved.pause_overrides is None
+
+
+def test_schema7_same_explicit_emphasis_does_not_create_pause_override() -> None:
+    saved = (
+        TTSConverter(
+            ConversionOptions(ssmd_policy=SSMDPolicy(emphasis_mode="approximate"))
+        )
+        ._generation_identity()
+        .payload
+    )
+
+    resolved = commands_conversion._resolve_ssmd_policy(
+        config={"ssmd_emphasis_mode": "plain"},
+        saved_identity=saved,
+        ssmd_header=None,
+        ssmd_unknown_header=None,
+        ssmd_missing_voice=None,
+        ssmd_emphasis="approximate",
+        enable_ssmd_emphasis=False,
+        ssmd_profile_validation=None,
+        ssmd_fail_on_warning=None,
+        ssmd_voice=None,
+        ssmd_bindings={},
+        ssmd_pause_defaults=None,
+        explicit_pause_sentence=None,
+        explicit_pause_paragraph=None,
+        pause_voice_change=None,
+        ssmd_audio_root=None,
+        ssmd_remote_audio=None,
+        ssmd_audio_max_bytes=None,
+        ssmd_audio_max_duration=None,
+    )
+
+    assert resolved.emphasis_mode == "approximate"
+    assert resolved.pause_overrides is None
+
+
 def test_convert_help_lists_all_emphasis_controls() -> None:
     result = CliRunner().invoke(app, ["convert", "--help"], terminal_width=240)
 

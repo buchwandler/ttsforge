@@ -13,6 +13,7 @@ import re
 import sys
 import tempfile
 from collections.abc import Mapping
+from dataclasses import replace
 from pathlib import Path
 from types import FrameType
 from typing import Any, Literal, TypedDict, cast
@@ -114,52 +115,69 @@ def _resolve_prosody_policy(
     *,
     method_override: str | None = None,
     strict_override: bool | None = None,
+    saved_identity: Mapping[str, JsonValue] | None = None,
 ) -> ProsodyPolicy:
     """Resolve explicit CLI prosody overrides over config and defaults."""
-    method = method_override
-    if method is None:
-        method = str(config.get("prosody_method", DEFAULT_CONFIG["prosody_method"]))
-    fallback_value = config.get(
-        "prosody_fallback_methods", DEFAULT_CONFIG["prosody_fallback_methods"]
-    )
-    if not isinstance(fallback_value, (list, tuple)):
-        raise ValueError("prosody_fallback_methods must be a list")
-    strict_value = (
-        strict_override
-        if strict_override is not None
-        else bool(config.get("prosody_strict", DEFAULT_CONFIG["prosody_strict"]))
-    )
-    return ProsodyPolicy(
-        method=cast(
-            Literal["phase_vocoder", "wsola", "esola", "td_psola", "psola"], method
-        ),
-        fallback_methods=cast(
-            tuple[Literal["phase_vocoder", "wsola", "esola", "td_psola", "psola"], ...],
-            tuple(fallback_value),
-        ),
-        strict=strict_value,
-        clip=bool(config.get("prosody_clip", DEFAULT_CONFIG["prosody_clip"])),
-        n_fft=cast(int, config.get("prosody_n_fft", DEFAULT_CONFIG["prosody_n_fft"])),
-        hop_length=(
-            cast(int, config["prosody_hop_length"])
-            if config.get("prosody_hop_length") is not None
-            else None
-        ),
-        filter_width=cast(
-            int,
-            config.get("prosody_filter_width", DEFAULT_CONFIG["prosody_filter_width"]),
-        ),
-        rolloff=cast(
-            float, config.get("prosody_rolloff", DEFAULT_CONFIG["prosody_rolloff"])
-        ),
-        boundary_blend_ms=cast(
-            float,
-            config.get(
-                "prosody_boundary_blend_ms",
-                DEFAULT_CONFIG["prosody_boundary_blend_ms"],
+    if saved_identity is not None:
+        policy = _prosody_policy_from_identity(saved_identity)
+    else:
+        method = method_override
+        if method is None:
+            method = str(config.get("prosody_method", DEFAULT_CONFIG["prosody_method"]))
+        fallback_value = config.get(
+            "prosody_fallback_methods", DEFAULT_CONFIG["prosody_fallback_methods"]
+        )
+        if not isinstance(fallback_value, (list, tuple)):
+            raise ValueError("prosody_fallback_methods must be a list")
+        strict_value = (
+            strict_override
+            if strict_override is not None
+            else bool(config.get("prosody_strict", DEFAULT_CONFIG["prosody_strict"]))
+        )
+        policy = ProsodyPolicy(
+            method=cast(
+                Literal["phase_vocoder", "wsola", "esola", "td_psola", "psola"], method
             ),
-        ),
-    )
+            fallback_methods=cast(
+                tuple[
+                    Literal["phase_vocoder", "wsola", "esola", "td_psola", "psola"],
+                    ...,
+                ],
+                tuple(fallback_value),
+            ),
+            strict=strict_value,
+            clip=bool(config.get("prosody_clip", DEFAULT_CONFIG["prosody_clip"])),
+            n_fft=cast(
+                int, config.get("prosody_n_fft", DEFAULT_CONFIG["prosody_n_fft"])
+            ),
+            hop_length=(
+                cast(int, config["prosody_hop_length"])
+                if config.get("prosody_hop_length") is not None
+                else None
+            ),
+            filter_width=cast(
+                int,
+                config.get(
+                    "prosody_filter_width", DEFAULT_CONFIG["prosody_filter_width"]
+                ),
+            ),
+            rolloff=cast(
+                float, config.get("prosody_rolloff", DEFAULT_CONFIG["prosody_rolloff"])
+            ),
+            boundary_blend_ms=cast(
+                float,
+                config.get(
+                    "prosody_boundary_blend_ms",
+                    DEFAULT_CONFIG["prosody_boundary_blend_ms"],
+                ),
+            ),
+        )
+    overrides: dict[str, object] = {}
+    if method_override is not None:
+        overrides["method"] = method_override
+    if strict_override is not None:
+        overrides["strict"] = strict_override
+    return replace(policy, **cast(Any, overrides)) if overrides else policy
 
 
 def _saved_identity_value(
@@ -282,6 +300,183 @@ def _ssmd_policy_from_identity(payload: Mapping[str, JsonValue]) -> SSMDPolicy:
     )
 
 
+def _parse_ssmd_voice_bindings(ssmd_voice: list[str] | None) -> dict[str, str]:
+    """Parse repeatable SSMD voice bindings without changing omitted semantics."""
+    bindings: dict[str, str] = {}
+    for binding in ssmd_voice or []:
+        if "=" not in binding:
+            raise typer.BadParameter("--ssmd-voice must use ROLE=VOICE")
+        role, target = binding.split("=", 1)
+        if not role or not target or "." in role:
+            raise typer.BadParameter(
+                "--ssmd-voice requires a non-empty unqualified ROLE and VOICE"
+            )
+        if role in bindings and bindings[role] != target:
+            raise typer.BadParameter(f"conflicting --ssmd-voice binding for {role!r}")
+        bindings[role] = target
+    return bindings
+
+
+def _resolve_ssmd_policy(
+    *,
+    config: Mapping[str, object],
+    saved_identity: Mapping[str, JsonValue] | None,
+    ssmd_header: bool | None,
+    ssmd_unknown_header: str | None,
+    ssmd_missing_voice: str | None,
+    ssmd_emphasis: str | None,
+    enable_ssmd_emphasis: bool,
+    ssmd_profile_validation: bool | None,
+    ssmd_fail_on_warning: bool | None,
+    ssmd_voice: list[str] | None,
+    ssmd_bindings: Mapping[str, str],
+    ssmd_pause_defaults: bool | None,
+    explicit_pause_sentence: float | None,
+    explicit_pause_paragraph: float | None,
+    pause_voice_change: float | None,
+    ssmd_audio_root: Path | None,
+    ssmd_remote_audio: bool | None,
+    ssmd_audio_max_bytes: int | None,
+    ssmd_audio_max_duration: float | None,
+) -> SSMDPolicy:
+    """Resolve SSMD policy with saved identity taking precedence on resume."""
+    if saved_identity is not None:
+        policy = _ssmd_policy_from_identity(saved_identity)
+    else:
+        policy = SSMDPolicy(
+            parse_header=(
+                ssmd_header
+                if ssmd_header is not None
+                else bool(config.get("ssmd_parse_header", True))
+            ),
+            unknown_header=cast(
+                Literal["warn", "error", "ignore"],
+                ssmd_unknown_header
+                if ssmd_unknown_header is not None
+                else config.get("ssmd_unknown_header", "warn"),
+            ),
+            missing_voice=cast(
+                Literal["error", "use-default"],
+                ssmd_missing_voice
+                if ssmd_missing_voice is not None
+                else config.get("ssmd_missing_voice", "error"),
+            ),
+            validate_profile=(
+                ssmd_profile_validation
+                if ssmd_profile_validation is not None
+                else bool(config.get("ssmd_validate_profile", True))
+            ),
+            emphasis_mode=cast(
+                Literal["plain", "approximate", "warn", "error"],
+                config.get("ssmd_emphasis_mode", "plain"),
+            ),
+            fail_on_warning=(
+                ssmd_fail_on_warning
+                if ssmd_fail_on_warning is not None
+                else bool(config.get("ssmd_fail_on_warning", False))
+            ),
+            voice_bindings=(
+                {
+                    "kokoro": dict(
+                        cast(Mapping[str, str], config.get("ssmd_voice_bindings", {}))
+                    )
+                }
+                if isinstance(config.get("ssmd_voice_bindings"), Mapping)
+                and config.get("ssmd_voice_bindings")
+                else {}
+            ),
+            audio_root=(
+                ssmd_audio_root
+                if ssmd_audio_root is not None
+                else (
+                    Path(cast(str, config["ssmd_audio_root"]))
+                    if config.get("ssmd_audio_root")
+                    else None
+                )
+            ),
+            allow_remote_audio=(
+                ssmd_remote_audio
+                if ssmd_remote_audio is not None
+                else bool(config.get("ssmd_audio_allow_remote", False))
+            ),
+            audio_max_bytes=(
+                ssmd_audio_max_bytes
+                if ssmd_audio_max_bytes is not None
+                else int(cast(int, config.get("ssmd_audio_max_bytes", 20_000_000)))
+            ),
+            audio_max_duration_s=(
+                ssmd_audio_max_duration
+                if ssmd_audio_max_duration is not None
+                else float(cast(float, config.get("ssmd_audio_max_duration_s", 120.0)))
+            ),
+        )
+
+    overrides: dict[str, object] = {}
+    if ssmd_header is not None:
+        overrides["parse_header"] = ssmd_header
+    if ssmd_unknown_header is not None:
+        overrides["unknown_header"] = ssmd_unknown_header
+    if ssmd_missing_voice is not None:
+        overrides["missing_voice"] = ssmd_missing_voice
+    if ssmd_profile_validation is not None:
+        overrides["validate_profile"] = ssmd_profile_validation
+    if ssmd_fail_on_warning is not None:
+        overrides["fail_on_warning"] = ssmd_fail_on_warning
+    if ssmd_emphasis is not None or enable_ssmd_emphasis:
+        overrides["emphasis_mode"] = _resolve_ssmd_emphasis_mode(
+            configured=policy.emphasis_mode,
+            explicit=ssmd_emphasis,
+            enable_approximation=enable_ssmd_emphasis,
+        )
+    if ssmd_voice is not None:
+        overrides["voice_bindings"] = (
+            {"kokoro": dict(ssmd_bindings)} if ssmd_bindings else {}
+        )
+    pause_fields_are_explicit = any(
+        value is not None
+        for value in (
+            ssmd_pause_defaults,
+            explicit_pause_sentence,
+            explicit_pause_paragraph,
+            pause_voice_change,
+        )
+    )
+    if pause_fields_are_explicit:
+        pause = policy.pause_overrides or SSMDPauseOverrideOptions()
+        overrides["pause_overrides"] = replace(
+            pause,
+            enabled=(
+                ssmd_pause_defaults
+                if ssmd_pause_defaults is not None
+                else pause.enabled
+            ),
+            sentence=(
+                f"{explicit_pause_sentence}s"
+                if explicit_pause_sentence is not None
+                else pause.sentence
+            ),
+            paragraph=(
+                f"{explicit_pause_paragraph}s"
+                if explicit_pause_paragraph is not None
+                else pause.paragraph
+            ),
+            voice_change=(
+                f"{pause_voice_change}s"
+                if pause_voice_change is not None
+                else pause.voice_change
+            ),
+        )
+    if ssmd_audio_root is not None:
+        overrides["audio_root"] = ssmd_audio_root
+    if ssmd_remote_audio is not None:
+        overrides["allow_remote_audio"] = ssmd_remote_audio
+    if ssmd_audio_max_bytes is not None:
+        overrides["audio_max_bytes"] = ssmd_audio_max_bytes
+    if ssmd_audio_max_duration is not None:
+        overrides["audio_max_duration_s"] = ssmd_audio_max_duration
+    return replace(policy, **cast(Any, overrides)) if overrides else policy
+
+
 def _format_identity_differences(
     differences: tuple[IdentityDifference, ...], *, verbose: bool
 ) -> str:
@@ -392,6 +587,8 @@ def convert(  # noqa: C901
     config = load_config()
     explicit_voice = voice
     explicit_language = language
+    explicit_pause_sentence = pause_sentence
+    explicit_pause_paragraph = pause_paragraph
     effective_use_spacy = (
         use_spacy
         if use_spacy is not None
@@ -1008,131 +1205,35 @@ def convert(  # noqa: C901
     elif saved_mixed_language_allowed is not None:
         parsed_mixed_language_allowed = saved_mixed_language_allowed
 
-    effective_ssmd_emphasis = _resolve_ssmd_emphasis_mode(
-        configured=config.get("ssmd_emphasis_mode", "plain"),
-        explicit=ssmd_emphasis,
-        enable_approximation=enable_ssmd_emphasis,
-    )
-
-    ssmd_bindings: dict[str, str] = {}
-    for binding in ssmd_voice or []:
-        if "=" not in binding:
-            raise typer.BadParameter("--ssmd-voice must use ROLE=VOICE")
-        role, target = binding.split("=", 1)
-        if not role or not target or "." in role:
-            raise typer.BadParameter(
-                "--ssmd-voice requires a non-empty unqualified ROLE and VOICE"
-            )
-        if role in ssmd_bindings and ssmd_bindings[role] != target:
-            raise typer.BadParameter(f"conflicting --ssmd-voice binding for {role!r}")
-        ssmd_bindings[role] = target
-    explicit_pause_options = SSMDPauseOverrideOptions(
-        enabled=ssmd_pause_defaults,
-        sentence=(f"{pause_sentence}s" if pause_sentence is not None else None),
-        paragraph=(f"{pause_paragraph}s" if pause_paragraph is not None else None),
-        voice_change=(
-            f"{pause_voice_change}s" if pause_voice_change is not None else None
-        ),
-    )
-    if all(
-        value is None
-        for value in (
-            explicit_pause_options.enabled,
-            explicit_pause_options.sentence,
-            explicit_pause_options.paragraph,
-            explicit_pause_options.voice_change,
-        )
-    ):
-        explicit_pause: SSMDPauseOverrideOptions | None = None
-    else:
-        explicit_pause = explicit_pause_options
-    ssmd_policy = SSMDPolicy(
-        parse_header=(
-            ssmd_header
-            if ssmd_header is not None
-            else bool(config.get("ssmd_parse_header", True))
-        ),
-        unknown_header=cast(
-            Literal["warn", "error", "ignore"],
-            ssmd_unknown_header
-            if ssmd_unknown_header is not None
-            else config.get("ssmd_unknown_header", "warn"),
-        ),
-        missing_voice=cast(
-            Literal["error", "use-default"],
-            ssmd_missing_voice
-            if ssmd_missing_voice is not None
-            else config.get("ssmd_missing_voice", "error"),
-        ),
-        validate_profile=(
-            ssmd_profile_validation
-            if ssmd_profile_validation is not None
-            else bool(config.get("ssmd_validate_profile", True))
-        ),
-        emphasis_mode=cast(
-            Literal["plain", "approximate", "warn", "error"],
-            effective_ssmd_emphasis,
-        ),
-        fail_on_warning=(
-            ssmd_fail_on_warning
-            if ssmd_fail_on_warning is not None
-            else bool(config.get("ssmd_fail_on_warning", False))
-        ),
-        voice_bindings={"kokoro": ssmd_bindings}
-        if ssmd_bindings
-        else {"kokoro": dict(config.get("ssmd_voice_bindings", {}))}
-        if config.get("ssmd_voice_bindings") or ssmd_bindings
-        else {},
-        pause_overrides=explicit_pause,
-        audio_root=ssmd_audio_root
-        if ssmd_audio_root is not None
-        else (
-            Path(config["ssmd_audio_root"]) if config.get("ssmd_audio_root") else None
-        ),
-        allow_remote_audio=(
-            ssmd_remote_audio
-            if ssmd_remote_audio is not None
-            else bool(config.get("ssmd_audio_allow_remote", False))
-        ),
-        audio_max_bytes=(
-            ssmd_audio_max_bytes
-            if ssmd_audio_max_bytes is not None
-            else int(config.get("ssmd_audio_max_bytes", 20_000_000))
-        ),
-        audio_max_duration_s=(
-            ssmd_audio_max_duration
-            if ssmd_audio_max_duration is not None
-            else float(config.get("ssmd_audio_max_duration_s", 120.0))
-        ),
+    ssmd_bindings = _parse_ssmd_voice_bindings(ssmd_voice)
+    ssmd_policy = _resolve_ssmd_policy(
+        config=config,
+        saved_identity=saved_identity_payload,
+        ssmd_header=ssmd_header,
+        ssmd_unknown_header=ssmd_unknown_header,
+        ssmd_missing_voice=ssmd_missing_voice,
+        ssmd_emphasis=ssmd_emphasis,
+        enable_ssmd_emphasis=enable_ssmd_emphasis,
+        ssmd_profile_validation=ssmd_profile_validation,
+        ssmd_fail_on_warning=ssmd_fail_on_warning,
+        ssmd_voice=ssmd_voice,
+        ssmd_bindings=ssmd_bindings,
+        ssmd_pause_defaults=ssmd_pause_defaults,
+        explicit_pause_sentence=explicit_pause_sentence,
+        explicit_pause_paragraph=explicit_pause_paragraph,
+        pause_voice_change=pause_voice_change,
+        ssmd_audio_root=ssmd_audio_root,
+        ssmd_remote_audio=ssmd_remote_audio,
+        ssmd_audio_max_bytes=ssmd_audio_max_bytes,
+        ssmd_audio_max_duration=ssmd_audio_max_duration,
     )
     if saved_identity_payload is not None:
-        explicit_ssmd_policy = (
-            any(
-                value is not None
-                for value in (
-                    ssmd_header,
-                    ssmd_unknown_header,
-                    ssmd_missing_voice,
-                    ssmd_emphasis,
-                    ssmd_profile_validation,
-                    ssmd_fail_on_warning,
-                    ssmd_voice,
-                    ssmd_pause_defaults,
-                    pause_voice_change,
-                    ssmd_audio_root,
-                    ssmd_remote_audio,
-                    ssmd_audio_max_bytes,
-                    ssmd_audio_max_duration,
-                )
-            )
-            or enable_ssmd_emphasis
+        effective_prosody_policy = _resolve_prosody_policy(
+            config,
+            method_override=prosody_method,
+            strict_override=prosody_strict,
+            saved_identity=saved_identity_payload,
         )
-        if not explicit_ssmd_policy:
-            ssmd_policy = _ssmd_policy_from_identity(saved_identity_payload)
-        if prosody_method is None and prosody_strict is None:
-            effective_prosody_policy = _prosody_policy_from_identity(
-                saved_identity_payload
-            )
 
     # Validate all effective settings before showing a summary or asking for
     # confirmation. Config-derived values do not pass through Typer's bounds.

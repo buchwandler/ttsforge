@@ -13,6 +13,7 @@ from ttsforge.conversion import (
     TTSConverter,
 )
 from ttsforge.short_sentence_stats import ShortSentenceStats
+from ttsforge.ssmd_support import SSMDPolicy
 
 
 class FakeResult:
@@ -171,6 +172,9 @@ def test_complete_paragraph_state_supports_merge_only_resume(tmp_path: Path):
         output_dir=tmp_path,
         title="Book",
         conversion_unit="paragraph",
+        pause_sentence=0.5,
+        pause_paragraph=0.9,
+        ssmd_policy=SSMDPolicy(emphasis_mode="approximate"),
     )
     first = TTSConverter(options)
     first_fake = FakeRunner()
@@ -262,6 +266,57 @@ def test_unseeded_stochastic_hash_does_not_restart_saved_prefix(
         "Resuming paragraph conversion: 1/2 units completed" in message
         and "Next unit: chapter 1, paragraph 2" in message
         for message in logs
+    )
+
+
+def test_paragraph_resume_rejects_changed_saved_ssmd_emphasis(tmp_path: Path):
+    output = tmp_path / "book.wav"
+    chapters = [Chapter(title="One", content="first", index=0)]
+    saved_options = ConversionOptions(
+        output_format="wav",
+        output_dir=tmp_path,
+        title="Book",
+        conversion_unit="paragraph",
+        ssmd_policy=SSMDPolicy(emphasis_mode="approximate"),
+    )
+
+    def cancel_after_first(progress):
+        if progress.current_unit == 1:
+            first.cancel()
+
+    first = TTSConverter(saved_options, progress_callback=cancel_after_first)
+    first._runner = FakeRunner()
+    first_result = first.convert_chapters_resumable(chapters, output, resume=False)
+    assert not first_result.success
+    state_file = next(tmp_path.glob(".Book-*_chapters/state.json"))
+    state = ConversionState.load(state_file)
+    assert state is not None
+
+    changed = TTSConverter(
+        ConversionOptions(
+            output_format="wav",
+            output_dir=tmp_path,
+            title="Book",
+            conversion_unit="paragraph",
+            ssmd_policy=SSMDPolicy(emphasis_mode="plain"),
+        )
+    )
+    changed._resolved_sentence_models = first._resolved_sentence_models
+    changed._resolved_g2p_models = first._resolved_g2p_models
+    validation = changed._resume_state_matches(
+        state,
+        chapters,
+        state.source_hash,
+        changed._generation_identity(),
+        Path(state.work_dir or state_file.parent),
+        output_path=output,
+    )
+
+    assert validation.reusable is False
+    assert validation.reason == "generation-fingerprint-changed"
+    assert any(
+        difference.path == "ssmd_policy.emphasis_mode"
+        for difference in validation.differences
     )
 
 

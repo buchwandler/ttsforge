@@ -8,6 +8,8 @@ from typer.testing import CliRunner
 from ttsforge.cli import app
 from ttsforge.cli.commands_conversion import _resolve_prosody_policy
 from ttsforge.constants import DEFAULT_CONFIG
+from ttsforge.conversion import ConversionOptions, TTSConverter
+from ttsforge.prosody_support import ProsodyPolicy
 from ttsforge.utils import load_config
 
 
@@ -27,6 +29,35 @@ def test_resolve_prosody_policy_uses_config_then_explicit_overrides() -> None:
     )
     assert overridden.method == "psola"
     assert overridden.strict is True
+
+
+def test_schema7_resume_overlays_only_explicit_prosody_fields() -> None:
+    saved = (
+        TTSConverter(
+            ConversionOptions(
+                prosody_policy=ProsodyPolicy(method="esola", strict=True),
+            )
+        )
+        ._generation_identity()
+        .payload
+    )
+    changed_config = {
+        **DEFAULT_CONFIG,
+        "prosody_method": "wsola",
+        "prosody_strict": False,
+    }
+
+    restored = _resolve_prosody_policy(changed_config, saved_identity=saved)
+    strict_override = _resolve_prosody_policy(
+        changed_config,
+        saved_identity=saved,
+        strict_override=False,
+    )
+
+    assert restored.method == "esola"
+    assert restored.strict is True
+    assert strict_override.method == "esola"
+    assert strict_override.strict is False
 
 
 def test_convert_help_exposes_optional_prosody_controls() -> None:

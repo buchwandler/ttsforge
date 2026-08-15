@@ -617,7 +617,7 @@ def convert_command(
         enable_ssmd_emphasis=enable_ssmd_emphasis,
         ssmd_profile_validation=ssmd_profile_validation,
         ssmd_fail_on_warning=ssmd_fail_on_warning,
-        ssmd_voice=ssmd_voice or [],
+        ssmd_voice=ssmd_voice,
         ssmd_pause_defaults=ssmd_pause_defaults,
         pause_voice_change=pause_voice_change,
         ssmd_audio_root=ssmd_audio_root,
