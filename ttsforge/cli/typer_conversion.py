@@ -313,6 +313,18 @@ def convert_command(
             help="Preserve EPUB italic and bold semantics in generated SSMD. Headings and scene breaks are preserved independently.",
         ),
     ] = None,
+    emphasis_level: Annotated[
+        int | None,
+        typer.Option(
+            "--emphasis-level",
+            help=(
+                "Audible emphasis strength: 0=off, 1=light, 2=normal, 3=strong. "
+                "Level 2 matches the previous --enable-ssmd-emphasis behavior."
+            ),
+            min=0,
+            max=3,
+        ),
+    ] = None,
     epub_content_mode: Annotated[
         Literal["markdown", "plain"] | None,
         typer.Option(
@@ -458,7 +470,10 @@ def convert_command(
         Literal["plain", "approximate", "warn", "error"] | None,
         typer.Option(
             "--ssmd-emphasis",
-            help="SSMD emphasis policy (default: configured value, normally plain).",
+            help=(
+                "Advanced SSMD emphasis policy. For normal audible strength use "
+                "--emphasis-level. Policies: plain, approximate, warn, or error."
+            ),
         ),
     ] = None,
     enable_ssmd_emphasis: Annotated[
@@ -466,8 +481,8 @@ def convert_command(
         typer.Option(
             "--enable-ssmd-emphasis",
             help=(
-                "Opt in to approximate SSMD emphasis with segment-level "
-                "volume/rate changes. Use --detect-emphasis for EPUB HTML."
+                "Enable the legacy gain-only SSMD emphasis approximation. "
+                "Equivalent to --emphasis-level 2."
             ),
         ),
     ] = False,
@@ -596,6 +611,7 @@ def convert_command(
         resume=resume,
         generate_ssmd_only=generate_ssmd_only,
         detect_emphasis=detect_emphasis,
+        emphasis_level=emphasis_level,
         epub_content_mode=epub_content_mode,
         prosody_method=prosody_method,
         prosody_strict=prosody_strict,

@@ -269,7 +269,7 @@ def test_paragraph_schema5_resume_is_rejected_explicitly(tmp_path: Path) -> None
 
 def test_renderer_contract_uses_pykokoro_083_and_kokorog2p_080() -> None:
     contract = renderer_contract_payload()
-    assert contract["pykokoro"] == "0.8.3"
+    assert contract["pykokoro"] == "0.8.4"
     assert contract["kokorog2p"] == "0.8.0"
     assert contract["schema"] == 3
 

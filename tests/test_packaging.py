@@ -34,7 +34,7 @@ def test_pykokoro_dependency_floor_is_released_handoff() -> None:
         (Path(__file__).parents[1] / "pyproject.toml").read_text(encoding="utf-8")
     )
     dependencies = project["project"]["dependencies"]
-    assert "pykokoro[cpu]>=0.8.3,<0.9" in dependencies
+    assert "pykokoro[cpu]>=0.8.4,<0.9" in dependencies
     assert "kokorog2p[espeak,en]>=0.8.0,<0.9" in dependencies
     assert "phrasplit>=0.3.4,<0.4" in dependencies
     assert not any("pykokoro[cpu]>=0.8.2" in dependency for dependency in dependencies)
@@ -76,7 +76,7 @@ def test_pykokoro_ssmd_080_contract_is_importable() -> None:
         from pykokoro.ssmd_parser import parse_ssmd_document
     except ImportError as exc:  # pragma: no cover - dependency compatibility path
         pytest.fail(
-            "pykokoro>=0.8.3 is required for SSMD 0.8 and memory-release integration; "
+            "pykokoro>=0.8.4 is required for SSMD 0.8 and memory-release integration; "
             f"missing public symbol: {exc}"
         )
 

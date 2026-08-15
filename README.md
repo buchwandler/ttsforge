@@ -54,7 +54,7 @@ pip install "ttsforge[static_ffmpeg]"
 pip install "ttsforge[gpu]"
 ```
 
-TTSForge uses `pykokoro[cpu]>=0.8.3,<0.9` and `kokorog2p[espeak,en]>=0.8.0,<0.9`. The
+TTSForge uses `pykokoro[cpu]>=0.8.4,<0.9` and `kokorog2p[espeak,en]>=0.8.0,<0.9`. The
 supported stack prepares ordinary written forms such as dates, times, measurements,
 currency, ordinals, and abbreviations for speech in kokorog2p before G2P. TTSForge does
 not duplicate that normalization, and explicit SSMD `say-as` remains an
@@ -448,8 +448,8 @@ EPUB processing has three independent layers:
    scene breaks, semantic emphasis, and CSS emphasis into chapter Markdown.
 2. **SSMD generation**: TTSForge preserves that controlled Markdown in `.ssmd` files;
    `##` headings and `*`/`**` spans remain editable and parseable.
-3. **Audible rendering**: `ssmd_emphasis_mode` controls whether emphasis is spoken
-   normally, approximated, warned on, or rejected.
+3. **Audible rendering**: `--emphasis-level` controls gain-only audible strength while
+   `--ssmd-emphasis` remains available for advanced policy handling.
 
 Markdown extraction and emphasis preservation are enabled by default, while audible
 emphasis remains plain:
@@ -464,8 +464,14 @@ ttsforge convert book.epub --no-detect-emphasis
 # Compare with the legacy flattened extraction path
 ttsforge convert book.epub --epub-content-mode plain
 
-# Detect styling and explicitly opt into the current gain-only approximation
-ttsforge convert book.epub --detect-emphasis --enable-ssmd-emphasis
+# Light, normal, or strong gain-only audible emphasis
+ttsforge convert book.epub --emphasis-level 1
+ttsforge convert book.epub --emphasis-level 2
+ttsforge convert book.epub --emphasis-level 3
+
+# Persist the normal level for future conversions
+ttsforge config --set emphasis_level 2
+ttsforge convert book.epub
 
 # Choose the persisted/default policy explicitly
 ttsforge config --set ssmd_emphasis_mode plain
@@ -476,15 +482,18 @@ ttsforge config --set prosody_method esola
 ttsforge convert book.epub --prosody-method psola
 ```
 
-`epub_content_mode`, `detect_emphasis`, `ssmd_emphasis_mode`, and `prosody_method` are
+`epub_content_mode`, `detect_emphasis`, `emphasis_level`, `ssmd_emphasis_mode`, and `prosody_method` are
 separate settings. The first selects Markdown or explicit legacy plain extraction; the
 second preserves or unwraps inline emphasis without affecting headings; the third
-controls SSMD emphasis policy; and the fourth selects AudioSig processing for explicit
-rate and pitch annotations. The current approximate emphasis profile changes gain only
-and does not expose custom strength values. `psola` is accepted as an alias for
-AudioSig's canonical `td_psola`.
+controls friendly audible strength; the fourth remains the advanced SSMD policy; and the
+fifth selects AudioSig processing for explicit rate and pitch annotations. The default
+preserves EPUB emphasis but leaves automatic audible emphasis off. Level 2 is the
+backward-compatible equivalent of `--enable-ssmd-emphasis`; that legacy flag remains
+available with a deprecation warning. `psola` is accepted as an alias for AudioSig's
+canonical `td_psola`.
 
-The available policies are `plain`, `approximate`, `warn`, and `error`. Explicit SSMD
+The user-friendly levels are `0=Off`, `1=Light`, `2=Normal`, and `3=Strong`. The advanced
+policies are `plain`, `approximate`, `warn`, and `error`. Explicit SSMD
 prosody such as `[fast words]{rate="fast"}` remains active in plain emphasis mode.
 
 ### spaCy model policy

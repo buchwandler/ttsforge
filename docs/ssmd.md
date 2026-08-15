@@ -62,10 +62,11 @@ Canonical inline annotations use `[text]{key="value"}`:
 Moderate, strong, reduced, and none emphasis are parsed. EPUB processing has three
 layers: epub2text performs semantic extraction, TTSForge preserves the resulting
 controlled Markdown in SSMD, and the SSMD emphasis policy controls audible rendering.
-Emphasis is spoken plainly by default: it does not add automatic volume, rate, or pitch
-changes, and its metadata is preserved. Use `--ssmd-emphasis approximate` or the
-convenience flag `--enable-ssmd-emphasis` to opt into segment-level volume/rate
-approximation; use `warn` or `error` for stricter behavior. Explicit document prosody
+Emphasis is spoken plainly by default: it does not add automatic gain, rate, or pitch
+changes, and its metadata is preserved. Use `--emphasis-level 1`, `2`, or `3` for Light,
+Normal, or Strong gain-only audible emphasis; level 2 is the current legacy behavior.
+Use `--ssmd-emphasis approximate` or the deprecated `--enable-ssmd-emphasis` only as
+advanced/compatibility controls, and use `warn` or `error` for stricter behavior. Explicit document prosody
 such as `[fast words]{rate="fast"}` remains active in plain mode. Language, voice,
 prosody, say-as, substitution, phoneme, break, mark, paragraph, heading, and supported
 audio attributes are passed to the renderer.
@@ -100,6 +101,7 @@ Useful conversion options include:
 ```bash
 --ssmd-unknown-header warn|error|ignore
 --ssmd-missing-voice error|use-default
+--emphasis-level 0|1|2|3
 --ssmd-emphasis plain|approximate|warn|error
 --enable-ssmd-emphasis
 --detect-emphasis
@@ -123,10 +125,11 @@ experimental speech-oriented alternative; `psola` is accepted as an alias for Au
 canonical `td_psola`; and `phase_vocoder` is a generic reference/fallback path. Keep
 fallbacks enabled unless testing strict behavior.
 
-The current `ssmd_emphasis_mode=approximate` profile changes gain only. Selecting ESOLA,
+The current `emphasis_level` profile changes gain only. Selecting ESOLA,
 WSOLA, or PSOLA does not change those fixed emphasis gains; the selected prosody method
 is used for explicit SSMD rate and pitch annotations. `plain` disables emphasis
-approximation but does not disable explicit rate, pitch, or volume annotations.
+approximation but does not disable explicit rate, pitch, or volume annotations. Omit
+`--emphasis-level` when resuming so the saved renderer policy remains authoritative.
 
 Audio annotations use a document-relative local resolver with byte and duration limits.
 Remote audio is disabled by default; when enabled, only bounded HTTPS sources are
@@ -143,8 +146,8 @@ array downmix, while PyKokoro remains responsible for SSMD speed, gain, and resa
 - SSMD extensions are rejected by default for the Kokoro profile.
 - Emphasis is spoken plainly by default. EPUB Markdown extraction and SSMD rendering are
   independent; use `--epub-content-mode plain` only for legacy comparison,
-  `--no-detect-emphasis` to unwrap inline emphasis, and `--enable-ssmd-emphasis` to opt
-  into approximation.
+  `--no-detect-emphasis` to unwrap inline emphasis, and `--emphasis-level` for audible
+  strength.
 - Remote audio is opt-in and bounded.
 - Marks are exported as `chapter_NNN.markers.json` and an aggregate output sidecar
   rather than embedded in every audiobook container.

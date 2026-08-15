@@ -227,8 +227,9 @@ def test_conversion_summary_shows_detection_and_rendering_mode(monkeypatch) -> N
     assert "Markdown" in output
     assert "EPUB Emphasis Markup" in output
     assert "Unwrapped" in output
-    assert "SSMD Emphasis" in output
-    assert "Plain (emphasis unchanged)" in output
+    assert "Audible emphasis" in output
+    assert "Advanced policy: plain" in output
+    assert "Advanced policy: plain" in output
 
 
 def test_emphasis_mode_change_invalidates_resume_fingerprint() -> None:

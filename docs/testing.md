@@ -25,7 +25,7 @@ hash and verifies that a saved prefix is not rendered again.
 
 Release CI separately installs the exact lower-bound generation stack:
 
-- PyKokoro 0.8.3
+- PyKokoro 0.8.4
 - kokorog2p 0.8.0
 
 The minimum-dependency job proves that the package's declared lower bounds install and

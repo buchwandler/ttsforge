@@ -340,15 +340,20 @@ Use `--no-detect-emphasis` to unwrap italic/bold delimiters without removing hea
 scene breaks. Use `--epub-content-mode plain` to compare against the legacy flattened
 source path. The persisted equivalents are `epub_content_mode` and `detect_emphasis`.
 
-To opt into the current deterministic gain-only emphasis approximation, enable it
-separately:
+To control audible emphasis strength without changing the source semantics, use the
+friendly level option:
 
 ```bash
-ttsforge convert book.epub --detect-emphasis --enable-ssmd-emphasis
+ttsforge convert book.epub --emphasis-level 2
+ttsforge convert book.epub --emphasis-level 3
 ```
 
-The persistent policy can be set with `ttsforge config --set ssmd_emphasis_mode plain`.
-Explicit SSMD prosody remains supported in plain emphasis mode.
+The levels are `0=Off`, `1=Light`, `2=Normal`, and `3=Strong`. Persist the normal level
+with `ttsforge config --set emphasis_level 2`; subsequent conversions need no emphasis
+flag. The old `--enable-ssmd-emphasis` remains as a deprecated alias for level 2, while
+`--ssmd-emphasis` remains an advanced policy control. Explicit SSMD prosody remains
+supported independently, and a resume with omitted emphasis options restores the saved
+policy.
 
 **Example SSMD file**:
 

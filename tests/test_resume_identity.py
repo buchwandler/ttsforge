@@ -85,7 +85,7 @@ def test_identity_contains_current_renderer_contract() -> None:
     contract = identity.payload["ssmd_policy"]["renderer_contract"]
     assert contract == renderer_contract_payload()
     assert contract["schema"] == 3
-    assert contract["pykokoro"] == "0.8.3"
+    assert contract["pykokoro"] == "0.8.4"
     assert contract["kokorog2p"] == "0.8.0"
 
 

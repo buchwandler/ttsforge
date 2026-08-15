@@ -65,7 +65,13 @@ from ..short_sentence_config import (
     validate_short_sentence_config,
 )
 from ..short_sentence_stats import format_short_sentence_stats
-from ..ssmd_support import SSMDPauseOverrideOptions, SSMDPolicy
+from ..ssmd_support import (
+    EmphasisMode,
+    SSMDPauseOverrideOptions,
+    SSMDPolicy,
+    infer_emphasis_level,
+    resolve_emphasis_level,
+)
 from ..text_postprocessing import (
     postprocess_extracted_text,
     resolve_text_postprocess_options,
@@ -92,22 +98,85 @@ DEFAULT_MODEL_QUALITY: ModelQuality = "fp32"
 _DEFAULT_PROSODY_POLICY = ProsodyPolicy()
 
 
+def _resolve_emphasis_controls(
+    *,
+    configured_level: object,
+    configured_mode: object,
+    explicit_level: int | None,
+    explicit_mode: str | None,
+    legacy_enable: bool,
+) -> tuple[EmphasisMode, float, int | None]:
+    """Resolve all friendly and advanced emphasis controls in one place."""
+    controls = sum(
+        value is not None
+        for value in (explicit_level, explicit_mode)
+    ) + int(legacy_enable)
+    if controls > 1:
+        raise typer.BadParameter(
+            "Choose only one emphasis control. Use --emphasis-level for normal "
+            "strength control."
+        )
+
+    if explicit_level is not None:
+        preset = resolve_emphasis_level(explicit_level)
+        return preset.mode, preset.gain_scale, preset.level
+    if legacy_enable:
+        preset = resolve_emphasis_level(2)
+        return preset.mode, preset.gain_scale, preset.level
+    if explicit_mode is not None:
+        mode = cast(EmphasisMode, explicit_mode)
+        if mode == "approximate":
+            return mode, 1.0, 2
+        if mode == "plain":
+            return mode, 1.0, 0
+        return mode, 1.0, None
+
+    if configured_level is not None:
+        preset = resolve_emphasis_level(configured_level)  # type: ignore[arg-type]
+        configured_mode_value = str(configured_mode or "plain")
+        if configured_mode_value in {"warn", "error"}:
+            raise ValueError(
+                "emphasis_level cannot be combined with ssmd_emphasis_mode "
+                f"{configured_mode_value!r}"
+            )
+        if configured_mode_value not in {"plain", "approximate"}:
+            raise ValueError(
+                "ssmd_emphasis_mode must be plain, approximate, warn, or error"
+            )
+        # The new level is authoritative when the legacy setting is its
+        # default plain value. Approximate is equivalent only at level 2.
+        if configured_mode_value == "approximate" and preset.level != 2:
+            raise ValueError(
+                "emphasis_level conflicts with ssmd_emphasis_mode 'approximate'"
+            )
+        return preset.mode, preset.gain_scale, preset.level
+
+    mode = cast(EmphasisMode, str(configured_mode or "plain"))
+    if mode == "approximate":
+        return mode, 1.0, 2
+    if mode == "plain":
+        return mode, 1.0, 0
+    return mode, 1.0, None
+
+
 def _resolve_ssmd_emphasis_mode(
     *,
     configured: object,
     explicit: str | None,
     enable_approximation: bool,
 ) -> str:
-    """Resolve explicit CLI emphasis controls over persistent configuration."""
+    """Backward-compatible mode-only facade for existing API callers."""
     if enable_approximation and explicit is not None:
         raise typer.BadParameter(
             "--enable-ssmd-emphasis cannot be combined with --ssmd-emphasis"
         )
-    if enable_approximation:
-        return "approximate"
-    if explicit is not None:
-        return explicit
-    return str(configured or "plain")
+    return _resolve_emphasis_controls(
+        configured_level=None,
+        configured_mode=configured,
+        explicit_level=None,
+        explicit_mode=explicit,
+        legacy_enable=enable_approximation,
+    )[0]
 
 
 def _resolve_prosody_policy(
@@ -289,6 +358,8 @@ def _ssmd_policy_from_identity(payload: Mapping[str, JsonValue]) -> SSMDPolicy:
             Literal["plain", "approximate", "warn", "error"],
             value.get("emphasis_mode", "plain"),
         ),
+        # Legacy saved policies predate the scale field and used 1.0.
+        emphasis_gain_scale=float(value.get("emphasis_gain_scale", 1.0)),
         fail_on_warning=bool(value.get("fail_on_warning", False)),
         voice_bindings=bindings,
         pause_overrides=pause,
@@ -338,6 +409,7 @@ def _resolve_ssmd_policy(
     ssmd_remote_audio: bool | None,
     ssmd_audio_max_bytes: int | None,
     ssmd_audio_max_duration: float | None,
+    emphasis_level: int | None = None,
 ) -> SSMDPolicy:
     """Resolve SSMD policy with saved identity taking precedence on resume."""
     if saved_identity is not None:
@@ -422,12 +494,22 @@ def _resolve_ssmd_policy(
         overrides["validate_profile"] = ssmd_profile_validation
     if ssmd_fail_on_warning is not None:
         overrides["fail_on_warning"] = ssmd_fail_on_warning
-    if ssmd_emphasis is not None or enable_ssmd_emphasis:
-        overrides["emphasis_mode"] = _resolve_ssmd_emphasis_mode(
-            configured=policy.emphasis_mode,
-            explicit=ssmd_emphasis,
-            enable_approximation=enable_ssmd_emphasis,
+    if saved_identity is None or any(
+        value is not None for value in (emphasis_level, ssmd_emphasis)
+    ) or enable_ssmd_emphasis:
+        resolved_mode, resolved_scale, _ = _resolve_emphasis_controls(
+            configured_level=(
+                None if saved_identity is not None else config.get("emphasis_level")
+            ),
+            configured_mode=policy.emphasis_mode
+            if saved_identity is not None
+            else config.get("ssmd_emphasis_mode", "plain"),
+            explicit_level=emphasis_level,
+            explicit_mode=ssmd_emphasis,
+            legacy_enable=enable_ssmd_emphasis,
         )
+        overrides["emphasis_mode"] = resolved_mode
+        overrides["emphasis_gain_scale"] = resolved_scale
     if ssmd_voice is not None:
         overrides["voice_bindings"] = (
             {"kokoro": dict(ssmd_bindings)} if ssmd_bindings else {}
@@ -543,6 +625,7 @@ def convert(  # noqa: C901
     resume: bool,
     generate_ssmd_only: bool,
     detect_emphasis: bool | None,
+    emphasis_level: int | None,
     epub_content_mode: str | None,
     prosody_method: str | None,
     prosody_strict: bool | None,
@@ -1213,6 +1296,7 @@ def convert(  # noqa: C901
         ssmd_unknown_header=ssmd_unknown_header,
         ssmd_missing_voice=ssmd_missing_voice,
         ssmd_emphasis=ssmd_emphasis,
+        emphasis_level=emphasis_level,
         enable_ssmd_emphasis=enable_ssmd_emphasis,
         ssmd_profile_validation=ssmd_profile_validation,
         ssmd_fail_on_warning=ssmd_fail_on_warning,
@@ -1227,6 +1311,12 @@ def convert(  # noqa: C901
         ssmd_audio_max_bytes=ssmd_audio_max_bytes,
         ssmd_audio_max_duration=ssmd_audio_max_duration,
     )
+    if enable_ssmd_emphasis:
+        typer.echo(
+            "Warning: --enable-ssmd-emphasis is deprecated; use "
+            "--emphasis-level 2.",
+            err=True,
+        )
     if saved_identity_payload is not None:
         effective_prosody_policy = _resolve_prosody_policy(
             config,
@@ -1494,6 +1584,10 @@ def convert(  # noqa: C901
         detect_emphasis=effective_detect_emphasis,
         epub_content_mode=effective_epub_content_mode,
         ssmd_emphasis_mode=ssmd_policy.emphasis_mode,
+        emphasis_level=infer_emphasis_level(
+            ssmd_policy.emphasis_mode, ssmd_policy.emphasis_gain_scale
+        ),
+        emphasis_gain_scale=ssmd_policy.emphasis_gain_scale,
         prosody_policy=effective_prosody_policy,
         short_sentence=_format_short_sentence_summary(
             effective_short_sentence,
@@ -2034,6 +2128,8 @@ def _show_conversion_summary(
     detect_emphasis: bool = False,
     epub_content_mode: str = "markdown",
     ssmd_emphasis_mode: str = "plain",
+    emphasis_level: int | None = None,
+    emphasis_gain_scale: float = 1.0,
     prosody_policy: ProsodyPolicy = _DEFAULT_PROSODY_POLICY,
     short_sentence: str = DEFAULT_SHORT_SENTENCE,
     short_sentence_note: str | None = None,
@@ -2094,15 +2190,26 @@ def _show_conversion_summary(
         "Preserved" if is_markdown and detect_emphasis else "Unwrapped",
     )
     table.add_row("EPUB CSS Emphasis", "Enabled" if is_markdown else "Not used")
-    emphasis_labels = {
-        "plain": "Plain (emphasis unchanged)",
-        "approximate": "Approximate (gain-only)",
-        "warn": "Plain + warnings",
-        "error": "Reject emphasis",
-    }
+    if emphasis_level is not None:
+        preset = resolve_emphasis_level(emphasis_level)
+        emphasis_value = f"Level {preset.level} — {preset.label}"
+        if preset.level:
+            profile = (
+                f"moderate +{3.0 * emphasis_gain_scale:g} dB, "
+                f"strong +{6.0 * emphasis_gain_scale:g} dB, "
+                f"reduced {-3.0 * emphasis_gain_scale:g} dB"
+            )
+            table.add_row("Emphasis Profile", profile)
+    else:
+        emphasis_value = {
+            "plain": "Advanced policy: plain",
+            "approximate": "Advanced policy: approximate (gain-only)",
+            "warn": "Advanced policy: warn",
+            "error": "Advanced policy: error",
+        }.get(ssmd_emphasis_mode, f"Advanced policy: {ssmd_emphasis_mode}")
     table.add_row(
-        "SSMD Emphasis",
-        emphasis_labels.get(ssmd_emphasis_mode, ssmd_emphasis_mode),
+        "Audible emphasis",
+        emphasis_value,
     )
     method_labels = {
         "phase_vocoder": "Phase vocoder",

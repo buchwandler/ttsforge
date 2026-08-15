@@ -64,6 +64,15 @@ def parse_config_cli_value(key: str, raw: str, default: object) -> object:
     nullable prosody hop length is handled explicitly because its default is
     ``None``.
     """
+    if key == "emphasis_level":
+        normalized = raw.strip().lower()
+        if normalized in {"null", "none", "auto", ""}:
+            return None
+        try:
+            return int(raw)
+        except ValueError as exc:
+            raise ValueError("must be null or an integer from 0 to 3") from exc
+
     if key == "use_spacy":
         normalized = raw.strip().lower()
         if normalized in {"null", "none", "auto", ""}:
@@ -189,6 +198,12 @@ def _validate_prosody_config(key: str, value: Any) -> bool:
 
 def _validate_ssmd_config(key: str, value: Any) -> bool:
     """Validate SSMD-related config keys. Returns True if handled."""
+    if key == "emphasis_level":
+        if value is not None and (
+            isinstance(value, bool) or not isinstance(value, int) or not 0 <= value <= 3
+        ):
+            raise ValueError("must be null or an integer from 0 to 3")
+        return True
     if key == "ssmd_unknown_header" and value not in {"warn", "error", "ignore"}:
         raise ValueError("must be warn, error, or ignore")
     if key == "ssmd_missing_voice" and value not in {"error", "use-default"}:

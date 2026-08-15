@@ -100,15 +100,18 @@ block.
 
 `--ssmd-missing-voice POLICY` : `error` or `use-default` for unresolved logical roles.
 
-`--ssmd-emphasis MODE` : `plain`, `approximate`, `warn`, or `error`. The default is the
-persisted `ssmd_emphasis_mode` value, normally `plain`. Plain speaks emphasis unchanged;
-approximate applies segment-level volume/rate changes.
+`--emphasis-level INTEGER` : User-friendly audible strength: `0=Off`, `1=Light`,
+`2=Normal`, or `3=Strong`. Level 2 is the backward-compatible equivalent of
+`--enable-ssmd-emphasis`; omit the option to preserve saved resume settings.
 
-`--enable-ssmd-emphasis` : Convenience opt-in equivalent to
-`--ssmd-emphasis approximate`. It applies the current deterministic gain-only
-approximation to existing SSMD emphasis. Use `--detect-emphasis` separately when EPUB
-italic/bold styling should first be extracted into SSMD annotations. This flag cannot be
-combined with `--ssmd-emphasis`.
+`--ssmd-emphasis MODE` : Advanced policy: `plain`, `approximate`, `warn`, or `error`.
+For normal audible strength use `--emphasis-level`. Approximation is gain-only; it does
+not change speech rate.
+
+`--enable-ssmd-emphasis` : Deprecated compatibility flag equivalent to
+`--emphasis-level 2`. It applies the current deterministic gain-only approximation to
+existing SSMD emphasis. Use `--detect-emphasis` separately when EPUB italic/bold styling
+should first be extracted into SSMD annotations. Choose only one emphasis control.
 
 `--epub-content-mode [markdown|plain]` : Select structured chapter Markdown extraction
 (default) or the explicit legacy plain compatibility path.

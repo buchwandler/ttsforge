@@ -21,7 +21,7 @@ from ttsforge.vocab import (
 
 
 def test_supported_dependency_versions_are_installed() -> None:
-    assert Version(version("pykokoro")) in SpecifierSet(">=0.8.3,<0.9")
+    assert Version(version("pykokoro")) in SpecifierSet(">=0.8.4,<0.9")
     assert Version(version("kokorog2p")) in SpecifierSet(">=0.8.0,<0.9")
 
 

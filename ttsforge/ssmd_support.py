@@ -7,6 +7,7 @@ diagnostic types so callers do not need to depend on backend dataclasses.
 
 from __future__ import annotations
 
+import math
 from collections.abc import Mapping, Sequence
 from dataclasses import dataclass, field
 from pathlib import Path
@@ -16,6 +17,44 @@ IssueSeverity = Literal["info", "warn", "error"]
 UnknownHeaderPolicy = Literal["warn", "error", "ignore"]
 MissingVoicePolicy = Literal["error", "use-default"]
 EmphasisMode = Literal["plain", "approximate", "warn", "error"]
+
+
+@dataclass(frozen=True, slots=True)
+class EmphasisPreset:
+    """User-facing audible emphasis level and its renderer policy."""
+
+    level: int
+    label: str
+    mode: EmphasisMode
+    gain_scale: float
+
+
+EMPHASIS_PRESETS: dict[int, EmphasisPreset] = {
+    0: EmphasisPreset(0, "Off", "plain", 1.0),
+    1: EmphasisPreset(1, "Light", "approximate", 0.5),
+    2: EmphasisPreset(2, "Normal", "approximate", 1.0),
+    3: EmphasisPreset(3, "Strong", "approximate", 1.5),
+}
+
+
+def resolve_emphasis_level(level: int) -> EmphasisPreset:
+    """Resolve one strict user-facing emphasis level to its preset."""
+    if isinstance(level, bool) or not isinstance(level, int):
+        raise ValueError("emphasis level must be an integer from 0 to 3")
+    try:
+        return EMPHASIS_PRESETS[level]
+    except KeyError as exc:
+        raise ValueError("emphasis level must be an integer from 0 to 3") from exc
+
+
+def infer_emphasis_level(
+    mode: EmphasisMode, gain_scale: float
+) -> int | None:
+    """Return the friendly level for a resolved renderer policy, if any."""
+    for preset in EMPHASIS_PRESETS.values():
+        if preset.mode == mode and preset.gain_scale == gain_scale:
+            return preset.level
+    return None
 
 
 @dataclass(frozen=True, slots=True)
@@ -66,6 +105,7 @@ class SSMDPolicy:
     missing_voice: MissingVoicePolicy = "error"
     validate_profile: bool = True
     emphasis_mode: EmphasisMode = "plain"
+    emphasis_gain_scale: float = 1.0
     fail_on_warning: bool = False
     voice_bindings: Mapping[str, Mapping[str, str]] = field(default_factory=dict)
     pause_overrides: SSMDPauseOverrideOptions | None = None
@@ -86,6 +126,13 @@ class SSMDPolicy:
             raise ValueError(
                 "emphasis_mode must be 'plain', 'approximate', 'warn', or 'error'"
             )
+        if (
+            isinstance(self.emphasis_gain_scale, bool)
+            or not isinstance(self.emphasis_gain_scale, (int, float))
+            or not math.isfinite(self.emphasis_gain_scale)
+            or not 0.0 <= self.emphasis_gain_scale <= 2.0
+        ):
+            raise ValueError("emphasis_gain_scale must be finite and between 0.0 and 2.0")
         if (
             isinstance(self.audio_max_bytes, bool)
             or not isinstance(self.audio_max_bytes, int)
@@ -279,6 +326,7 @@ def build_pykokoro_ssmd_config(
         missing_voice=policy.missing_voice,
         validate_profile=policy.validate_profile,
         emphasis_mode=policy.emphasis_mode,
+        emphasis_gain_scale=policy.emphasis_gain_scale,
         audio_source_resolver=audio_resolver,
         audio_max_bytes=policy.audio_max_bytes,
         audio_max_duration_s=policy.audio_max_duration_s,

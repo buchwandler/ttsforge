@@ -33,7 +33,7 @@ from .short_sentence_stats import ShortSentenceStats
 from .spacy_policy import SPACY_POLICY_VERSION
 from .ssmd_support import SSMDPolicy, build_pykokoro_ssmd_config
 
-SUPPORTED_PYKOKORO = ">=0.8.3,<0.9"
+SUPPORTED_PYKOKORO = ">=0.8.4,<0.9"
 
 
 @dataclass(slots=True)

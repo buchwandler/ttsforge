@@ -216,6 +216,8 @@ DEFAULT_CONFIG = {
     "ssmd_missing_voice": "error",
     "ssmd_validate_profile": True,
     "ssmd_emphasis_mode": "plain",
+    # None means the friendly level is not configured; use the legacy policy.
+    "emphasis_level": None,
     "detect_emphasis": True,
     "epub_content_mode": "markdown",
     "prosody_method": "wsola",

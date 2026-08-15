@@ -121,10 +121,9 @@ false only for literal header text.
 that cannot be resolved.
 
 `ssmd_validate_profile` and `ssmd_emphasis_mode` : Validate Kokoro-supported constructs
-and choose `plain` (the default), `approximate`, `warn`, or `error` emphasis behavior.
-Plain emphasis is spoken normally without automatic prosody; explicit SSMD prosody
-remains active. Approximation can also be selected per conversion with
-`--enable-ssmd-emphasis`.
+and choose the advanced `plain` (default), `approximate`, `warn`, or `error` policy.
+Plain emphasis is spoken normally without automatic gain; explicit SSMD prosody remains
+active. Normal audible strength should use `--emphasis-level`.
 
 `ssmd_voice_bindings` : Mapping such as `{"narrator": "af_sarah"}`; CLI/API bindings are
 supplied with repeated `--ssmd-voice ROLE=VOICE`.
@@ -139,11 +138,17 @@ These settings form three related but distinct layers:
 2. `detect_emphasis` (boolean, default `true`) preserves or unwraps EPUB italic and bold
    semantics while leaving headings, paragraphs, and scene breaks independent. CSS
    emphasis is resolved by epub2text in Markdown mode.
-3. `ssmd_emphasis_mode` controls how preserved SSMD emphasis is rendered audibly.
+3. `emphasis_level` controls friendly gain-only audible strength while
+   `ssmd_emphasis_mode` remains the advanced policy setting.
 
-`plain` preserves normal synthesis, `approximate` enables the current deterministic
-gain-only approximation, and `warn`/`error` report or reject emphasis metadata. The
-approximation does not provide configurable strength profiles.
+`emphasis_level` accepts `null`, `0` (Off), `1` (Light), `2` (Normal), and `3` (Strong).
+The default is `null`, which falls back to the legacy `ssmd_emphasis_mode` value and
+therefore remains audible-off with the normal `plain` default. Level 2 is equivalent to
+the legacy flag. `ssmd_emphasis_mode` accepts `plain`, `approximate`, `warn`, and `error`;
+the latter two remain advanced policies because they cannot be represented by a numeric
+strength. If both keys are configured, equivalent `plain`/level-0 or
+`approximate`/level-2 settings are accepted, while a strict `warn`/`error` policy
+conflicts with a level.
 
 `prosody_method` (default `wsola`) selects the AudioSig algorithm for explicit SSMD rate
 and pitch annotations. Supported methods are `wsola`, `esola`, `td_psola`, `psola` (an
@@ -160,6 +165,7 @@ Examples:
 
 ```bash
 ttsforge config --set detect_emphasis true --set ssmd_emphasis_mode approximate
+ttsforge config --set emphasis_level 2
 ttsforge config --set epub_content_mode markdown
 ttsforge config --set epub_content_mode plain
 ttsforge config --set prosody_method esola --set prosody_fallback_methods '["wsola","phase_vocoder"]'
@@ -613,7 +619,7 @@ state saves, final merging, and converter cleanup. RSS may remain elevated becau
 native allocators retain high-water pages; that alone is not evidence of a provider
 leak.
 
-TTSForge requires PyKokoro `>=0.8.3,<0.9`, uses compact segment results, and releases
+TTSForge requires PyKokoro `>=0.8.4,<0.9`, uses compact segment results, and releases
 completed chapter audio before the next chapter synthesis. Whole-chapter synthesis
 remains buffered and streaming is future work.
 

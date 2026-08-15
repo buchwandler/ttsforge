@@ -6,6 +6,7 @@ import json
 from pathlib import Path
 from unittest.mock import patch
 
+import pytest
 from typer.testing import CliRunner
 
 from ttsforge.cli import app
@@ -20,6 +21,22 @@ def test_spacy_config_preserves_auto_and_boolean_values() -> None:
     assert parse_config_cli_value("use_spacy", "false", None) is False
     validate_config_value("use_spacy", None)
     validate_config_value("use_spacy", True)
+
+
+def test_emphasis_level_config_accepts_none_and_levels() -> None:
+    assert DEFAULT_CONFIG["emphasis_level"] is None
+    assert parse_config_cli_value("emphasis_level", "none", None) is None
+    for level in range(4):
+        value = parse_config_cli_value("emphasis_level", str(level), None)
+        assert value == level
+        validate_config_value("emphasis_level", value)
+
+
+@pytest.mark.parametrize("raw", ["-1", "4", "1.5", "true", "text"])
+def test_emphasis_level_config_rejects_invalid_values(raw: str) -> None:
+    with pytest.raises(ValueError):
+        value = parse_config_cli_value("emphasis_level", raw, None)
+        validate_config_value("emphasis_level", value)
 
 
 def test_config_set_accepts_repeated_pairs_and_dash_prefixed_values(

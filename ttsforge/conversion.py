@@ -716,6 +716,7 @@ def _ssmd_policy_payload(policy: SSMDPolicy) -> dict[str, Any]:
         "missing_voice": policy.missing_voice,
         "validate_profile": policy.validate_profile,
         "emphasis_mode": policy.emphasis_mode,
+        "emphasis_gain_scale": policy.emphasis_gain_scale,
         "fail_on_warning": policy.fail_on_warning,
         "voice_bindings": bindings,
         "pause_overrides": (

@@ -188,6 +188,7 @@ def _policy_payload(
         "missing_voice": _attribute(policy, "missing_voice"),
         "validate_profile": _attribute(policy, "validate_profile"),
         "emphasis_mode": _attribute(policy, "emphasis_mode"),
+        "emphasis_gain_scale": _attribute(policy, "emphasis_gain_scale"),
         "fail_on_warning": _attribute(policy, "fail_on_warning"),
         "voice_bindings": bindings,
         "pause_overrides": pause_payload,
@@ -359,6 +360,11 @@ def diff_generation_identity(
     differences: list[IdentityDifference] = []
 
     def walk(saved_value: JsonValue, current_value: JsonValue, path: str) -> None:
+        # Schema-2 identities created before the gain-scale field used the
+        # renderer's default 1.0. Treat that omitted field as its migrated
+        # value so old approximate workspaces remain resumable.
+        if path == "ssmd_policy.emphasis_gain_scale" and saved_value is None:
+            saved_value = 1.0
         if isinstance(saved_value, dict) and isinstance(current_value, dict):
             keys = sorted(set(saved_value) | set(current_value))
             for key in keys:
