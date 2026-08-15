@@ -556,7 +556,7 @@ Here's an example `config.json` with custom settings:
   "default_language": "a",
   "default_speed": 1.1,
   "default_format": "m4b",
-  "use_gpu": true,
+  "onnx_provider": "auto",
   "model_quality": "fp32",
   "model_variant": "v1.0",
   "silence_between_chapters": 2.5,

@@ -150,7 +150,7 @@ pip install "ttsforge[audio]"
 # Bundled ffmpeg binaries
 pip install "ttsforge[static_ffmpeg]"
 
-# GPU acceleration
+# CUDA provider support
 pip install "ttsforge[gpu]"
 ```
 
@@ -183,8 +183,16 @@ ttsforge config --set onnx_provider cpu
 ttsforge sample "Provider test" --provider xnnpack
 ```
 
-For CUDA, install the GPU extra in a fresh environment so CPU and GPU ONNX Runtime
-distributions are not installed together:
+For a desktop build exposing OpenVINO:
+
+```bash
+ttsforge config --set onnx_provider openvino
+ttsforge config --show
+ttsforge sample "OpenVINO provider test" --provider openvino
+```
+
+For the CUDA provider, install the GPU extra in a fresh environment so CPU and CUDA ONNX
+Runtime distributions are not installed together:
 
 ```bash
 pip install "ttsforge[gpu]"
@@ -309,10 +317,14 @@ If model download fails:
 3. Check disk space (~330MB required)
 4. The model directory can be found with `ttsforge config --show`
 
-### GPU not detected
+### Requested provider unavailable
 
-If GPU acceleration isn't working:
+If an explicitly requested provider is unavailable:
 
-1. Ensure `onnxruntime-gpu` is installed (not just `onnxruntime`)
-2. Verify CUDA is properly installed
-3. Check GPU compatibility with ONNX Runtime
+1. Run `ttsforge config --show` and inspect the available, configured, and resolved
+   providers.
+2. Confirm the installed ONNX Runtime build exposes the requested provider.
+3. Use `--provider auto` or another provider reported as available.
+
+For CUDA specifically, ensure `onnxruntime-gpu` is installed (not just `onnxruntime`),
+verify CUDA is installed, and check CUDA compatibility with ONNX Runtime.

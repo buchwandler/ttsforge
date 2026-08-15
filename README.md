@@ -50,7 +50,7 @@ pip install "ttsforge[audio]"
 # Bundled ffmpeg (if you cannot install system ffmpeg)
 pip install "ttsforge[static_ffmpeg]"
 
-# GPU acceleration (CUDA; use a fresh environment when replacing the CPU provider)
+# CUDA provider support (use a fresh environment when replacing the CPU provider)
 pip install "ttsforge[gpu]"
 ```
 
@@ -742,6 +742,14 @@ ttsforge sample "NNAPI test" --provider nnapi
 ttsforge sample "CPU test" --provider CPUExecutionProvider
 ```
 
+For a desktop ONNX Runtime build exposing OpenVINO:
+
+```bash
+ttsforge config --set onnx_provider openvino
+ttsforge config --show
+ttsforge sample "OpenVINO test" --provider openvino
+```
+
 The legacy Boolean flags remain compatibility shortcuts: `--gpu` maps to `auto` and
 `--no-gpu` maps to `cpu`. NNAPI and XNNPACK are execution providers, not GPU modes.
 PyKokoro applies its documented `ONNX_PROVIDER` environment override after TTSForge
@@ -751,6 +759,20 @@ resolves configuration.
 ttsforge convert book.epub --gpu
 ttsforge convert book.epub --provider xnnpack
 ```
+
+If an installed command exposes only `--gpu`, verify that the console script and module
+entry point come from the same provider-capable installation:
+
+```bash
+ttsforge --version
+python -c "import importlib.metadata as m; print(m.version('ttsforge'))"
+python -c "import ttsforge; print(ttsforge.__file__)"
+ttsforge convert --help
+python -m ttsforge convert --help
+```
+
+An older wheel, a different virtual environment, or an unrefreshed editable install can
+otherwise make an older CLI appear to be missing `--provider`.
 
 For Termux/Android, install an ONNX Runtime build compatible with the declared PyKokoro
 release, then configure the GitHub assets explicitly:
@@ -775,33 +797,33 @@ build; use another available provider if NNAPI is not exposed.
 
 ## Configuration Options
 
-| Option                      | Default        | Description                              |
-| --------------------------- | -------------- | ---------------------------------------- |
-| `default_voice`             | `af_heart`     | Default TTS voice                        |
-| `default_language`          | `a`            | Default language code                    |
-| `default_speed`             | `1.0`          | Speech speed (0.5-2.0)                   |
-| `default_format`            | `m4b`          | Output format                            |
-| `onnx_provider`             | `cpu`          | ONNX Runtime provider alias or full name |
-| `use_gpu`                   | `false`        | Legacy shortcut (`true` => `auto`)       |
-| `model_quality`             | `fp32`         | Model quality/quantization               |
-| `model_variant`             | `v1.0`         | Model variant                            |
-| `silence_between_chapters`  | `2.0`          | Chapter gap (seconds)                    |
-| `pause_clause`              | `0.5`          | Clause pause (seconds)                   |
-| `pause_sentence`            | `0.7`          | Sentence pause (seconds)                 |
-| `pause_paragraph`           | `0.9`          | Paragraph pause (seconds)                |
-| `pause_variance`            | `0.05`         | Pause variance (seconds)                 |
-| `pause_mode`                | `auto`         | Pause mode (`tts`, `manual`, `auto`)     |
-| `enable_short_sentence`     | `None`         | Handle short sentences                   |
-| `announce_chapters`         | `true`         | Speak chapter titles                     |
-| `chapter_pause_after_title` | `2.0`          | Pause after chapter title                |
-| `phonemization_lang`        | `None`         | Override phonemization language          |
-| `output_filename_template`  | `{book_title}` | Output filename template                 |
-| `default_content_mode`      | `chapters`     | `read` mode (`chapters`/`pages`)         |
-| `default_page_size`         | `2000`         | Page size for `read` pages mode          |
-| `use_mixed_language`        | `false`        | Enable mixed-language mode               |
-| `mixed_language_primary`    | `None`         | Primary language for mixed mode          |
-| `mixed_language_allowed`    | `None`         | Allowed languages (list)                 |
-| `mixed_language_confidence` | `0.7`          | Language detection threshold             |
+| Option                      | Default        | Description                                      |
+| --------------------------- | -------------- | ------------------------------------------------ |
+| `default_voice`             | `af_heart`     | Default TTS voice                                |
+| `default_language`          | `a`            | Default language code                            |
+| `default_speed`             | `1.0`          | Speech speed (0.5-2.0)                           |
+| `default_format`            | `m4b`          | Output format                                    |
+| `onnx_provider`             | `cpu`          | ONNX Runtime provider alias or full name         |
+| `use_gpu`                   | `false`        | Legacy compatibility shortcut (`true` => `auto`) |
+| `model_quality`             | `fp32`         | Model quality/quantization                       |
+| `model_variant`             | `v1.0`         | Model variant                                    |
+| `silence_between_chapters`  | `2.0`          | Chapter gap (seconds)                            |
+| `pause_clause`              | `0.5`          | Clause pause (seconds)                           |
+| `pause_sentence`            | `0.7`          | Sentence pause (seconds)                         |
+| `pause_paragraph`           | `0.9`          | Paragraph pause (seconds)                        |
+| `pause_variance`            | `0.05`         | Pause variance (seconds)                         |
+| `pause_mode`                | `auto`         | Pause mode (`tts`, `manual`, `auto`)             |
+| `enable_short_sentence`     | `None`         | Handle short sentences                           |
+| `announce_chapters`         | `true`         | Speak chapter titles                             |
+| `chapter_pause_after_title` | `2.0`          | Pause after chapter title                        |
+| `phonemization_lang`        | `None`         | Override phonemization language                  |
+| `output_filename_template`  | `{book_title}` | Output filename template                         |
+| `default_content_mode`      | `chapters`     | `read` mode (`chapters`/`pages`)                 |
+| `default_page_size`         | `2000`         | Page size for `read` pages mode                  |
+| `use_mixed_language`        | `false`        | Enable mixed-language mode                       |
+| `mixed_language_primary`    | `None`         | Primary language for mixed mode                  |
+| `mixed_language_allowed`    | `None`         | Allowed languages (list)                         |
+| `mixed_language_confidence` | `0.7`          | Language detection threshold                     |
 
 ## Documentation
 

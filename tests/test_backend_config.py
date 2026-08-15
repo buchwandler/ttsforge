@@ -36,3 +36,42 @@ def test_provider_precedence(
 def test_provider_and_legacy_flag_conflict() -> None:
     with pytest.raises(ValueError, match="cannot be combined"):
         resolve_onnx_provider({}, provider_override="nnapi", use_gpu_override=True)
+
+
+@pytest.mark.parametrize(
+    "provider",
+    [
+        "auto",
+        "cpu",
+        "openvino",
+        "nnapi",
+        "xnnpack",
+        "CPUExecutionProvider",
+        "OpenVINOExecutionProvider",
+        "NnapiExecutionProvider",
+        "XnnpackExecutionProvider",
+        "Custom_1ExecutionProvider",
+    ],
+)
+def test_explicit_provider_uses_shared_syntax_contract(provider: str) -> None:
+    assert (
+        resolve_onnx_provider(
+            {}, provider_override=f"  {provider}  ", use_gpu_override=None
+        )
+        == provider
+    )
+
+
+@pytest.mark.parametrize("provider", ["", "  ", "potato", "CPU ExecutionProvider"])
+def test_invalid_explicit_provider_is_rejected_before_backend(provider: str) -> None:
+    with pytest.raises(ValueError, match="Invalid ONNX provider"):
+        resolve_onnx_provider({}, provider_override=provider, use_gpu_override=None)
+
+
+def test_invalid_configured_provider_is_rejected() -> None:
+    with pytest.raises(ValueError, match="Invalid ONNX provider"):
+        resolve_onnx_provider(
+            {"onnx_provider": "potato"},
+            provider_override=None,
+            use_gpu_override=None,
+        )

@@ -10,8 +10,22 @@ from collections.abc import Mapping
 from typing import Any
 
 from ..constants import DEFAULT_MODEL_SOURCE, VOICES
+from ..utils import validate_config_value
 
 DEFAULT_MODEL_VARIANT = "v1.0"
+
+
+def _normalize_onnx_provider(value: Any) -> str:
+    """Normalize and validate a provider before handing it to PyKokoro."""
+    if not isinstance(value, str):
+        raise ValueError("Invalid ONNX provider: expected a non-empty string")
+
+    provider = value.strip()
+    try:
+        validate_config_value("onnx_provider", provider)
+    except ValueError as exc:
+        raise ValueError(f"Invalid ONNX provider {value!r}: {exc}") from exc
+    return provider
 
 
 def resolve_onnx_provider(
@@ -25,14 +39,14 @@ def resolve_onnx_provider(
         raise ValueError("--provider cannot be combined with --gpu or --no-gpu")
 
     if provider_override is not None:
-        return provider_override.strip()
+        return _normalize_onnx_provider(provider_override)
 
     if use_gpu_override is not None:
         return "auto" if use_gpu_override else "cpu"
 
     configured = config.get("onnx_provider")
     if configured is not None and str(configured).strip():
-        return str(configured).strip()
+        return _normalize_onnx_provider(configured)
 
     return "auto" if bool(config.get("use_gpu", False)) else "cpu"
 

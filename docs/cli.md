@@ -54,8 +54,8 @@ default, language is determined from the voice.
 `--no-gpu` maps to provider `cpu`.
 
 `--provider PROVIDER` : ONNX Runtime execution provider or alias (`auto`, `cpu`,
-`nnapi`, `xnnpack`, or a full `*ExecutionProvider` name). Available on `convert`,
-`sample`, `read`, `demo`, and `phonemes convert`.
+`openvino`, `nnapi`, `xnnpack`, or a full `*ExecutionProvider` name). Available on
+`convert`, `sample`, `read`, `demo`, and `phonemes convert`.
 
 `--chapters SELECTION` : Chapters to convert. Examples: `1-5`, `1,3,5`, `1-3,5,7-10`,
 `all`. Default: all chapters (interactive selection if not specified).
@@ -360,7 +360,8 @@ ttsforge sample [TEXT] [OPTIONS]
 
 `--gpu / --no-gpu` : Compatibility shortcut mapping to `auto` or `cpu`.
 
-`--provider PROVIDER` : ONNX Runtime execution provider or alias.
+`--provider PROVIDER` : ONNX Runtime execution provider or alias (`auto`, `cpu`,
+`openvino`, `nnapi`, `xnnpack`, or a full `*ExecutionProvider` name).
 
 `--split-mode MODE` : Text splitting mode.
 
@@ -431,7 +432,8 @@ stdin.
 
 `--gpu / --no-gpu` : Compatibility shortcut mapping to `auto` or `cpu`.
 
-`--provider PROVIDER` : ONNX Runtime execution provider or alias.
+`--provider PROVIDER` : ONNX Runtime execution provider or alias (`auto`, `cpu`,
+`openvino`, `nnapi`, `xnnpack`, or a full `*ExecutionProvider` name).
 
 `--mode MODE` : Content mode: `chapters` or `pages`.
 
@@ -528,7 +530,11 @@ ttsforge demo [OPTIONS]
 
 `-s, --speed FLOAT` : Speech speed. Default: `1.0`.
 
-`--gpu / --no-gpu` : Enable or disable GPU acceleration.
+`--gpu / --no-gpu` : Compatibility shortcut: `--gpu` maps to provider `auto` and
+`--no-gpu` maps to provider `cpu`.
+
+`--provider PROVIDER` : ONNX Runtime execution provider or alias (`auto`, `cpu`,
+`openvino`, `nnapi`, `xnnpack`, or a full `*ExecutionProvider` name).
 
 `--silence FLOAT` : Silence between voice samples in seconds. Default: `0.5`.
 
@@ -735,7 +741,8 @@ ttsforge phonemes convert PHONEME_FILE [OPTIONS]
 
 `--gpu / --no-gpu` : Compatibility shortcut mapping to `auto` or `cpu`.
 
-`--provider PROVIDER` : ONNX Runtime execution provider or alias.
+`--provider PROVIDER` : ONNX Runtime execution provider or alias (`auto`, `cpu`,
+`openvino`, `nnapi`, `xnnpack`, or a full `*ExecutionProvider` name).
 
 `--silence FLOAT` : Silence between chapters. Default: `2.0`.
 

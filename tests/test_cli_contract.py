@@ -89,6 +89,12 @@ def test_provider_and_gpu_conflict_exits_before_synthesis() -> None:
     assert "--provider cannot be combined with --gpu or --no-gpu" in result.output
 
 
+def test_invalid_provider_exits_before_synthesis() -> None:
+    result = CliRunner().invoke(app, ["sample", "test", "--provider", "potato"])
+    assert result.exit_code == 2
+    assert "Invalid ONNX provider" in result.output
+
+
 def test_root_and_module_entry_points_share_version_semantics() -> None:
     root = get_command(app)
     result = root.main(["--version"], standalone_mode=False)

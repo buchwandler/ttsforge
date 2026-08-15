@@ -388,9 +388,17 @@ ttsforge config --set model_source github --set onnx_provider nnapi
 ttsforge config --show
 ```
 
-Provider aliases include `auto`, `cpu`, `nnapi`, and `xnnpack`; full
+Provider aliases include `auto`, `cpu`, `openvino`, `nnapi`, and `xnnpack`; full
 `*ExecutionProvider` names are also accepted. The legacy `--gpu` and `--no-gpu` flags
-map to `auto` and `cpu` respectively.
+map to `auto` and `cpu` respectively. Availability depends on the installed ONNX Runtime
+build, and PyKokoro may apply its documented `ONNX_PROVIDER` environment override.
+
+On a desktop build exposing OpenVINO, the equivalent persistent setup is:
+
+```bash
+ttsforge config --set onnx_provider openvino
+ttsforge sample "OpenVINO provider test" --provider openvino
+```
 
 ## Complete Example
 

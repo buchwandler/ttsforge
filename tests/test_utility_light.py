@@ -109,6 +109,30 @@ def test_provider_probe_failure_does_not_hide_model_status(monkeypatch, capsys) 
     assert "ONNX Runtime Providers" in output and "Status unavailable" in output
 
 
+def test_provider_status_reports_available_configured_and_resolved(
+    monkeypatch, capsys
+) -> None:
+    monkeypatch.setattr(
+        "pykokoro.onnx_session.get_available_execution_providers",
+        lambda: ("OpenVINOExecutionProvider", "CPUExecutionProvider"),
+    )
+    monkeypatch.setattr(
+        "pykokoro.onnx_session.resolve_execution_provider",
+        lambda configured: (
+            "OpenVINOExecutionProvider"
+            if configured == "openvino"
+            else "CPUExecutionProvider"
+        ),
+    )
+
+    utility_light._show_provider_status({"onnx_provider": "openvino"})
+
+    output = capsys.readouterr().out
+    assert "Available: OpenVINOExecutionProvider, CPUExecutionProvider" in output
+    assert "Configured: openvino" in output
+    assert "Resolved: OpenVINOExecutionProvider" in output
+
+
 def test_direct_pipeline_cleanup_closes_pipeline_before_backend() -> None:
     events: list[str] = []
 
