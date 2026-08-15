@@ -54,7 +54,7 @@ jobs:
         python -m pip install --upgrade pip
         python -m pip install \
           "kokorog2p[espeak,en]==0.8.0" \
-          "pykokoro[cpu]==0.8.3"
+          "pykokoro[cpu]==0.8.4"
         python -m pip install -e ".[dev]"
     - name: Verify exact minimum versions
       run: |
@@ -62,7 +62,7 @@ jobs:
         from importlib.metadata import version
 
         assert version("kokorog2p") == "0.8.0", version("kokorog2p")
-        assert version("pykokoro") == "0.8.3", version("pykokoro")
+        assert version("pykokoro") == "0.8.4", version("pykokoro")
         print("kokorog2p", version("kokorog2p"))
         print("pykokoro", version("pykokoro"))
         PY
