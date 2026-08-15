@@ -1,5 +1,6 @@
 """Focused lifecycle tests for paragraph conversion with a public fake provider."""
 
+import json
 from pathlib import Path
 from types import SimpleNamespace
 
@@ -11,6 +12,11 @@ from ttsforge.conversion import (
     ConversionOptions,
     ConversionState,
     TTSConverter,
+)
+from ttsforge.render_units import (
+    PARAGRAPH_CONTENT_HASH_SCHEMA,
+    PARAGRAPH_UNIT_IDENTITY_SCHEMA,
+    stable_hash,
 )
 from ttsforge.short_sentence_stats import ShortSentenceStats
 from ttsforge.ssmd_support import SSMDPolicy
@@ -129,10 +135,19 @@ class StochasticHashRunner(FakeRunner):
 
 
 class VariableRunner(FakeRunner):
-    def __init__(self, count: int, *, mismatch_index: int | None = None):
+    def __init__(
+        self,
+        count: int,
+        *,
+        mismatch_index: int | None = None,
+        text_mismatch_index: int | None = None,
+        structure_mismatch_index: int | None = None,
+    ):
         super().__init__()
         self.count = count
         self.mismatch_index = mismatch_index
+        self.text_mismatch_index = text_mismatch_index
+        self.structure_mismatch_index = structure_mismatch_index
 
     def prepare_paragraph_units(self, text, **kwargs):
         descriptors = []
@@ -140,11 +155,17 @@ class VariableRunner(FakeRunner):
             text_hash = f"unit-{index}"
             if index == self.mismatch_index:
                 text_hash = f"changed-{index}"
+            text = f"Unit {index}"
+            if index == self.text_mismatch_index:
+                text = f"Edit {index}"
+            paragraph_index = index
+            if index == self.structure_mismatch_index:
+                paragraph_index += 100
             descriptors.append(
                 SimpleNamespace(
                     index=index,
-                    paragraph_idx=index,
-                    text=f"Unit {index}",
+                    paragraph_idx=paragraph_index,
+                    text=text,
                     text_hash=text_hash,
                     char_start=index * 5,
                     char_end=index * 5 + 5,
@@ -425,6 +446,28 @@ def _partial_variable_conversion(tmp_path: Path, completed_units: int = 35):
     return output, options, state_file, state
 
 
+def _rewrite_as_schema7_provider_identity(state: ConversionState, state_file: Path):
+    state.version = 7
+    state.paragraph_unit_identity_schema = 1
+    chapter = state.chapters[0]
+    for unit in chapter.units:
+        provider_hash = f"legacy-provider-{unit.unit_index}"
+        unit.content_hash = provider_hash
+        unit.render_fingerprint = stable_hash(
+            {
+                "chapter": chapter.render_fingerprint,
+                "unit_index": unit.unit_index,
+                "source_paragraph_index": unit.source_paragraph_index,
+                "chapter_unit_index": unit.chapter_unit_index,
+                "kind": unit.kind,
+                "text_hash": provider_hash,
+                "char_start": unit.unit_index * 5,
+                "char_end": unit.unit_index * 5 + 5,
+            }
+        )
+    state.save(state_file)
+
+
 def test_paragraph_resume_plan_mismatch_preserves_completed_prefix(tmp_path: Path):
     output, options, state_file, state = _partial_variable_conversion(tmp_path)
     before_state = state_file.read_bytes()
@@ -434,7 +477,7 @@ def test_paragraph_resume_plan_mismatch_preserves_completed_prefix(tmp_path: Pat
         for path in Path(state.paragraphs_dir).iterdir()
         if path.is_file()
     }
-    runner = VariableRunner(62, mismatch_index=3)
+    runner = VariableRunner(62, text_mismatch_index=3)
     resumed = TTSConverter(options)
     resumed._runner = runner
 
@@ -456,6 +499,123 @@ def test_paragraph_resume_plan_mismatch_preserves_completed_prefix(tmp_path: Pat
         for path in Path(state.paragraphs_dir).iterdir()
         if path.is_file()
     } == before_output
+
+
+def test_schema2_resume_ignores_provider_hash_only_changes_and_keeps_audio(
+    tmp_path: Path,
+):
+    output, options, state_file, state = _partial_variable_conversion(
+        tmp_path, completed_units=25
+    )
+    _rewrite_as_schema7_provider_identity(state, state_file)
+    assert state.paragraphs_dir is not None
+    before_audio = {
+        path.name: path.read_bytes()
+        for path in Path(state.paragraphs_dir).glob("*.wav")
+    }
+    runner = VariableRunner(62, mismatch_index=3)
+    resumed = TTSConverter(options)
+    resumed._runner = runner
+
+    result = resumed.convert_chapters_resumable(
+        [Chapter(title="One", content="book", index=0)], output, resume=True
+    )
+
+    assert result.success, result.error_message
+    assert runner.prepared[0].results[0].descriptor.index == 25
+    upgraded = ConversionState.load(state_file)
+    assert upgraded is not None
+    assert upgraded.version == 8
+    assert upgraded.paragraph_unit_identity_schema == PARAGRAPH_UNIT_IDENTITY_SCHEMA
+    assert {
+        path.name: path.read_bytes()
+        for path in Path(upgraded.paragraphs_dir or "").glob("*.wav")
+        if path.name in before_audio
+    } == before_audio
+    manifest = Path(upgraded.paragraphs_dir or "") / "manifest.json"
+    assert json.loads(manifest.read_text())["content_hash_schema"] == (
+        PARAGRAPH_CONTENT_HASH_SCHEMA
+    )
+
+
+def test_schema2_resume_rejects_equal_length_prepared_text_change(
+    tmp_path: Path,
+):
+    output, options, state_file, state = _partial_variable_conversion(
+        tmp_path, completed_units=5
+    )
+    before_state = state_file.read_bytes()
+    assert state.paragraphs_dir is not None
+    before_output = {
+        path.name: path.read_bytes()
+        for path in Path(state.paragraphs_dir).iterdir()
+        if path.is_file()
+    }
+    runner = VariableRunner(62, text_mismatch_index=3)
+    resumed = TTSConverter(options)
+    resumed._runner = runner
+
+    result = resumed.convert_chapters_resumable(
+        [Chapter(title="One", content="book", index=0)], output, resume=True
+    )
+
+    assert not result.success
+    assert "paragraph-unit-plan-changed" in (result.error_message or "")
+    assert runner.prepared[0].results == []
+    assert state_file.read_bytes() == before_state
+    assert {
+        path.name: path.read_bytes()
+        for path in Path(state.paragraphs_dir).iterdir()
+        if path.is_file()
+    } == before_output
+
+
+def test_schema7_identity_migration_rejects_structural_change(tmp_path: Path):
+    output, options, state_file, state = _partial_variable_conversion(
+        tmp_path, completed_units=5
+    )
+    _rewrite_as_schema7_provider_identity(state, state_file)
+    before_state = state_file.read_bytes()
+    runner = VariableRunner(62, structure_mismatch_index=3)
+    resumed = TTSConverter(options)
+    resumed._runner = runner
+
+    result = resumed.convert_chapters_resumable(
+        [Chapter(title="One", content="book", index=0)], output, resume=True
+    )
+
+    assert not result.success
+    assert "paragraph-unit-plan-changed" in (result.error_message or "")
+    assert runner.prepared[0].results == []
+    assert state_file.read_bytes() == before_state
+
+
+def test_schema7_identity_migration_rejects_changed_ssmd_before_inference(
+    tmp_path: Path,
+):
+    output, options, state_file, state = _partial_variable_conversion(
+        tmp_path, completed_units=5
+    )
+    chapter_state = state.chapters[0]
+    ssmd_path = Path(state.work_dir or state_file.parent) / (
+        chapter_state.ssmd_file or ""
+    )
+    ssmd_path.write_text(ssmd_path.read_text(encoding="utf-8") + "\n", encoding="utf-8")
+    before_state = state_file.read_bytes()
+    runner = VariableRunner(62)
+    resumed = TTSConverter(options)
+    resumed._runner = runner
+
+    result = resumed.convert_chapters_resumable(
+        [Chapter(title="One", content="book", index=0)], output, resume=True
+    )
+
+    assert not result.success
+    assert result.error_message and result.error_message.startswith(
+        "paragraph-ssmd-changed"
+    )
+    assert runner.prepared == []
+    assert state_file.read_bytes() == before_state
 
 
 def test_paragraph_resume_missing_completed_wav_fails_without_rendering(tmp_path: Path):

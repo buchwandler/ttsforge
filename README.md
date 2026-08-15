@@ -168,10 +168,13 @@ short-sentence processing begins, then reuses it across processes. Fresh convers
 receive new automatic seeds; `--seed 42` supplies the same explicit seed to every
 chapter. An explicitly changed audio-affecting option rejects resume and reports the
 changed field; remove the override to use the saved value or use `--fresh` to
-deliberately start a new workspace. Verifiable schema-6 workspaces migrate to schema 7;
-unverifiable legacy workspaces and their artifacts are preserved. Paragraph workspaces
-created with older than schema 6 cannot guarantee deterministic preparation and require
-a fresh run.
+deliberately start a new workspace. TTSForge owns the durable paragraph-unit content
+identity as a SHA-256 of each exact prepared text; provider-internal descriptor hashes
+are diagnostic only. Verifiable schema-6 workspaces migrate to schema 7, and compatible
+schema-7 paragraph workspaces can migrate their provider-hash identity to schema 8 in
+place without re-rendering completed WAVs. Unverifiable or incompatible legacy
+workspaces and their artifacts are preserved. Paragraph workspaces created with older
+than schema 6 cannot guarantee deterministic preparation and require a fresh run.
 
 ### Basic Conversion
 

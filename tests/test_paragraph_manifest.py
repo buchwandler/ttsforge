@@ -11,7 +11,7 @@ from ttsforge.paragraph_output import (
     finalize_wav,
     rebuild_manifest_and_playlist,
 )
-from ttsforge.render_units import RenderUnitState
+from ttsforge.render_units import PARAGRAPH_CONTENT_HASH_SCHEMA, RenderUnitState
 
 
 def test_manifest_playlist_are_ordered_and_owned(tmp_path: Path):
@@ -73,6 +73,7 @@ def test_manifest_playlist_are_ordered_and_owned(tmp_path: Path):
     ] == [entry["file"] for entry in manifest["files"]]
     persisted = json.loads((directory / "manifest.json").read_text(encoding="utf-8"))
     assert persisted["workspace_id"] == "workspace"
+    assert persisted["content_hash_schema"] == PARAGRAPH_CONTENT_HASH_SCHEMA
     assert not list(directory.glob("*.part"))
 
 

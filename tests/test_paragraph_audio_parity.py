@@ -1,6 +1,7 @@
 """Timeline invariants for paragraph artifacts and ordered concatenation."""
 
 from pathlib import Path
+from types import SimpleNamespace
 
 import numpy as np
 import soundfile as sf
@@ -39,6 +40,49 @@ def test_title_and_body_mapping_uses_expected_paragraph_numbers():
     assert [unit.source_paragraph_index for unit in titled] == [0, 7]
     assert [unit.chapter_unit_index for unit in titled] == [0, 1]
     assert titled[1].to_dict()["source_paragraph_index"] == 7
+
+
+def test_render_identity_ignores_provider_hash_but_tracks_exact_text():
+    stable = SimpleNamespace(
+        index=0,
+        paragraph_idx=0,
+        text="same text",
+        text_hash="provider-a",
+        char_start=0,
+        char_end=9,
+    )
+    changed_provider = SimpleNamespace(**{**vars(stable), "text_hash": "provider-b"})
+    changed_text = SimpleNamespace(**{**vars(stable), "text": "other text"})
+
+    first = map_descriptors(
+        [stable],
+        chapter_position=0,
+        source_chapter_index=0,
+        chapter_fingerprint="chapter",
+        sequence_start=0,
+        announced_title=False,
+    )[0]
+    provider_changed = map_descriptors(
+        [changed_provider],
+        chapter_position=0,
+        source_chapter_index=0,
+        chapter_fingerprint="chapter",
+        sequence_start=0,
+        announced_title=False,
+    )[0]
+    text_changed = map_descriptors(
+        [changed_text],
+        chapter_position=0,
+        source_chapter_index=0,
+        chapter_fingerprint="chapter",
+        sequence_start=0,
+        announced_title=False,
+    )[0]
+
+    assert first.content_hash == provider_changed.content_hash
+    assert first.render_fingerprint == provider_changed.render_fingerprint
+    assert first.content_hash != text_changed.content_hash
+    assert first.render_fingerprint != text_changed.render_fingerprint
 
 
 def test_interchapter_silence_is_inside_final_unit_and_not_reinserted(tmp_path: Path):

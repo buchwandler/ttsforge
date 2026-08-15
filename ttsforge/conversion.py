@@ -47,15 +47,18 @@ from .paragraph_output import (
 from .prosody_support import ProsodyPolicy
 from .render_units import (
     PARAGRAPH_MANIFEST_SCHEMA,
+    PARAGRAPH_UNIT_IDENTITY_SCHEMA,
     UNIT_FILENAME_SCHEMA,
     ConversionUnit,
     ParagraphResumeCursor,
     ParagraphResumeStateError,
     RenderUnitState,
     UnitRateEstimator,
+    compare_legacy_saved_plan_structure,
     compare_saved_plan,
     completed_prefix_length,
     map_descriptors,
+    migrate_completed_prefix,
     paragraph_resume_cursor,
     reconcile_units,
     renderer_contract_payload,
@@ -275,6 +278,7 @@ class ConversionState:
     paragraphs_dir: str | None = None
     unit_filename_schema: int = UNIT_FILENAME_SCHEMA
     paragraph_manifest_schema: int = PARAGRAPH_MANIFEST_SCHEMA
+    paragraph_unit_identity_schema: int = PARAGRAPH_UNIT_IDENTITY_SCHEMA
 
     @classmethod
     def load(cls, state_file: Path) -> ConversionState | None:
@@ -381,6 +385,10 @@ class ConversionState:
             data.setdefault("paragraphs_dir", None)
             data.setdefault("unit_filename_schema", UNIT_FILENAME_SCHEMA)
             data.setdefault("paragraph_manifest_schema", PARAGRAPH_MANIFEST_SCHEMA)
+            # Schema-7 paragraph state persisted provider-owned hashes.  A
+            # missing marker therefore means identity schema 1 and must take
+            # the explicit verified migration path during resume.
+            data.setdefault("paragraph_unit_identity_schema", 1)
 
             return cls(**data)
         except (json.JSONDecodeError, TypeError, KeyError):
@@ -463,6 +471,7 @@ class ConversionState:
             "paragraphs_dir": self.paragraphs_dir,
             "unit_filename_schema": self.unit_filename_schema,
             "paragraph_manifest_schema": self.paragraph_manifest_schema,
+            "paragraph_unit_identity_schema": self.paragraph_unit_identity_schema,
         }
         atomic_write_json(state_file, data, indent=2, ensure_ascii=True)
 
@@ -1750,6 +1759,10 @@ class TTSConverter:
             else None
         )
         first_rendered_sequence: int | None = None
+        legacy_identity_migration = (
+            strict_resume
+            and state.paragraph_unit_identity_schema < PARAGRAPH_UNIT_IDENTITY_SCHEMA
+        )
 
         for chapter_position, chapter in enumerate(chapters):
             if self._cancelled:
@@ -1765,15 +1778,39 @@ class TTSConverter:
             chapter_state = state.chapters[chapter_position]
             ssmd_filename = f"chapter_{chapter_position + 1:06d}.ssmd"
             ssmd_file = work_dir / ssmd_filename
+            saved_ssmd_hash = chapter_state.ssmd_hash
+            if strict_resume and saved_ssmd_hash and not ssmd_file.exists():
+                return ConversionResult(
+                    success=False,
+                    error_message=(
+                        "paragraph-ssmd-changed: saved SSMD file is missing; "
+                        "existing audio and state were preserved."
+                    ),
+                    chapters_dir=work_dir,
+                    paragraphs_dir=paragraph_dir,
+                    conversion_unit="paragraph",
+                    unit_count=state.get_total_unit_count(),
+                )
             ssmd_content, ssmd_hash, document_info = self._load_or_generate_ssmd(
                 chapter,
                 ssmd_file,
                 phoneme_dict=phoneme_dict,
                 mixed_language_config=mixed_language_config,
             )
-            chapter_state.ssmd_file = ssmd_filename
-            chapter_state.ssmd_hash = ssmd_hash
-            chapter_state.ssmd_document_title = document_info.title
+            if strict_resume and saved_ssmd_hash and ssmd_hash != saved_ssmd_hash:
+                return ConversionResult(
+                    success=False,
+                    error_message=(
+                        "paragraph-ssmd-changed: saved and current chapter SSMD "
+                        f"hashes differ (saved={saved_ssmd_hash!r}, "
+                        f"current={ssmd_hash!r}); existing audio and state were "
+                        "preserved."
+                    ),
+                    chapters_dir=work_dir,
+                    paragraphs_dir=paragraph_dir,
+                    conversion_unit="paragraph",
+                    unit_count=state.get_total_unit_count(),
+                )
             if self._cancelled:
                 state.save(state_file)
                 return ConversionResult(success=False, error_message="Cancelled")
@@ -1823,22 +1860,63 @@ class TTSConverter:
                     unit.marker_file = f"{filename}.markers.json"
                 saved_units = list(chapter_state.units)
                 saved_completed_prefix = completed_prefix_length(saved_units)
+                migration_in_progress = False
                 if strict_resume:
-                    plan_validation = compare_saved_plan(
-                        saved_units,
-                        planned,
-                        completed_prefix_length=saved_completed_prefix,
-                    )
+                    if legacy_identity_migration:
+                        plan_validation = compare_legacy_saved_plan_structure(
+                            saved_units,
+                            planned,
+                            completed_prefix_length=saved_completed_prefix,
+                        )
+                        migration_in_progress = True
+                    else:
+                        plan_validation = compare_saved_plan(
+                            saved_units,
+                            planned,
+                            completed_prefix_length=saved_completed_prefix,
+                        )
                     if not plan_validation.compatible_completed_prefix:
                         difference = plan_validation.differences[0]
-                        detail = (
-                            "Saved paragraph conversion cannot be resumed safely: "
-                            "unit plan changed inside the completed prefix. "
-                            f"sequence={difference.index}, field={difference.field}, "
-                            f"saved={difference.saved!r}, "
-                            f"planned={difference.planned!r}. "
-                            "Existing audio and state were preserved; use --fresh "
-                            "only if you intend to restart."
+                        saved_unit = (
+                            saved_units[difference.index]
+                            if difference.index < len(saved_units)
+                            else None
+                        )
+                        planned_unit = (
+                            planned[difference.index]
+                            if difference.index < len(planned)
+                            else None
+                        )
+                        planned_source_paragraph_index = getattr(
+                            planned_unit, "source_paragraph_index", "?"
+                        )
+                        detail = " ".join(
+                            (
+                                "Saved paragraph conversion cannot be resumed safely:",
+                                "unit plan changed inside the completed prefix.",
+                                f"sequence={difference.index}",
+                                f"(displayed={difference.index + 1}),",
+                                "chapter_position="
+                                f"{getattr(planned_unit, 'chapter_position', '?')},",
+                                f"chapter={chapter_position + 1} {chapter.title!r},",
+                                f"kind={getattr(planned_unit, 'kind', '?')},",
+                                "chapter_unit_index="
+                                f"{getattr(planned_unit, 'chapter_unit_index', '?')},",
+                                "source_paragraph_index="
+                                f"{planned_source_paragraph_index},",
+                                f"field={difference.field},",
+                                f"saved={difference.saved!r},",
+                                f"planned={difference.planned!r},",
+                                "saved_char_count="
+                                f"{getattr(saved_unit, 'char_count', '?')},",
+                                "planned_char_count="
+                                f"{getattr(planned_unit, 'char_count', '?')},",
+                                f"saved_ssmd_hash={saved_ssmd_hash!r},",
+                                f"planned_ssmd_hash={ssmd_hash!r},",
+                                f"preparation_seed={effective_seed!r}.",
+                                "Existing audio and state were preserved; use --fresh",
+                                "only if you intend to restart.",
+                            )
                         )
                         self.log(detail, "warning")
                         return ConversionResult(
@@ -1849,7 +1927,25 @@ class TTSConverter:
                             conversion_unit="paragraph",
                             unit_count=state.get_total_unit_count(),
                         )
-                reconciled, stale = reconcile_units(saved_units, planned)
+                if migration_in_progress:
+                    reconciled = migrate_completed_prefix(
+                        saved_units,
+                        planned,
+                        completed_prefix_length=saved_completed_prefix,
+                    )
+                    # Only uncompleted suffix records may be stale during a
+                    # verified identity migration.  Never unlink a retained
+                    # completed artifact as a side effect of promotion.
+                    stale = list(saved_units[saved_completed_prefix:])
+                    state.version = 8
+                    state.paragraph_unit_identity_schema = (
+                        PARAGRAPH_UNIT_IDENTITY_SCHEMA
+                    )
+                else:
+                    reconciled, stale = reconcile_units(saved_units, planned)
+                chapter_state.ssmd_file = ssmd_filename
+                chapter_state.ssmd_hash = ssmd_hash
+                chapter_state.ssmd_document_title = document_info.title
                 chapter_state.units = reconciled
                 chapter_state.audio_file = None
                 chapter_state.completed = not planned
@@ -1871,6 +1967,17 @@ class TTSConverter:
                     unit.completed for unit in chapter_state.units
                 )
                 state.save(state_file)  # plan is durable before first inference
+                if migration_in_progress:
+                    rebuild_manifest_and_playlist(
+                        paragraph_dir,
+                        ownership=ownership,
+                        units=[
+                            item
+                            for saved_chapter in state.chapters
+                            for item in saved_chapter.units
+                        ],
+                        chapter_titles=chapter_titles,
+                    )
 
                 skip_indices = {
                     unit.unit_index for unit in chapter_state.units if unit.completed
@@ -2568,7 +2675,7 @@ class TTSConverter:
                 state = ConversionState(
                     source_file=str(source_file) if source_file else "",
                     source_hash=source_hash,
-                    version=7,
+                    version=8,
                     output_file=str(output_path.resolve()),
                     work_dir=str(work_dir),
                     voice=self.options.voice,
@@ -2629,6 +2736,7 @@ class TTSConverter:
                         if self.options.conversion_unit == "paragraph"
                         else None
                     ),
+                    paragraph_unit_identity_schema=PARAGRAPH_UNIT_IDENTITY_SCHEMA,
                 )
                 state.save(state_file)
             else:

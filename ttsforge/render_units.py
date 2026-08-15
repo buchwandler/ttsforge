@@ -21,6 +21,8 @@ RenderUnitKind = Literal["title", "paragraph"]
 
 PARAGRAPH_OUTPUT_SCHEMA = 1
 PARAGRAPH_MANIFEST_SCHEMA = 1
+PARAGRAPH_UNIT_IDENTITY_SCHEMA = 2
+PARAGRAPH_CONTENT_HASH_SCHEMA = "ttsforge-prepared-text-sha256-v1"
 UNIT_FILENAME_SCHEMA = 1
 PARAGRAPH_PAUSE_OWNERSHIP = "following-boundary-owned-by-previous-v1"
 PYKOKORO_RENDERER_VERSION = "0.8.4"
@@ -62,6 +64,11 @@ def stable_hash(value: object, *, length: int = 64) -> str:
     return hashlib.sha256(payload.encode("utf-8")).hexdigest()[:length]
 
 
+def canonical_unit_content_hash(text: str) -> str:
+    """Hash the exact prepared text using TTSForge's durable identity contract."""
+    return hashlib.sha256(text.encode("utf-8")).hexdigest()
+
+
 @dataclass(frozen=True, slots=True)
 class PreparedUnitDescriptor:
     """Dependency-light copy of a public PyKokoro unit descriptor."""
@@ -77,6 +84,16 @@ class PreparedUnitDescriptor:
     @property
     def char_count(self) -> int:
         return max(self.char_end - self.char_start, len(self.text))
+
+    @property
+    def provider_text_hash(self) -> str:
+        """Return the dependency-owned hash for diagnostics only."""
+        return self.text_hash
+
+    @property
+    def content_hash(self) -> str:
+        """Return TTSForge's canonical identity for the prepared text."""
+        return canonical_unit_content_hash(self.text)
 
 
 class PreparedUnitsProvider(Protocol):
@@ -95,7 +112,9 @@ def descriptor_from_public(value: object) -> PreparedUnitDescriptor:
     text = str(getattr(value, "text", ""))
     char_start = int(getattr(value, "char_start", 0))
     char_end = int(getattr(value, "char_end", char_start + len(text)))
-    text_hash = str(getattr(value, "text_hash", "")) or stable_hash(text, length=64)
+    provider_text_hash = str(getattr(value, "text_hash", ""))
+    if not provider_text_hash:
+        provider_text_hash = stable_hash(text, length=64)
     marker_names = tuple(str(item) for item in getattr(value, "marker_names", ()))
     return PreparedUnitDescriptor(
         index=int(value.index),
@@ -103,7 +122,7 @@ def descriptor_from_public(value: object) -> PreparedUnitDescriptor:
             getattr(value, "paragraph_idx", getattr(value, "paragraph_index", 0))
         ),
         text=text,
-        text_hash=text_hash,
+        text_hash=provider_text_hash,
         char_start=char_start,
         char_end=char_end,
         marker_names=marker_names,
@@ -299,6 +318,17 @@ _UNIT_IDENTITY_FIELDS = (
     "char_count",
 )
 
+_LEGACY_MIGRATION_FIELDS = (
+    "sequence_index",
+    "unit_index",
+    "chapter_position",
+    "source_chapter_index",
+    "source_paragraph_index",
+    "chapter_unit_index",
+    "kind",
+    "char_count",
+)
+
 
 def compare_saved_plan(
     saved: Sequence[RenderUnitState],
@@ -343,6 +373,68 @@ def compare_saved_plan(
         first_mismatch=(differences[0].index if differences else None),
         differences=tuple(differences),
     )
+
+
+def compare_legacy_saved_plan_structure(
+    saved: Sequence[RenderUnitState],
+    planned: Sequence[RenderUnitState],
+    *,
+    completed_prefix_length: int,
+) -> UnitPlanValidation:
+    """Compare identity-v1 state using fields stable across the hash migration."""
+    differences: list[UnitPlanDifference] = []
+    for index in range(completed_prefix_length):
+        if index >= len(saved):
+            differences.append(
+                UnitPlanDifference(index, "saved", "<missing>", planned[index])
+            )
+            continue
+        if index >= len(planned):
+            differences.append(
+                UnitPlanDifference(index, "planned", saved[index], "<missing>")
+            )
+            continue
+        saved_unit = saved[index]
+        planned_unit = planned[index]
+        for field_name in _LEGACY_MIGRATION_FIELDS:
+            saved_value = getattr(saved_unit, field_name)
+            planned_value = getattr(planned_unit, field_name)
+            if saved_value != planned_value:
+                differences.append(
+                    UnitPlanDifference(
+                        index=index,
+                        field=field_name,
+                        saved=saved_value,
+                        planned=planned_value,
+                    )
+                )
+    return UnitPlanValidation(
+        compatible_completed_prefix=not differences,
+        first_mismatch=(differences[0].index if differences else None),
+        differences=tuple(differences),
+    )
+
+
+def migrate_completed_prefix(
+    saved: Sequence[RenderUnitState],
+    planned: Sequence[RenderUnitState],
+    *,
+    completed_prefix_length: int,
+) -> list[RenderUnitState]:
+    """Adopt planned identities while retaining finalized artifact metadata."""
+    result = list(planned)
+    for index in range(completed_prefix_length):
+        old = saved[index]
+        new = result[index]
+        new.completed = True
+        new.audio_file = old.audio_file
+        new.marker_file = old.marker_file
+        new.sample_rate = old.sample_rate
+        new.duration = old.duration
+        new.content_duration = old.content_duration
+        new.trailing_chapter_silence = old.trailing_chapter_silence
+        new.render_wall_seconds = old.render_wall_seconds
+    return result
 
 
 def completed_prefix_length(units: Sequence[RenderUnitState]) -> int:
@@ -402,7 +494,7 @@ def unit_render_fingerprint(
             "source_paragraph_index": source_paragraph_index,
             "chapter_unit_index": chapter_unit_index,
             "kind": kind,
-            "text_hash": descriptor.text_hash,
+            "content_hash": descriptor.content_hash,
             "char_start": descriptor.char_start,
             "char_end": descriptor.char_end,
         }
@@ -439,7 +531,7 @@ def map_descriptors(
                 source_paragraph_index=source_paragraph_index,
                 chapter_unit_index=chapter_unit_index,
                 kind=kind,
-                content_hash=descriptor.text_hash,
+                content_hash=descriptor.content_hash,
                 render_fingerprint=unit_render_fingerprint(
                     descriptor,
                     chapter_fingerprint=chapter_fingerprint,

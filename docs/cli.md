@@ -273,16 +273,21 @@ inference. The maintained inspection workflow is
 Paragraph mode persists an effective preparation seed per chapter before stochastic
 short-sentence handling. Omit `--seed` to receive a hidden durable seed for each fresh
 chapter, or pass `--seed 42` to use an explicit seed. State schema 5 paragraph
-workspaces cannot safely reconstruct this identity and require `--fresh`.
+workspaces cannot safely reconstruct this identity and require `--fresh`. Existing
+schema-7 paragraph workspaces may be upgraded in place to schema 8 when their SSMD,
+generation identity, seed, structure, and retained artifacts still match.
 
 An accepted paragraph resume is monotonic: completed units and their WAV/marker sidecars
 are never silently discarded. Before printing the resume confirmation, TTSForge checks
 the saved contiguous cursor, ownership manifest, completed unit plan, and retained
-artifacts. If a completed descriptor, WAV, marker, path, or sequence is missing or
-changed, resume stops with a diagnostic such as `paragraph-unit-plan-changed` or
-`paragraph-audio-missing`; use `--fresh` only when a whole-conversion restart is
-intended. A valid interrupted conversion resumes with the first saved incomplete unit,
-and live paragraph numbering is one-based like the resume summary.
+artifacts. TTSForge compares its canonical prepared-text SHA-256 and structural
+identity; an opaque provider-hash change alone is not a plan change. If prepared
+content, structure, a WAV, marker, path, or sequence is missing or changed, resume stops
+with a diagnostic such as `paragraph-unit-plan-changed` or `paragraph-audio-missing`. If
+the saved/current SSMD differs, the specific diagnostic is `paragraph-ssmd-changed`. Use
+`--fresh` only when a whole-conversion restart is intended. A valid interrupted
+conversion resumes with the first saved incomplete unit, and live paragraph numbering is
+one-based like the resume summary.
 
 ## list
 

@@ -15,6 +15,7 @@ import soundfile as sf
 
 from .constants import SAMPLE_RATE
 from .render_units import (
+    PARAGRAPH_CONTENT_HASH_SCHEMA,
     PARAGRAPH_MANIFEST_SCHEMA,
     PARAGRAPH_OUTPUT_SCHEMA,
     RenderUnitState,
@@ -275,6 +276,7 @@ def rebuild_manifest_and_playlist(
         **dict(ownership),
         "schema_version": PARAGRAPH_MANIFEST_SCHEMA,
         "output_schema": PARAGRAPH_OUTPUT_SCHEMA,
+        "content_hash_schema": PARAGRAPH_CONTENT_HASH_SCHEMA,
         "sample_rate": SAMPLE_RATE,
         "files": entries,
     }
