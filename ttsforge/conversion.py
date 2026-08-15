@@ -49,9 +49,14 @@ from .render_units import (
     PARAGRAPH_MANIFEST_SCHEMA,
     UNIT_FILENAME_SCHEMA,
     ConversionUnit,
+    ParagraphResumeCursor,
+    ParagraphResumeStateError,
     RenderUnitState,
     UnitRateEstimator,
+    compare_saved_plan,
+    completed_prefix_length,
     map_descriptors,
+    paragraph_resume_cursor,
     reconcile_units,
     renderer_contract_payload,
     validate_conversion_unit,
@@ -515,6 +520,7 @@ class ResumeValidation:
     reusable: bool
     reason: str | None = None
     differences: tuple[IdentityDifference, ...] = ()
+    details: str | None = None
 
 
 ResumeMismatchPolicy = Literal["error", "fresh"]
@@ -1384,6 +1390,163 @@ class TTSConverter:
                 return False
         return True
 
+    def _validate_paragraph_resume_artifacts(
+        self,
+        state: ConversionState,
+        *,
+        work_dir: Path,
+        output_path: Path | None,
+    ) -> ResumeValidation:
+        """Validate retained paragraph state without changing the workspace."""
+        if not state.paragraphs_dir:
+            return ResumeValidation(
+                reusable=False,
+                reason="paragraph-directory-missing",
+                details="Saved paragraph state has no paragraph directory.",
+            )
+
+        paragraph_dir = Path(state.paragraphs_dir).expanduser()
+        if not paragraph_dir.exists():
+            return ResumeValidation(
+                reusable=False,
+                reason="paragraph-directory-missing",
+                details=f"Expected paragraph directory: {paragraph_dir}",
+            )
+        if not paragraph_dir.is_dir():
+            return ResumeValidation(
+                reusable=False,
+                reason="paragraph-directory-invalid",
+                details=f"Paragraph output path is not a directory: {paragraph_dir}",
+            )
+
+        expected_output = output_path
+        if expected_output is None and state.output_file:
+            expected_output = Path(state.output_file)
+        if expected_output is None:
+            return ResumeValidation(
+                reusable=False,
+                reason="paragraph-directory-ownership-mismatch",
+                details=(
+                    "Saved paragraph state has no output path for ownership validation."
+                ),
+            )
+        expected_ownership = self._paragraph_ownership(
+            state=state,
+            output_path=expected_output,
+            work_dir=work_dir,
+        )
+        manifest_path = paragraph_dir / "manifest.json"
+        try:
+            manifest_value = json.loads(manifest_path.read_text(encoding="utf-8"))
+        except (OSError, json.JSONDecodeError):
+            return ResumeValidation(
+                reusable=False,
+                reason="paragraph-directory-ownership-mismatch",
+                details=(
+                    f"Missing or invalid TTSForge ownership manifest: {manifest_path}"
+                ),
+            )
+        if not isinstance(manifest_value, dict) or any(
+            manifest_value.get(key) != expected_ownership.get(key)
+            for key in (
+                "schema_version",
+                "workspace_id",
+                "source_hash",
+                "output_path",
+                "conversion_unit",
+            )
+        ):
+            return ResumeValidation(
+                reusable=False,
+                reason="paragraph-directory-ownership-mismatch",
+                details=(
+                    f"Ownership metadata does not match this workspace: {manifest_path}"
+                ),
+            )
+
+        all_units = [unit for chapter in state.chapters for unit in chapter.units]
+        try:
+            cursor = paragraph_resume_cursor(all_units)
+        except ParagraphResumeStateError as exc:
+            return ResumeValidation(reusable=False, reason=exc.reason, details=str(exc))
+
+        seen_unit_indices: set[int] = set()
+        for unit in all_units:
+            if unit.unit_index in seen_unit_indices:
+                return ResumeValidation(
+                    reusable=False,
+                    reason="paragraph-state-duplicate-unit-index",
+                    details=f"Duplicate paragraph unit index: {unit.unit_index}",
+                )
+            seen_unit_indices.add(unit.unit_index)
+
+        seen_audio: set[Path] = set()
+        for unit in all_units[: cursor.completed_units]:
+            if not unit.audio_file:
+                return ResumeValidation(
+                    reusable=False,
+                    reason="paragraph-audio-missing",
+                    details=(
+                        f"Completed paragraph sequence {unit.sequence_index} "
+                        "has no audio file."
+                    ),
+                )
+            try:
+                audio_path = owned_path(paragraph_dir, unit.audio_file)
+            except ValueError as exc:
+                return ResumeValidation(
+                    reusable=False,
+                    reason="paragraph-unit-path-invalid",
+                    details=str(exc),
+                )
+            if audio_path in seen_audio:
+                return ResumeValidation(
+                    reusable=False,
+                    reason="paragraph-audio-duplicate",
+                    details=f"Multiple completed units reference {audio_path.name}.",
+                )
+            seen_audio.add(audio_path)
+            if not audio_path.is_file():
+                return ResumeValidation(
+                    reusable=False,
+                    reason="paragraph-audio-missing",
+                    details=(
+                        f"Completed paragraph sequence {unit.sequence_index} is "
+                        f"missing {audio_path.name}."
+                    ),
+                )
+            try:
+                validate_wav(
+                    audio_path,
+                    sample_rate=unit.sample_rate,
+                    expected_duration=unit.duration if unit.duration else None,
+                )
+            except (OSError, ValueError, RuntimeError) as exc:
+                return ResumeValidation(
+                    reusable=False,
+                    reason="paragraph-audio-invalid",
+                    details=f"{audio_path.name}: {exc}",
+                )
+            if unit.marker_file:
+                try:
+                    marker_path = owned_path(paragraph_dir, unit.marker_file)
+                except ValueError as exc:
+                    return ResumeValidation(
+                        reusable=False,
+                        reason="paragraph-unit-path-invalid",
+                        details=str(exc),
+                    )
+                if not marker_path.is_file():
+                    return ResumeValidation(
+                        reusable=False,
+                        reason="paragraph-marker-missing",
+                        details=(
+                            f"Completed paragraph sequence {unit.sequence_index} is "
+                            f"missing {marker_path.name}."
+                        ),
+                    )
+        return ResumeValidation(reusable=True)
+
     def _paragraph_marker_records(
         self, state: ConversionState, directory: Path
     ) -> list[dict[str, Any]]:
@@ -1527,6 +1690,8 @@ class TTSConverter:
         state: ConversionState,
         phoneme_dict: dict[str, str] | None,
         mixed_language_config: dict[str, Any] | None,
+        resume_cursor: ParagraphResumeCursor | None = None,
+        strict_resume: bool = False,
     ) -> ConversionResult:
         """Render selected chapters as independently resumable paragraph WAVs."""
         paragraph_dir = Path(state.paragraphs_dir or paragraph_directory(output_path))
@@ -1579,6 +1744,12 @@ class TTSConverter:
             for unit in saved_chapter.units
             if unit.completed
         )
+        expected_sequence = (
+            resume_cursor.next_sequence_index
+            if strict_resume and resume_cursor is not None
+            else None
+        )
+        first_rendered_sequence: int | None = None
 
         for chapter_position, chapter in enumerate(chapters):
             if self._cancelled:
@@ -1611,11 +1782,13 @@ class TTSConverter:
             if effective_seed is None:
                 if chapter_state.paragraph_random_seed is None:
                     chapter_state.paragraph_random_seed = secrets.randbits(63)
-                    state.save(state_file)
+                    if not strict_resume:
+                        state.save(state_file)
                 effective_seed = chapter_state.paragraph_random_seed
             elif chapter_state.paragraph_random_seed != effective_seed:
                 chapter_state.paragraph_random_seed = effective_seed
-                state.save(state_file)
+                if not strict_resume:
+                    state.save(state_file)
 
             with self._runner.prepare_paragraph_units(
                 ssmd_content,
@@ -1648,7 +1821,35 @@ class TTSConverter:
                     )
                     unit.audio_file = filename
                     unit.marker_file = f"{filename}.markers.json"
-                reconciled, stale = reconcile_units(chapter_state.units, planned)
+                saved_units = list(chapter_state.units)
+                saved_completed_prefix = completed_prefix_length(saved_units)
+                if strict_resume:
+                    plan_validation = compare_saved_plan(
+                        saved_units,
+                        planned,
+                        completed_prefix_length=saved_completed_prefix,
+                    )
+                    if not plan_validation.compatible_completed_prefix:
+                        difference = plan_validation.differences[0]
+                        detail = (
+                            "Saved paragraph conversion cannot be resumed safely: "
+                            "unit plan changed inside the completed prefix. "
+                            f"sequence={difference.index}, field={difference.field}, "
+                            f"saved={difference.saved!r}, "
+                            f"planned={difference.planned!r}. "
+                            "Existing audio and state were preserved; use --fresh "
+                            "only if you intend to restart."
+                        )
+                        self.log(detail, "warning")
+                        return ConversionResult(
+                            success=False,
+                            error_message=("paragraph-unit-plan-changed: " + detail),
+                            chapters_dir=work_dir,
+                            paragraphs_dir=paragraph_dir,
+                            conversion_unit="paragraph",
+                            unit_count=state.get_total_unit_count(),
+                        )
+                reconciled, stale = reconcile_units(saved_units, planned)
                 chapter_state.units = reconciled
                 chapter_state.audio_file = None
                 chapter_state.completed = not planned
@@ -1660,32 +1861,6 @@ class TTSConverter:
                             except ValueError:
                                 pass
 
-                # Verify retained artifacts before asking PyKokoro to render.
-                first_invalid: int | None = None
-                for index, unit in enumerate(chapter_state.units):
-                    if not unit.completed:
-                        continue
-                    try:
-                        validate_wav(
-                            owned_path(paragraph_dir, unit.audio_file or ""),
-                            sample_rate=unit.sample_rate,
-                            expected_duration=unit.duration if unit.duration else None,
-                        )
-                        if (
-                            unit.marker_file
-                            and not owned_path(
-                                paragraph_dir, unit.marker_file
-                            ).is_file()
-                        ):
-                            raise ValueError("marker sidecar missing")
-                    except (OSError, ValueError):
-                        first_invalid = index
-                        break
-                if first_invalid is not None:
-                    for unit in chapter_state.units[first_invalid:]:
-                        unit.completed = False
-                        unit.duration = 0.0
-                        unit.content_duration = 0.0
                 chars_processed = sum(
                     unit.char_count
                     for saved_chapter in state.chapters
@@ -1717,7 +1892,41 @@ class TTSConverter:
                             unit_count=state.get_total_unit_count(),
                         )
                     unit_index = int(result.descriptor.index)
-                    unit = by_index[unit_index]
+                    try:
+                        unit = by_index[unit_index]
+                    except KeyError:
+                        result.release_audio()
+                        return ConversionResult(
+                            success=False,
+                            error_message=(
+                                "paragraph-renderer-unknown-unit: renderer produced "
+                                f"unit index {unit_index} outside the prepared plan"
+                            ),
+                            chapters_dir=work_dir,
+                            paragraphs_dir=paragraph_dir,
+                            conversion_unit="paragraph",
+                            unit_count=state.get_total_unit_count(),
+                        )
+                    if first_rendered_sequence is None:
+                        first_rendered_sequence = unit.sequence_index
+                        if (
+                            expected_sequence is not None
+                            and first_rendered_sequence != expected_sequence
+                        ):
+                            result.release_audio()
+                            return ConversionResult(
+                                success=False,
+                                error_message=(
+                                    "paragraph-resume-cursor-changed: saved next "
+                                    f"sequence {expected_sequence}, renderer produced "
+                                    f"sequence {first_rendered_sequence}. Existing "
+                                    "audio and state were preserved."
+                                ),
+                                chapters_dir=work_dir,
+                                paragraphs_dir=paragraph_dir,
+                                conversion_unit="paragraph",
+                                unit_count=state.get_total_unit_count(),
+                            )
                     started = time.monotonic()
                     try:
                         samples = np.asarray(result.audio)
@@ -1779,7 +1988,7 @@ class TTSConverter:
                             total_chars=total_chars,
                             current_unit=unit.sequence_index + 1,
                             total_units=state.get_total_unit_count(),
-                            current_paragraph=int(unit.chapter_unit_index or 0),
+                            current_paragraph=int(unit.chapter_unit_index or 0) + 1,
                             paragraphs_in_chapter=len(chapter_state.units),
                             unit_kind=unit.kind,
                             estimated_remaining=estimator.estimate(
@@ -1819,6 +2028,24 @@ class TTSConverter:
             )
             state.save(state_file)
 
+        if (
+            strict_resume
+            and expected_sequence is not None
+            and first_rendered_sequence is None
+        ):
+            return ConversionResult(
+                success=False,
+                error_message=(
+                    "paragraph-resume-no-render-result: saved incomplete cursor "
+                    f"at sequence {expected_sequence}, but the renderer produced "
+                    "no unit. "
+                    "Existing audio and state were preserved."
+                ),
+                chapters_dir=work_dir,
+                paragraphs_dir=paragraph_dir,
+                conversion_unit="paragraph",
+                unit_count=state.get_total_unit_count(),
+            )
         state.save(state_file)
         return self._merge_paragraph_state(
             state=state,
@@ -2039,15 +2266,31 @@ class TTSConverter:
                 state.generation_identity, current_identity.payload
             )
             if differences or state.generation_fingerprint != current_fingerprint:
-                self.log(
-                    "Generation settings changed, starting fresh conversion",
-                    "warning",
+                legacy_runtime_only = bool(differences) and all(
+                    difference.path
+                    in {
+                        "ssmd_policy.renderer_contract.pykokoro_runtime",
+                        "ssmd_policy.renderer_contract.kokorog2p_runtime",
+                    }
+                    and difference.saved is None
+                    for difference in differences
                 )
-                return ResumeValidation(
-                    reusable=False,
-                    reason="generation-fingerprint-changed",
-                    differences=differences,
-                )
+                if legacy_runtime_only:
+                    self.log(
+                        "Saved renderer contract predates runtime-version diagnostics; "
+                        "continuing with descriptor validation",
+                        "info",
+                    )
+                else:
+                    self.log(
+                        "Generation settings changed, starting fresh conversion",
+                        "warning",
+                    )
+                    return ResumeValidation(
+                        reusable=False,
+                        reason="generation-fingerprint-changed",
+                        differences=differences,
+                    )
         elif state.version == 6:
             legacy_payload = build_generation_identity_v1_legacy(
                 self.options,
@@ -2138,6 +2381,12 @@ class TTSConverter:
                     return ResumeValidation(
                         reusable=False, reason="diagnostics-sidecar-missing"
                     )
+        if state.conversion_unit == "paragraph":
+            return self._validate_paragraph_resume_artifacts(
+                state,
+                work_dir=work_dir,
+                output_path=output_path,
+            )
         return ResumeValidation(reusable=True)
 
     def convert_chapters_resumable(  # noqa: C901 - Complex but necessary for resume logic
@@ -2221,6 +2470,8 @@ class TTSConverter:
 
             # Load or create state
             state: ConversionState | None = None
+            strict_resume = False
+            resume_cursor: ParagraphResumeCursor | None = None
             if resume and state_file.exists():
                 state = ConversionState.load(state_file)
                 if state:
@@ -2233,6 +2484,29 @@ class TTSConverter:
                         output_path=output_path,
                     )
                     if not validation.reusable:
+                        if (
+                            state.conversion_unit == "paragraph"
+                            and validation.reason is not None
+                            and validation.reason.startswith("paragraph-")
+                        ):
+                            return ConversionResult(
+                                success=False,
+                                output_path=output_path,
+                                chapters_dir=work_dir,
+                                paragraphs_dir=(
+                                    Path(state.paragraphs_dir)
+                                    if state.paragraphs_dir
+                                    else None
+                                ),
+                                conversion_unit="paragraph",
+                                error_message=(
+                                    "Saved conversion cannot be resumed safely: "
+                                    f"{validation.reason}. "
+                                    f"{validation.details or ''} Existing paragraph "
+                                    "audio and state were preserved. Use --fresh only "
+                                    "if you intend to restart."
+                                ).strip(),
+                            )
                         # Archive incompatible state before replacing it so
                         # evidence and completed artifacts are not silently lost.
                         import shutil
@@ -2279,6 +2553,15 @@ class TTSConverter:
                                     chapter, generation_fingerprint
                                 )
                             )
+                    if state.conversion_unit == "paragraph":
+                        resume_cursor = paragraph_resume_cursor(
+                            [
+                                unit
+                                for chapter_state in state.chapters
+                                for unit in chapter_state.units
+                            ]
+                        )
+                        strict_resume = True
 
             if state is None:
                 # Create new state
@@ -2394,6 +2677,8 @@ class TTSConverter:
                     state=state,
                     phoneme_dict=phoneme_dict,
                     mixed_language_config=mixed_language_config,
+                    resume_cursor=resume_cursor,
+                    strict_resume=strict_resume,
                 )
 
             phoneme_dict = None

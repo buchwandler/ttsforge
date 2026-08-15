@@ -1498,9 +1498,16 @@ def convert(  # noqa: C901
                     "only if you intend to discard this workspace."
                 )
             else:
+                details = f"\n{validation.details}" if validation.details else ""
+                preservation = (
+                    "\nExisting paragraph audio and state were preserved."
+                    if (validation.reason or "").startswith("paragraph-")
+                    else ""
+                )
                 console.print(
                     "[red]Saved conversion cannot be resumed:[/red] "
-                    f"{validation.reason}. Use --fresh to restart."
+                    f"{validation.reason}.{details}{preservation} "
+                    "Use --fresh to restart."
                 )
             raise typer.Exit(code=2)
 
@@ -1719,13 +1726,34 @@ def convert(  # noqa: C901
             )
         )
 
+    initial_completed_chars = 0
+    if resume_candidate is not None and not fresh:
+        saved_state = resume_candidate.state
+        if saved_state.conversion_unit == "paragraph":
+            initial_completed_chars = sum(
+                unit.char_count
+                for chapter_state in saved_state.chapters
+                for unit in chapter_state.units
+                if unit.completed
+            )
+        else:
+            initial_completed_chars = sum(
+                chapter_state.char_count
+                for chapter_state in saved_state.chapters
+                if chapter_state.completed
+            )
+
     with TTSConverter(
         options=options,
         progress_callback=progress_callback,
         log_callback=log_callback,
     ) as converter:
         with progress:
-            task_id = progress.add_task("Converting...", total=total_chars)
+            task_id = progress.add_task(
+                "Converting...",
+                total=total_chars,
+                completed=initial_completed_chars,
+            )
 
             result = converter.convert_chapters_resumable(
                 chapters=chapters_to_convert,

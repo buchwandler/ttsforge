@@ -12,6 +12,8 @@ import json
 import statistics
 from collections.abc import Callable, Iterable, Sequence
 from dataclasses import dataclass, field
+from importlib.metadata import PackageNotFoundError
+from importlib.metadata import version as package_version
 from typing import Literal, Protocol, TypeVar, cast
 
 ConversionUnit = Literal["chapter", "paragraph"]
@@ -25,13 +27,23 @@ PYKOKORO_RENDERER_VERSION = "0.8.4"
 KOKOROG2P_TEXT_PREPARATION_VERSION = "0.8.0"
 
 
+def _runtime_package_version(distribution: str) -> str:
+    """Return an installed renderer version without making imports mandatory."""
+    try:
+        return package_version(distribution)
+    except PackageNotFoundError:
+        return "unavailable"
+
+
 def renderer_contract_payload() -> dict[str, object]:
     """Return the renderer contract that gates resumable paragraph audio."""
     return {
         "schema": 3,
         "ssmd": "0.8",
         "pykokoro": PYKOKORO_RENDERER_VERSION,
+        "pykokoro_runtime": _runtime_package_version("pykokoro"),
         "kokorog2p": KOKOROG2P_TEXT_PREPARATION_VERSION,
+        "kokorog2p_runtime": _runtime_package_version("kokorog2p"),
         "paragraph_unit": 1,
         "pause_ownership": PARAGRAPH_PAUSE_OWNERSHIP,
         "unit_filename_schema": UNIT_FILENAME_SCHEMA,
@@ -235,6 +247,144 @@ class RenderUnitState:
             ),
             render_wall_seconds=float(allowed.get("render_wall_seconds", 0.0)),
         )
+
+
+@dataclass(frozen=True, slots=True)
+class UnitPlanDifference:
+    """One field-level difference between saved and prepared unit plans."""
+
+    index: int
+    field: str
+    saved: object
+    planned: object
+
+
+@dataclass(frozen=True, slots=True)
+class UnitPlanValidation:
+    """Result of comparing a prepared plan with a saved completed prefix."""
+
+    compatible_completed_prefix: bool
+    first_mismatch: int | None = None
+    differences: tuple[UnitPlanDifference, ...] = ()
+
+
+@dataclass(frozen=True, slots=True)
+class ParagraphResumeCursor:
+    """Canonical global cursor for a paragraph conversion resume."""
+
+    completed_units: int
+    next_sequence_index: int | None
+    next_chapter_position: int | None = None
+    next_unit_index: int | None = None
+
+
+class ParagraphResumeStateError(ValueError):
+    """Saved paragraph state violates a resume safety invariant."""
+
+    def __init__(self, reason: str, message: str | None = None) -> None:
+        self.reason = reason
+        super().__init__(message or reason)
+
+
+_UNIT_IDENTITY_FIELDS = (
+    "sequence_index",
+    "unit_index",
+    "chapter_position",
+    "source_chapter_index",
+    "source_paragraph_index",
+    "chapter_unit_index",
+    "kind",
+    "content_hash",
+    "render_fingerprint",
+    "char_count",
+)
+
+
+def compare_saved_plan(
+    saved: Sequence[RenderUnitState],
+    planned: Sequence[RenderUnitState],
+    *,
+    completed_prefix_length: int,
+) -> UnitPlanValidation:
+    """Compare every identity field in a saved completed prefix.
+
+    Only the completed prefix is a resume commitment.  The caller may still
+    replan an unrendered suffix, but it must never use suffix reconciliation to
+    invalidate a completed unit silently.
+    """
+    differences: list[UnitPlanDifference] = []
+    for index in range(completed_prefix_length):
+        if index >= len(saved):
+            differences.append(
+                UnitPlanDifference(index, "saved", "<missing>", planned[index])
+            )
+            continue
+        if index >= len(planned):
+            differences.append(
+                UnitPlanDifference(index, "planned", saved[index], "<missing>")
+            )
+            continue
+        saved_unit = saved[index]
+        planned_unit = planned[index]
+        for field_name in _UNIT_IDENTITY_FIELDS:
+            saved_value = getattr(saved_unit, field_name)
+            planned_value = getattr(planned_unit, field_name)
+            if saved_value != planned_value:
+                differences.append(
+                    UnitPlanDifference(
+                        index=index,
+                        field=field_name,
+                        saved=saved_value,
+                        planned=planned_value,
+                    )
+                )
+    return UnitPlanValidation(
+        compatible_completed_prefix=not differences,
+        first_mismatch=(differences[0].index if differences else None),
+        differences=tuple(differences),
+    )
+
+
+def completed_prefix_length(units: Sequence[RenderUnitState]) -> int:
+    """Return the contiguous completed prefix or reject corrupt state."""
+    prefix_length = 0
+    seen_sequences: set[int] = set()
+    previous_sequence: int | None = None
+    for index, unit in enumerate(units):
+        if unit.sequence_index in seen_sequences:
+            raise ParagraphResumeStateError(
+                "paragraph-state-duplicate-sequence",
+                f"duplicate paragraph sequence index {unit.sequence_index}",
+            )
+        if previous_sequence is not None and unit.sequence_index <= previous_sequence:
+            raise ParagraphResumeStateError(
+                "paragraph-state-sequence-order",
+                "paragraph sequence indices are not strictly increasing",
+            )
+        seen_sequences.add(unit.sequence_index)
+        previous_sequence = unit.sequence_index
+        if unit.completed:
+            if index != prefix_length:
+                raise ParagraphResumeStateError(
+                    "paragraph-state-noncontiguous",
+                    "completed paragraph units are not a contiguous prefix",
+                )
+            prefix_length += 1
+    return prefix_length
+
+
+def paragraph_resume_cursor(
+    units: Sequence[RenderUnitState],
+) -> ParagraphResumeCursor:
+    """Build the canonical resume cursor from globally ordered unit state."""
+    completed = completed_prefix_length(units)
+    next_unit = units[completed] if completed < len(units) else None
+    return ParagraphResumeCursor(
+        completed_units=completed,
+        next_sequence_index=(next_unit.sequence_index if next_unit else None),
+        next_chapter_position=(next_unit.chapter_position if next_unit else None),
+        next_unit_index=(next_unit.unit_index if next_unit else None),
+    )
 
 
 def unit_render_fingerprint(

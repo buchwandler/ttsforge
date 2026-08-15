@@ -275,6 +275,15 @@ short-sentence handling. Omit `--seed` to receive a hidden durable seed for each
 chapter, or pass `--seed 42` to use an explicit seed. State schema 5 paragraph
 workspaces cannot safely reconstruct this identity and require `--fresh`.
 
+An accepted paragraph resume is monotonic: completed units and their WAV/marker sidecars
+are never silently discarded. Before printing the resume confirmation, TTSForge checks
+the saved contiguous cursor, ownership manifest, completed unit plan, and retained
+artifacts. If a completed descriptor, WAV, marker, path, or sequence is missing or
+changed, resume stops with a diagnostic such as `paragraph-unit-plan-changed` or
+`paragraph-audio-missing`; use `--fresh` only when a whole-conversion restart is
+intended. A valid interrupted conversion resumes with the first saved incomplete unit,
+and live paragraph numbering is one-based like the resume summary.
+
 ## list
 
 List chapters in an EPUB file.

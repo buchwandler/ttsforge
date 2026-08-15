@@ -271,6 +271,8 @@ def test_renderer_contract_uses_pykokoro_083_and_kokorog2p_080() -> None:
     contract = renderer_contract_payload()
     assert contract["pykokoro"] == "0.8.4"
     assert contract["kokorog2p"] == "0.8.0"
+    assert "pykokoro_runtime" in contract
+    assert "kokorog2p_runtime" in contract
     assert contract["schema"] == 3
 
 
@@ -307,6 +309,34 @@ def test_schema7_resume_rejects_pre_spokenform_renderer_contract_safely() -> Non
     assert "ssmd_policy.renderer_contract.schema" in paths
     assert "ssmd_policy.renderer_contract.pykokoro" in paths
     assert "ssmd_policy.renderer_contract.kokorog2p" in paths
+
+
+def test_schema7_without_runtime_diagnostics_remains_readable() -> None:
+    converter = TTSConverter(ConversionOptions(title="Book"))
+    current = converter._generation_identity()
+    saved_payload = deepcopy(current.payload)
+    renderer = saved_payload["ssmd_policy"]["renderer_contract"]
+    renderer.pop("pykokoro_runtime", None)
+    renderer.pop("kokorog2p_runtime", None)
+    state = ConversionState(
+        version=7,
+        source_hash="source",
+        source_selection=[],
+        onnx_provider="cpu",
+        generation_identity_schema=GENERATION_IDENTITY_SCHEMA,
+        generation_identity=saved_payload,
+        generation_fingerprint=generation_fingerprint(saved_payload),
+    )
+
+    validation = converter._resume_state_matches(
+        state,
+        [],
+        "source",
+        current,
+        Path("."),
+    )
+
+    assert validation.reusable is True
 
 
 def test_text_resume_rejects_missing_or_corrupt_audio(tmp_path: Path) -> None:

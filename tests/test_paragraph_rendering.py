@@ -128,6 +128,34 @@ class StochasticHashRunner(FakeRunner):
         return prepared
 
 
+class VariableRunner(FakeRunner):
+    def __init__(self, count: int, *, mismatch_index: int | None = None):
+        super().__init__()
+        self.count = count
+        self.mismatch_index = mismatch_index
+
+    def prepare_paragraph_units(self, text, **kwargs):
+        descriptors = []
+        for index in range(self.count):
+            text_hash = f"unit-{index}"
+            if index == self.mismatch_index:
+                text_hash = f"changed-{index}"
+            descriptors.append(
+                SimpleNamespace(
+                    index=index,
+                    paragraph_idx=index,
+                    text=f"Unit {index}",
+                    text_hash=text_hash,
+                    char_start=index * 5,
+                    char_end=index * 5 + 5,
+                    marker_names=(),
+                )
+            )
+        prepared = FakePrepared(descriptors)
+        self.prepared.append(prepared)
+        return prepared
+
+
 def test_paragraph_conversion_writes_ordered_units_and_merges(tmp_path: Path):
     output = tmp_path / "book.wav"
     options = ConversionOptions(
@@ -203,15 +231,15 @@ def test_resumed_progress_includes_retained_unit_characters(tmp_path: Path):
         conversion_unit="paragraph",
     )
     chapters = [Chapter(title="One", content="first", index=0)]
-    first = TTSConverter(options)
+
+    def cancel_after_first(progress):
+        if progress.current_unit == 1:
+            first.cancel()
+
+    first = TTSConverter(options, progress_callback=cancel_after_first)
     first._runner = FakeRunner()
     first_result = first.convert_chapters_resumable(chapters, output, resume=False)
-    assert first_result.success
-    assert first_result.paragraphs_dir is not None
-    files = sorted(first_result.paragraphs_dir.glob("*.wav"))
-    assert len(files) == 2
-    files[-1].unlink()
-    files[-1].with_name(files[-1].name + ".markers.json").unlink()
+    assert not first_result.success
 
     progress = []
     resumed = TTSConverter(options, progress_callback=progress.append)
@@ -365,3 +393,159 @@ def test_seed_is_saved_before_preparation_failure(tmp_path: Path):
     )
     assert retry_result.success, retry_result.error_message
     assert retry_runner.random_seeds == [runner.random_seeds[0]]
+
+
+def _cancel_after_unit(converter: TTSConverter, unit_number: int):
+    def callback(progress):
+        if progress.current_unit == unit_number:
+            converter.cancel()
+
+    return callback
+
+
+def _partial_variable_conversion(tmp_path: Path, completed_units: int = 35):
+    output = tmp_path / "book.wav"
+    options = ConversionOptions(
+        output_format="wav",
+        output_dir=tmp_path,
+        title="Book",
+        conversion_unit="paragraph",
+    )
+    first = TTSConverter(options)
+    first.progress_callback = _cancel_after_unit(first, completed_units)
+    first._runner = VariableRunner(62)
+    result = first.convert_chapters_resumable(
+        [Chapter(title="One", content="book", index=0)], output, resume=False
+    )
+    assert not result.success
+    state_file = next(tmp_path.glob(".Book-*_chapters/state.json"))
+    state = ConversionState.load(state_file)
+    assert state is not None
+    assert state.get_completed_unit_count() == completed_units
+    return output, options, state_file, state
+
+
+def test_paragraph_resume_plan_mismatch_preserves_completed_prefix(tmp_path: Path):
+    output, options, state_file, state = _partial_variable_conversion(tmp_path)
+    before_state = state_file.read_bytes()
+    assert state.paragraphs_dir is not None
+    before_output = {
+        path.name: path.read_bytes()
+        for path in Path(state.paragraphs_dir).iterdir()
+        if path.is_file()
+    }
+    runner = VariableRunner(62, mismatch_index=3)
+    resumed = TTSConverter(options)
+    resumed._runner = runner
+
+    result = resumed.convert_chapters_resumable(
+        [Chapter(title="One", content="book", index=0)], output, resume=True
+    )
+
+    assert not result.success
+    assert "paragraph-unit-plan-changed" in (result.error_message or "")
+    assert runner.prepared and runner.prepared[0].results == []
+    reloaded = ConversionState.load(state_file)
+    assert reloaded is not None
+    assert reloaded.get_completed_unit_count() == 35
+    assert reloaded.get_next_incomplete_unit() is not None
+    assert reloaded.get_next_incomplete_unit().sequence_index == 35
+    assert state_file.read_bytes() == before_state
+    assert {
+        path.name: path.read_bytes()
+        for path in Path(state.paragraphs_dir).iterdir()
+        if path.is_file()
+    } == before_output
+
+
+def test_paragraph_resume_missing_completed_wav_fails_without_rendering(tmp_path: Path):
+    output, options, state_file, state = _partial_variable_conversion(tmp_path)
+    assert state.paragraphs_dir is not None
+    missing = sorted(Path(state.paragraphs_dir).glob("*.wav"))[2]
+    missing.unlink()
+    before_state = state_file.read_bytes()
+    runner = VariableRunner(62)
+    resumed = TTSConverter(options)
+    resumed._runner = runner
+
+    result = resumed.convert_chapters_resumable(
+        [Chapter(title="One", content="book", index=0)], output, resume=True
+    )
+
+    assert not result.success
+    assert "paragraph-audio-missing" in (result.error_message or "")
+    assert runner.prepared == []
+    assert state_file.read_bytes() == before_state
+
+
+def test_paragraph_resume_missing_marker_fails_without_rendering(tmp_path: Path):
+    output, options, state_file, state = _partial_variable_conversion(tmp_path)
+    assert state.paragraphs_dir is not None
+    marker = sorted(Path(state.paragraphs_dir).glob("*.markers.json"))[2]
+    marker.unlink()
+    before_state = state_file.read_bytes()
+    runner = VariableRunner(62)
+    resumed = TTSConverter(options)
+    resumed._runner = runner
+
+    result = resumed.convert_chapters_resumable(
+        [Chapter(title="One", content="book", index=0)], output, resume=True
+    )
+
+    assert not result.success
+    assert "paragraph-marker-missing" in (result.error_message or "")
+    assert runner.prepared == []
+    assert state_file.read_bytes() == before_state
+
+
+def test_successful_paragraph_resume_starts_at_saved_unit_36(tmp_path: Path):
+    output, options, _state_file, _state = _partial_variable_conversion(tmp_path)
+    runner = VariableRunner(62)
+    progress = []
+    resumed = TTSConverter(options, progress_callback=progress.append)
+    resumed._runner = runner
+
+    result = resumed.convert_chapters_resumable(
+        [Chapter(title="One", content="book", index=0)], output, resume=True
+    )
+
+    assert result.success, result.error_message
+    rendered_indices = [item.descriptor.index for item in runner.prepared[0].results]
+    assert rendered_indices[0] == 35
+    assert progress[0].current_unit == 36
+    assert progress[0].current_paragraph == 36
+    state_file = next(tmp_path.glob(".Book-*_chapters/state.json"))
+    state = ConversionState.load(state_file)
+    assert state is not None
+    assert state.get_completed_unit_count() == 62
+
+
+def test_paragraph_resume_allows_suffix_only_replanning(tmp_path: Path):
+    output, options, _state_file, _state = _partial_variable_conversion(tmp_path)
+    runner = VariableRunner(62, mismatch_index=40)
+    resumed = TTSConverter(options)
+    resumed._runner = runner
+
+    result = resumed.convert_chapters_resumable(
+        [Chapter(title="One", content="book", index=0)], output, resume=True
+    )
+
+    assert result.success, result.error_message
+    assert runner.prepared[0].results[0].descriptor.index == 35
+
+
+def test_paragraph_resume_rejects_noncontiguous_state(tmp_path: Path):
+    output, options, state_file, state = _partial_variable_conversion(tmp_path)
+    state.chapters[0].units[36].completed = True
+    state.save(state_file)
+    runner = VariableRunner(62)
+    resumed = TTSConverter(options)
+    resumed._runner = runner
+
+    result = resumed.convert_chapters_resumable(
+        [Chapter(title="One", content="book", index=0)], output, resume=True
+    )
+
+    assert not result.success
+    assert "paragraph-state-noncontiguous" in (result.error_message or "")
+    assert runner.prepared == []
