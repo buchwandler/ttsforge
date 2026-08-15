@@ -37,7 +37,9 @@ def test_emphasis_presets_and_pykokoro_forwarding(
     assert (preset.mode, preset.gain_scale) == (mode, scale)
     policy = SSMDPolicy(emphasis_mode=mode, emphasis_gain_scale=scale)  # type: ignore[arg-type]
     assert build_pykokoro_ssmd_config(policy).emphasis_gain_scale == scale
-    assert infer_emphasis_level(policy.emphasis_mode, policy.emphasis_gain_scale) == level
+    assert (
+        infer_emphasis_level(policy.emphasis_mode, policy.emphasis_gain_scale) == level
+    )
 
 
 @pytest.mark.parametrize("value", [-0.1, 2.1, float("inf"), float("nan"), True])
@@ -141,9 +143,7 @@ def test_cli_accepts_emphasis_levels(
 
 
 @pytest.mark.parametrize("level", [-1, 4])
-def test_cli_rejects_out_of_range_emphasis_levels(
-    tmp_path: Path, level: int
-) -> None:
+def test_cli_rejects_out_of_range_emphasis_levels(tmp_path: Path, level: int) -> None:
     source = tmp_path / "book.epub"
     source.write_bytes(b"placeholder")
     result = CliRunner().invoke(
@@ -174,4 +174,6 @@ def test_legacy_identity_without_gain_scale_migrates_to_one() -> None:
         "ssmd_policy": {"emphasis_mode": "approximate", "emphasis_gain_scale": 1.0}
     }
     assert diff_generation_identity(saved, current) == ()
-    assert commands_conversion._ssmd_policy_from_identity(saved).emphasis_gain_scale == 1.0
+    assert (
+        commands_conversion._ssmd_policy_from_identity(saved).emphasis_gain_scale == 1.0
+    )

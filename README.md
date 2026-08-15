@@ -482,19 +482,19 @@ ttsforge config --set prosody_method esola
 ttsforge convert book.epub --prosody-method psola
 ```
 
-`epub_content_mode`, `detect_emphasis`, `emphasis_level`, `ssmd_emphasis_mode`, and `prosody_method` are
-separate settings. The first selects Markdown or explicit legacy plain extraction; the
-second preserves or unwraps inline emphasis without affecting headings; the third
-controls friendly audible strength; the fourth remains the advanced SSMD policy; and the
-fifth selects AudioSig processing for explicit rate and pitch annotations. The default
-preserves EPUB emphasis but leaves automatic audible emphasis off. Level 2 is the
-backward-compatible equivalent of `--enable-ssmd-emphasis`; that legacy flag remains
-available with a deprecation warning. `psola` is accepted as an alias for AudioSig's
-canonical `td_psola`.
+`epub_content_mode`, `detect_emphasis`, `emphasis_level`, `ssmd_emphasis_mode`, and
+`prosody_method` are separate settings. The first selects Markdown or explicit legacy
+plain extraction; the second preserves or unwraps inline emphasis without affecting
+headings; the third controls friendly audible strength; the fourth remains the advanced
+SSMD policy; and the fifth selects AudioSig processing for explicit rate and pitch
+annotations. The default preserves EPUB emphasis but leaves automatic audible emphasis
+off. Level 2 is the backward-compatible equivalent of `--enable-ssmd-emphasis`; that
+legacy flag remains available with a deprecation warning. `psola` is accepted as an
+alias for AudioSig's canonical `td_psola`.
 
-The user-friendly levels are `0=Off`, `1=Light`, `2=Normal`, and `3=Strong`. The advanced
-policies are `plain`, `approximate`, `warn`, and `error`. Explicit SSMD
-prosody such as `[fast words]{rate="fast"}` remains active in plain emphasis mode.
+The user-friendly levels are `0=Off`, `1=Light`, `2=Normal`, and `3=Strong`. The
+advanced policies are `plain`, `approximate`, `warn`, and `error`. Explicit SSMD prosody
+such as `[fast words]{rate="fast"}` remains active in plain emphasis mode.
 
 ### spaCy model policy
 

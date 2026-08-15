@@ -47,9 +47,7 @@ def resolve_emphasis_level(level: int) -> EmphasisPreset:
         raise ValueError("emphasis level must be an integer from 0 to 3") from exc
 
 
-def infer_emphasis_level(
-    mode: EmphasisMode, gain_scale: float
-) -> int | None:
+def infer_emphasis_level(mode: EmphasisMode, gain_scale: float) -> int | None:
     """Return the friendly level for a resolved renderer policy, if any."""
     for preset in EMPHASIS_PRESETS.values():
         if preset.mode == mode and preset.gain_scale == gain_scale:
@@ -132,7 +130,9 @@ class SSMDPolicy:
             or not math.isfinite(self.emphasis_gain_scale)
             or not 0.0 <= self.emphasis_gain_scale <= 2.0
         ):
-            raise ValueError("emphasis_gain_scale must be finite and between 0.0 and 2.0")
+            raise ValueError(
+                "emphasis_gain_scale must be finite and between 0.0 and 2.0"
+            )
         if (
             isinstance(self.audio_max_bytes, bool)
             or not isinstance(self.audio_max_bytes, int)

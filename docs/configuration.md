@@ -144,9 +144,9 @@ These settings form three related but distinct layers:
 `emphasis_level` accepts `null`, `0` (Off), `1` (Light), `2` (Normal), and `3` (Strong).
 The default is `null`, which falls back to the legacy `ssmd_emphasis_mode` value and
 therefore remains audible-off with the normal `plain` default. Level 2 is equivalent to
-the legacy flag. `ssmd_emphasis_mode` accepts `plain`, `approximate`, `warn`, and `error`;
-the latter two remain advanced policies because they cannot be represented by a numeric
-strength. If both keys are configured, equivalent `plain`/level-0 or
+the legacy flag. `ssmd_emphasis_mode` accepts `plain`, `approximate`, `warn`, and
+`error`; the latter two remain advanced policies because they cannot be represented by a
+numeric strength. If both keys are configured, equivalent `plain`/level-0 or
 `approximate`/level-2 settings are accepted, while a strict `warn`/`error` policy
 conflicts with a level.
 

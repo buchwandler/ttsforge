@@ -108,8 +108,7 @@ def _resolve_emphasis_controls(
 ) -> tuple[EmphasisMode, float, int | None]:
     """Resolve all friendly and advanced emphasis controls in one place."""
     controls = sum(
-        value is not None
-        for value in (explicit_level, explicit_mode)
+        value is not None for value in (explicit_level, explicit_mode)
     ) + int(legacy_enable)
     if controls > 1:
         raise typer.BadParameter(
@@ -494,9 +493,11 @@ def _resolve_ssmd_policy(
         overrides["validate_profile"] = ssmd_profile_validation
     if ssmd_fail_on_warning is not None:
         overrides["fail_on_warning"] = ssmd_fail_on_warning
-    if saved_identity is None or any(
-        value is not None for value in (emphasis_level, ssmd_emphasis)
-    ) or enable_ssmd_emphasis:
+    if (
+        saved_identity is None
+        or any(value is not None for value in (emphasis_level, ssmd_emphasis))
+        or enable_ssmd_emphasis
+    ):
         resolved_mode, resolved_scale, _ = _resolve_emphasis_controls(
             configured_level=(
                 None if saved_identity is not None else config.get("emphasis_level")
@@ -1313,8 +1314,7 @@ def convert(  # noqa: C901
     )
     if enable_ssmd_emphasis:
         typer.echo(
-            "Warning: --enable-ssmd-emphasis is deprecated; use "
-            "--emphasis-level 2.",
+            "Warning: --enable-ssmd-emphasis is deprecated; use --emphasis-level 2.",
             err=True,
         )
     if saved_identity_payload is not None:
