@@ -18,7 +18,7 @@ authors = [
 urls = { Homepage = "https://github.com/buchwandler/ttsforge" }
 dependencies = [
     # Typer 0.27.0 omits some Annotated options from help on Python 3.10.
-    "typer>=0.20.0,<0.27.0",
+    "typer>=0.20.0",
     "click>=8.0.0",
     "rich>=13.0.0",
     "epub2text>=0.2.8,<0.3",
@@ -29,10 +29,10 @@ dependencies = [
     "charset-normalizer",
     "platformdirs>=3.0.0",
     # CPU is the supported default provider; backend modules remain lazy.
-    "pykokoro[cpu]>=0.8.4,<0.9",
-    "kokorog2p[espeak,en]>=0.8.0,<0.9",
+    "pykokoro[cpu]>=0.8.5,<0.9",
+    "kokorog2p[espeak,en]>=0.8.1,<0.9",
     "phrasplit>=0.3.4,<0.4",
-    "ssmd>=0.8.1,<0.9",
+    "ssmd>=0.8.2,<0.9",
 ]
 classifiers=[
     'Intended Audience :: End Users/Desktop',
