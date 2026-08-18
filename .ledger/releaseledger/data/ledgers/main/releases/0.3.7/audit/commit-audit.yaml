@@ -1,0 +1,157 @@
+schema_version: 1
+object_type: commit_audit_sheet
+versioning:
+  schema_version: 1
+  revision: 2
+release_version: 0.3.7
+git_base_ref: v0.3.6
+git_base_sha: 392976a19d2585629bdf72c9d7cf60ac12467714
+git_head_ref: HEAD
+git_head_sha: faeffad3e57b1ae4b7c484eda1f7832de6faf3c4
+git_range: 392976a19d2585629bdf72c9d7cf60ac12467714..faeffad3e57b1ae4b7c484eda1f7832de6faf3c4
+commit_count: 5
+rows:
+  - sha: 2f35a2ba97f3013503dbff6f5ae6775612a93842
+    source_ref: git:2f35a2ba97f3013503dbff6f5ae6775612a93842
+    short_sha: 2f35a2b
+    changed_paths:
+      - .ledger/releaseledger/data/ledgers/main/events/events.jsonl
+      - .ledger/releaseledger/data/ledgers/main/releases/0.3.6/release.md
+    stats:
+      files_changed: 0
+      insertions: 28
+      deletions: 0
+    inspected: true
+    inspected_paths:
+      - .ledger/releaseledger/data/ledgers/main/events/events.jsonl
+      - .ledger/releaseledger/data/ledgers/main/releases/0.3.6/release.md
+    observed_behavior: Updated changelog with v0.3.6 release notes
+    public_impact: docs
+    decision: accepted
+    evidence_subject: "doc: changelog"
+    target_entry_key: entry-0005
+    notes: Documentation-only commit
+  - sha: 6e623fed0066f63f207492c7876b175813d8f4f2
+    source_ref: git:6e623fed0066f63f207492c7876b175813d8f4f2
+    short_sha: 6e623fe
+    changed_paths:
+      - docs/cli.md
+      - tests/test_paragraph_rendering.py
+      - tests/test_resume_integrity.py
+      - ttsforge/cli/commands_conversion.py
+      - ttsforge/conversion.py
+      - ttsforge/render_units.py
+    stats:
+      files_changed: 0
+      insertions: 734
+      deletions: 48
+    inspected: true
+    inspected_paths:
+      - docs/cli.md
+      - tests/test_paragraph_rendering.py
+      - tests/test_resume_integrity.py
+      - ttsforge/cli/commands_conversion.py
+      - ttsforge/conversion.py
+      - ttsforge/render_units.py
+    observed_behavior:
+      Fixed resume functionality with improved validation and integrity checks for
+      paragraph mode
+    public_impact: public
+    decision: accepted
+    evidence_subject: "fix: resume fixed"
+    target_entry_key: entry-0003
+    notes: Major resume fix with new validation logic
+  - sha: 2c831cc90ef365da71918f87cb734afa04d8452c
+    source_ref: git:2c831cc90ef365da71918f87cb734afa04d8452c
+    short_sha: 2c831cc
+    changed_paths:
+      - README.md
+      - docs/cli.md
+      - docs/quickstart.md
+      - tests/test_paragraph_audio_parity.py
+      - tests/test_paragraph_manifest.py
+      - tests/test_paragraph_rendering.py
+      - ttsforge/conversion.py
+      - ttsforge/paragraph_output.py
+      - ttsforge/render_units.py
+    stats:
+      files_changed: 0
+      insertions: 460
+      deletions: 41
+    inspected: true
+    inspected_paths:
+      - README.md
+      - docs/cli.md
+      - docs/quickstart.md
+      - tests/test_paragraph_audio_parity.py
+      - tests/test_paragraph_manifest.py
+      - tests/test_paragraph_rendering.py
+      - ttsforge/conversion.py
+      - ttsforge/paragraph_output.py
+      - ttsforge/render_units.py
+    observed_behavior:
+      Improved paragraph mode resume with ownership manifest validation and unit
+      identity schema
+    public_impact: public
+    decision: accepted
+    evidence_subject: "fix: resume for paragraph mode"
+    target_entry_key: entry-0003
+    notes: Continuation of resume fix for paragraph mode
+  - sha: 9875926d275646b5a4a79453e7a1422f6dfda12e
+    source_ref: git:9875926d275646b5a4a79453e7a1422f6dfda12e
+    short_sha: "9875926"
+    changed_paths:
+      - README.md
+      - docs/cli.md
+      - docs/configuration.md
+      - docs/installation.md
+      - docs/quickstart.md
+      - tests/test_backend_config.py
+      - tests/test_cli_contract.py
+      - tests/test_provider_selection.py
+      - tests/test_utility_light.py
+      - ttsforge/cli/backend_config.py
+    stats:
+      files_changed: 0
+      insertions: 233
+      deletions: 47
+    inspected: true
+    inspected_paths:
+      - README.md
+      - docs/cli.md
+      - docs/configuration.md
+      - docs/installation.md
+      - docs/quickstart.md
+      - tests/test_backend_config.py
+      - tests/test_cli_contract.py
+      - tests/test_provider_selection.py
+      - tests/test_utility_light.py
+      - ttsforge/cli/backend_config.py
+    observed_behavior:
+      Changed default ONNX provider to auto and added provider validation
+    public_impact: public
+    decision: accepted
+    evidence_subject: "feat: use auto onnx provider as default"
+    target_entry_key: entry-0001
+    notes: Improved GPU auto-detection with validation
+  - sha: faeffad3e57b1ae4b7c484eda1f7832de6faf3c4
+    source_ref: git:faeffad3e57b1ae4b7c484eda1f7832de6faf3c4
+    short_sha: faeffad
+    changed_paths:
+      - .github/workflows/tests.yml
+      - pyproject.toml
+    stats:
+      files_changed: 0
+      insertions: 9
+      deletions: 4
+    inspected: true
+    inspected_paths:
+      - .github/workflows/tests.yml
+      - pyproject.toml
+    observed_behavior:
+      Updated dependency versions and fixed Typer constraint for Python 3.10
+    public_impact: public
+    decision: accepted
+    evidence_subject: "feat: update deps and fix typer for python 3.10"
+    target_entry_key: entry-0002
+    notes: Dependency updates and Python 3.10 fix

@@ -34,10 +34,10 @@ def test_pykokoro_dependency_floor_is_released_handoff() -> None:
         (Path(__file__).parents[1] / "pyproject.toml").read_text(encoding="utf-8")
     )
     dependencies = project["project"]["dependencies"]
-    assert "pykokoro[cpu]>=0.8.4,<0.9" in dependencies
-    assert "kokorog2p[espeak,en]>=0.8.0,<0.9" in dependencies
+    assert "pykokoro[cpu]>=0.8.5,<0.9" in dependencies
+    assert "kokorog2p[espeak,en]>=0.8.1,<0.9" in dependencies
     assert "phrasplit>=0.3.4,<0.4" in dependencies
-    assert not any("pykokoro[cpu]>=0.8.2" in dependency for dependency in dependencies)
+    assert not any("pykokoro[cpu]>=0.8.4" in dependency for dependency in dependencies)
     assert not any("pykokoro[cpu]>=0.8.1" in dependency for dependency in dependencies)
     assert not any("pykokoro[cpu]>=0.7.3" in dependency for dependency in dependencies)
     assert not any("pykokoro[cpu]>=0.6.6" in dependency for dependency in dependencies)
@@ -48,7 +48,7 @@ def test_ssmd_dependency_is_direct_and_bounded() -> None:
     project = tomllib.loads(
         (Path(__file__).parents[1] / "pyproject.toml").read_text(encoding="utf-8")
     )
-    assert "ssmd>=0.8.1,<0.9" in project["project"]["dependencies"]
+    assert "ssmd>=0.8.2,<0.9" in project["project"]["dependencies"]
 
 
 def test_audiosig_dependency_floor_supports_waveform_primitives() -> None:
