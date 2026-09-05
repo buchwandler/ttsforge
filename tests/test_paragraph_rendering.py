@@ -287,7 +287,7 @@ def test_unseeded_stochastic_hash_does_not_restart_saved_prefix(
 
     def cancel_after_first(progress):
         if progress.current_unit == 1:
-            first._cancelled = True
+            first.cancel()
 
     first = TTSConverter(options, progress_callback=cancel_after_first)
     first_runner = StochasticHashRunner()

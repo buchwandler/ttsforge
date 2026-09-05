@@ -37,6 +37,9 @@ def test_kokoro_runner_passes_short_sentence_config_to_backend(monkeypatch):
         def get_voice_from_database(self, voice):
             return None
 
+        def load_voice_database(self, path):
+            return None
+
     def fake_build_pipeline(**kwargs):
         return object()
 
@@ -120,6 +123,9 @@ def test_kokoro_runner_builds_ssmd_pipeline_config_and_returns_result(monkeypatc
         def get_voice_from_database(self, voice):
             return None
 
+        def load_voice_database(self, path):
+            return None
+
     class FakePipeline:
         def run(self, text, **kwargs):
             captured.update(kwargs)
@@ -171,6 +177,9 @@ def test_kokoro_runner_passes_provider_to_backend(monkeypatch):
             captured.update(kwargs)
 
         def get_voice_from_database(self, voice):
+            return None
+
+        def load_voice_database(self, path):
             return None
 
     monkeypatch.setattr("ttsforge.kokoro_runner.Kokoro", FakeKokoro)
@@ -264,6 +273,9 @@ def test_short_sentence_stats_read_compact_segment_metadata() -> None:
 
 class FakeBackend:
     def get_voice_from_database(self, voice):
+        return None
+
+    def load_voice_database(self, path):
         return None
 
 

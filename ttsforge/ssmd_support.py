@@ -13,6 +13,7 @@ from dataclasses import dataclass, field
 from pathlib import Path
 from typing import Any, Literal
 
+from pykokoro.exceptions import SSMDDocumentError
 IssueSeverity = Literal["info", "warn", "error"]
 UnknownHeaderPolicy = Literal["warn", "error", "ignore"]
 MissingVoicePolicy = Literal["error", "use-default"]
@@ -256,7 +257,7 @@ def _header_and_body(
 
     try:
         front_matter = parse_front_matter(text)
-    except FrontMatterError as exc:
+    except (FrontMatterError, SSMDDocumentError) as exc:
         return (
             {},
             text,
@@ -359,7 +360,7 @@ def inspect_ssmd_document(
             profile="ssmd-core",
             parse_yaml_header=effective_policy.parse_header,
         )
-    except (OSError, ValueError, RuntimeError) as exc:
+    except (OSError, ValueError, RuntimeError, SSMDDocumentError) as exc:
         issues.append(
             _normalize_issue(
                 text,
@@ -394,7 +395,7 @@ def inspect_ssmd_document(
                 effective_policy, audio_resolver=audio_resolver
             ),
         )
-    except (OSError, ValueError, RuntimeError) as exc:
+    except (OSError, ValueError, RuntimeError, SSMDDocumentError) as exc:
         issues.append(
             _normalize_issue(
                 text,

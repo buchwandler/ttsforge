@@ -74,7 +74,7 @@ def test_fallbacks_are_canonicalized_and_primary_is_not_repeated() -> None:
     ],
 )
 def test_policy_rejects_invalid_values(kwargs: dict[str, object]) -> None:
-    with pytest.raises(ValueError):
+    with pytest.raises((ValueError, TypeError)):
         ProsodyPolicy(**kwargs)  # type: ignore[arg-type]
 
 

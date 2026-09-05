@@ -46,30 +46,28 @@ def main() -> int:
     )
     args.output_dir.mkdir(parents=True, exist_ok=True)
 
-    with (
-        KokoroRunner(
-            options, log=lambda message, level="info": print(f"[{level}] {message}")
-        ) as runner,
-        runner.prepare_paragraph_units(
+    with KokoroRunner(
+        options, log=lambda message, level="info": print(f"[{level}] {message}")
+    ) as runner:
+        with runner.prepare_paragraph_units(
             DOCUMENT,
             lang_code="en-us",
             pause_mode="auto",
-        ) as prepared,
-    ):
-        for descriptor in prepared.units:
-            print(
-                f"unit={descriptor.index} paragraph={descriptor.paragraph_index} "
-                f"chars={descriptor.char_start}:{descriptor.char_end} "
-                f"text={descriptor.text!r}"
-            )
-        for result in prepared.render():
-            path = args.output_dir / f"unit_{result.descriptor.index:04d}.wav"
-            try:
-                sf.write(path, np.asarray(result.audio), result.sample_rate)
-                print(f"wrote {path}")
-            finally:
-                # The next iteration may release this result; persist/copy it first.
-                result.release_audio()
+        ) as prepared:
+            for descriptor in prepared.units:
+                print(
+                    f"unit={descriptor.index} paragraph={descriptor.paragraph_index} "
+                    f"chars={descriptor.char_start}:{descriptor.char_end} "
+                    f"text={descriptor.text!r}"
+                )
+            for result in prepared.render():
+                path = args.output_dir / f"unit_{result.descriptor.index:04d}.wav"
+                try:
+                    sf.write(path, np.asarray(result.audio), result.sample_rate)
+                    print(f"wrote {path}")
+                finally:
+                    # The next iteration may release this result; persist/copy it first.
+                    result.release_audio()
     return 0
 
 
