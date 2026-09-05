@@ -39,8 +39,10 @@ def test_paragraph_examples_use_lifecycle_and_audio_ownership() -> None:
     low_level = (EXAMPLES / "pykokoro_paragraph_units.py").read_text(encoding="utf-8")
     assert "with TTSConverter" in conversion
     assert "with TTSConverter" in resume
-    assert "with KokoroRunner" in low_level
-    assert "with runner.prepare_paragraph_units" in low_level
+    assert "KokoroRunner" in low_level
+    assert "as runner" in low_level
+    assert "prepare_paragraph_units" in low_level
+    assert "as prepared" in low_level
     assert "result.release_audio()" in low_level
 
 
