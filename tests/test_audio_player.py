@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import queue
 import threading
 import time
 from unittest.mock import MagicMock
@@ -9,7 +10,7 @@ from unittest.mock import MagicMock
 import numpy as np
 import pytest
 
-import ttsforge.audio_player as audio_player
+from ttsforge import audio_player
 from ttsforge.audio_player import PlaybackPosition, StreamingAudioPlayer
 
 
@@ -17,7 +18,7 @@ def _drain(player: StreamingAudioPlayer, finished: threading.Event) -> None:
     while not finished.is_set() or not player._audio_queue.empty():
         try:
             chunk = player._audio_queue.get(timeout=0.05)
-        except Exception:
+        except queue.Empty:
             continue
         if chunk is not None:
             with player._queue_not_full:

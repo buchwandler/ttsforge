@@ -156,7 +156,7 @@ def _write_temp_wav(
         ) as output:
             if len(audio):
                 output.write(audio)
-            remaining = int(round(max(0.0, trailing_chapter_silence) * sample_rate))
+            remaining = round(max(0.0, trailing_chapter_silence) * sample_rate)
             silence = np.zeros(min(65536, max(1, remaining)), dtype=np.float32)
             while remaining:
                 count = min(remaining, len(silence))

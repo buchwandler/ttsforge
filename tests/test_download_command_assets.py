@@ -69,7 +69,7 @@ def test_config_required_download_still_runs_config_logic(
     assets = _assets(tmp_path, config=config)
     calls: list[str] = []
 
-    monkeypatch.setattr(commands_utility, "load_config", lambda: {})
+    monkeypatch.setattr(commands_utility, "load_config", dict)
     monkeypatch.setattr(
         commands_utility, "get_model_asset_paths", lambda **kwargs: assets
     )
@@ -93,7 +93,9 @@ def test_config_required_download_still_runs_config_logic(
 
     monkeypatch.setattr(commands_utility, "download_config", download_config)
     monkeypatch.setattr(commands_utility, "download_model", download_model)
+    monkeypatch.setattr(commands_utility, "download_model_github", download_model)
     monkeypatch.setattr(commands_utility, "download_all_voices", download_voices)
+    monkeypatch.setattr(commands_utility, "download_voices_github", download_voices)
 
     commands_utility.download(_context(), force=False, quality="fp32")
 
@@ -131,7 +133,7 @@ def test_complete_github_set_without_config_skips_all_downloaders(
 
 def test_download_does_not_switch_configured_source() -> None:
     source, variant = commands_utility._resolve_model_source_and_variant(
-        {"model_source": "huggingface", "model_variant": "v1.1-de"}
+        {"model_source": "huggingface", "model_variant": "v1.0"}
     )
 
-    assert (source, variant) == ("huggingface", "v1.1-de")
+    assert (source, variant) == ("huggingface", "v1.0")

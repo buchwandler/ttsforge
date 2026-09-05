@@ -31,6 +31,8 @@ def test_markdown_mode_reports_missing_public_api(tmp_path: Path) -> None:
     epub.write_bytes(b"placeholder")
     parser = SimpleNamespace()
 
-    with patch("epub2text.EPUBParser", return_value=parser):
-        with pytest.raises(ImportError, match="get_chapter_documents"):
-            InputReader(epub).get_chapters()
+    with (
+        patch("epub2text.EPUBParser", return_value=parser),
+        pytest.raises(ImportError, match="get_chapter_documents"),
+    ):
+        InputReader(epub).get_chapters()

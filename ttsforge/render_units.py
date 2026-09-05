@@ -14,7 +14,7 @@ from collections.abc import Callable, Iterable, Sequence
 from dataclasses import dataclass, field
 from importlib.metadata import PackageNotFoundError
 from importlib.metadata import version as package_version
-from typing import Literal, Protocol, TypeVar, cast
+from typing import Literal, Protocol, Self, TypeVar, cast
 
 ConversionUnit = Literal["chapter", "paragraph"]
 RenderUnitKind = Literal["title", "paragraph"]
@@ -25,8 +25,8 @@ PARAGRAPH_UNIT_IDENTITY_SCHEMA = 2
 PARAGRAPH_CONTENT_HASH_SCHEMA = "ttsforge-prepared-text-sha256-v1"
 UNIT_FILENAME_SCHEMA = 1
 PARAGRAPH_PAUSE_OWNERSHIP = "following-boundary-owned-by-previous-v1"
-PYKOKORO_RENDERER_VERSION = "0.8.4"
-KOKOROG2P_TEXT_PREPARATION_VERSION = "0.8.0"
+PYKOKORO_RENDERER_VERSION = "0.9.0"
+KOKOROG2P_TEXT_PREPARATION_VERSION = "0.9.2"
 
 
 def _runtime_package_version(distribution: str) -> str:
@@ -40,7 +40,7 @@ def _runtime_package_version(distribution: str) -> str:
 def renderer_contract_payload() -> dict[str, object]:
     """Return the renderer contract that gates resumable paragraph audio."""
     return {
-        "schema": 3,
+        "schema": 4,
         "ssmd": "0.8",
         "pykokoro": PYKOKORO_RENDERER_VERSION,
         "pykokoro_runtime": _runtime_package_version("pykokoro"),
@@ -102,7 +102,7 @@ class PreparedUnitsProvider(Protocol):
 
     def render(self, *, skip_indices: Iterable[int] = ()) -> Iterable[object]: ...
 
-    def __enter__(self) -> PreparedUnitsProvider: ...
+    def __enter__(self) -> Self: ...
 
     def __exit__(self, *args: object) -> None: ...
 

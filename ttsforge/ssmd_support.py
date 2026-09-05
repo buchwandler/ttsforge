@@ -40,7 +40,7 @@ EMPHASIS_PRESETS: dict[int, EmphasisPreset] = {
 def resolve_emphasis_level(level: int) -> EmphasisPreset:
     """Resolve one strict user-facing emphasis level to its preset."""
     if isinstance(level, bool) or not isinstance(level, int):
-        raise ValueError("emphasis level must be an integer from 0 to 3")
+        raise TypeError("emphasis level must be an integer from 0 to 3")
     try:
         return EMPHASIS_PRESETS[level]
     except KeyError as exc:
@@ -359,7 +359,7 @@ def inspect_ssmd_document(
             profile="ssmd-core",
             parse_yaml_header=effective_policy.parse_header,
         )
-    except Exception as exc:
+    except (OSError, ValueError, RuntimeError) as exc:
         issues.append(
             _normalize_issue(
                 text,
@@ -394,7 +394,7 @@ def inspect_ssmd_document(
                 effective_policy, audio_resolver=audio_resolver
             ),
         )
-    except Exception as exc:
+    except (OSError, ValueError, RuntimeError) as exc:
         issues.append(
             _normalize_issue(
                 text,

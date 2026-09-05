@@ -94,7 +94,6 @@ from .backend_config import (
 )
 from .helpers import DEFAULT_SAMPLE_TEXT, console, parse_voice_parameter
 
-DEFAULT_MODEL_QUALITY: ModelQuality = "fp32"
 _DEFAULT_PROSODY_POLICY = ProsodyPolicy()
 
 
@@ -252,7 +251,7 @@ def _saved_identity_value(
     payload: Mapping[str, JsonValue], key: str, default: object
 ) -> object:
     """Read one saved identity field while tolerating legacy payloads."""
-    return payload[key] if key in payload else default
+    return payload.get(key, default)
 
 
 def _saved_path(payload: Mapping[str, JsonValue], key: str) -> Path | None:
@@ -589,7 +588,7 @@ def get_voices() -> list[str]:
     return _resolve_voice_names(model_source, model_variant)
 
 
-def convert(  # noqa: C901
+def convert(
     ctx: typer.Context,
     epub_file: Path,
     output: Path | None,
@@ -718,9 +717,7 @@ def convert(  # noqa: C901
     model_path = ctx.obj.get("model_path") if ctx.obj else None
     voices_path = ctx.obj.get("voices_path") if ctx.obj else None
     model_source, model_variant = _resolve_model_source_and_variant(config)
-    model_quality = cast(
-        ModelQuality, config.get("model_quality", DEFAULT_MODEL_QUALITY)
-    )
+    model_quality = cast(ModelQuality | None, config.get("model_quality"))
     text_postprocess_options = resolve_text_postprocess_options(
         config,
         subchapter_markers=subchapter_markers,
@@ -820,7 +817,7 @@ def convert(  # noqa: C901
                 preserve_emphasis=effective_detect_emphasis,
             ),
         )
-    except Exception as e:
+    except (OSError, ValueError, KeyError) as e:
         console.print(f"[red]Error loading file:[/red] {e}")
         sys.exit(1)
 
@@ -1142,7 +1139,7 @@ def convert(  # noqa: C901
                 ),
             )
             epub_chapters = reader.get_chapters()
-        except Exception as exc:
+        except (OSError, ValueError, KeyError) as exc:
             console.print(
                 f"[red]Error reloading saved conversion settings:[/red] {exc}"
             )
@@ -1254,15 +1251,19 @@ def convert(  # noqa: C901
             output_filename = f"{output_filename}_{chapters_range}"
         output = output / f"{output_filename}.{fmt}"
 
-    if resume_candidate is not None and not fresh and output is not None:
-        if output.resolve() != resume_candidate.saved_output.resolve():
-            console.print(
-                "[red]The output path cannot change while"
-                " resuming this conversion workspace.[/red]\n"
-                "Use --fresh to start a new conversion"
-                " at the requested output path."
-            )
-            raise typer.Exit(code=2)
+    if (
+        resume_candidate is not None
+        and not fresh
+        and output is not None
+        and output.resolve() != resume_candidate.saved_output.resolve()
+    ):
+        console.print(
+            "[red]The output path cannot change while"
+            " resuming this conversion workspace.[/red]\n"
+            "Use --fresh to start a new conversion"
+            " at the requested output path."
+        )
+        raise typer.Exit(code=2)
 
     # Get format from output extension if not specified
     if output_format is None:
@@ -1473,7 +1474,16 @@ def convert(  # noqa: C901
             resume_candidate, validation_chapters
         )
         if not validation.reusable:
-            if validation.reason == "generation-fingerprint-changed":
+            if validation.reason == "renderer-contract-changed":
+                console.print(
+                    "[red]Saved conversion cannot be resumed:[/red] the saved "
+                    "PyKokoro 0.8 renderer contract is incompatible with PyKokoro 0.9."
+                )
+                console.print(
+                    "Existing audio and state were preserved. Use --fresh to "
+                    "restart without reusing incompatible artifacts."
+                )
+            elif validation.reason == "generation-fingerprint-changed":
                 console.print(
                     "[red]Saved conversion cannot be resumed:[/red] "
                     "generation settings changed."
@@ -1614,10 +1624,9 @@ def convert(  # noqa: C901
     )
 
     # Confirm
-    if not yes:
-        if not Confirm.ask("Proceed with conversion?"):
-            console.print("[yellow]Cancelled.[/yellow]")
-            return
+    if not yes and not Confirm.ask("Proceed with conversion?"):
+        console.print("[yellow]Cancelled.[/yellow]")
+        return
 
     # Handle --fresh flag: delete existing progress using the correct
     # source-hashed workspace path.
@@ -1743,27 +1752,29 @@ def convert(  # noqa: C901
                 if chapter_state.completed
             )
 
-    with TTSConverter(
-        options=options,
-        progress_callback=progress_callback,
-        log_callback=log_callback,
-    ) as converter:
-        with progress:
-            task_id = progress.add_task(
-                "Converting...",
-                total=total_chars,
-                completed=initial_completed_chars,
-            )
+    with (
+        TTSConverter(
+            options=options,
+            progress_callback=progress_callback,
+            log_callback=log_callback,
+        ) as converter,
+        progress,
+    ):
+        task_id = progress.add_task(
+            "Converting...",
+            total=total_chars,
+            completed=initial_completed_chars,
+        )
 
-            result = converter.convert_chapters_resumable(
-                chapters=chapters_to_convert,
-                output_path=output,
-                source_file=epub_file,
-                resume=resume,
-                resume_mismatch=("error" if resume_candidate is not None else "fresh"),
-            )
+        result = converter.convert_chapters_resumable(
+            chapters=chapters_to_convert,
+            output_path=output,
+            source_file=epub_file,
+            resume=resume,
+            resume_mismatch=("error" if resume_candidate is not None else "fresh"),
+        )
 
-            progress.update(task_id, completed=total_chars)
+        progress.update(task_id, completed=total_chars)
 
     # Show result
     if result.success:
@@ -1813,7 +1824,7 @@ def list_chapters(epub_file: Path) -> None:
         try:
             reader = InputReader(epub_file)
             chapters = reader.get_chapters()
-        except Exception as e:
+        except (OSError, ValueError, KeyError) as e:
             console.print(f"[red]Error:[/red] {e}")
             sys.exit(1)
 
@@ -1851,7 +1862,7 @@ def info(epub_file: Path) -> None:
             reader = InputReader(epub_file)
             metadata = reader.get_metadata()
             chapters = reader.get_chapters()
-        except Exception as e:
+        except (OSError, ValueError, KeyError) as e:
             console.print(f"[red]Error:[/red] {e}")
             sys.exit(1)
 
@@ -1958,9 +1969,7 @@ def sample(
         console.print(f"[red]{exc}[/red]")
         raise typer.Exit(code=2) from exc
     model_source, model_variant = _resolve_model_source_and_variant(user_config)
-    model_quality = cast(
-        ModelQuality, user_config.get("model_quality", DEFAULT_MODEL_QUALITY)
-    )
+    model_quality = cast(ModelQuality | None, user_config.get("model_quality"))
     resolved_defaults = resolve_conversion_defaults(
         user_config,
         {
@@ -1983,11 +1992,13 @@ def sample(
 
     # Auto-detect if voice is a blend
     voice_value = resolved_defaults["voice"]
-    parsed_voice, parsed_voice_blend = parse_voice_parameter(voice_value)
-
+    if voice_value is None:
+        parsed_voice, parsed_voice_blend = None, None
+    else:
+        parsed_voice, parsed_voice_blend = parse_voice_parameter(voice_value)
     # Build conversion options (use ConversionOptions defaults if not specified)
     options = ConversionOptions(
-        voice=parsed_voice or "af_bella",
+        voice=parsed_voice,
         voice_blend=parsed_voice_blend,
         language=resolved_defaults["language"],
         speed=resolved_defaults["speed"],
@@ -2047,15 +2058,17 @@ def sample(
             console.print(f"[dim]Output:[/dim] {output}")
 
     try:
-        with TTSConverter(options) as converter:
-            with Progress(
+        with (
+            TTSConverter(options) as converter,
+            Progress(
                 SpinnerColumn(),
                 TextColumn("[progress.description]{task.description}"),
                 console=console,
                 transient=True,
-            ) as progress:
-                progress.add_task("Generating audio...", total=None)
-                result = converter.convert_text(sample_text, output)
+            ) as progress,
+        ):
+            progress.add_task("Generating audio...", total=None)
+            result = converter.convert_text(sample_text, output)
 
         if result.success:
             # Handle playback if requested
@@ -2082,7 +2095,7 @@ def sample(
             console.print(f"[red]Error:[/red] {result.error_message}")
             raise SystemExit(1)
 
-    except Exception as e:
+    except (OSError, RuntimeError, ValueError) as e:
         console.print(f"[red]Error generating sample:[/red] {e}")
         if verbose:
             import traceback
@@ -2136,8 +2149,8 @@ def _show_conversion_summary(
     language: str,
     speed: float,
     onnx_provider: str,
-    model_source: str,
-    model_variant: str,
+    model_source: str | None,
+    model_variant: str | None,
     model_quality: str | None,
     num_chapters: int,
     title: str,
@@ -2181,10 +2194,10 @@ def _show_conversion_summary(
     if paragraphs_dir is not None:
         table.add_row("Paragraph output", paragraphs_dir.name)
         table.add_row("Filename order", "Fixed-width global sequence")
-    table.add_row("Voice", voice)
+    table.add_row("Voice", str(voice))
     table.add_row("Language", LANGUAGE_DESCRIPTIONS.get(language, language))
-    table.add_row("Model Source", model_source)
-    table.add_row("Model Variant", model_variant)
+    table.add_row("Model Source", str(model_source))
+    table.add_row("Model Variant", str(model_variant))
     table.add_row("Model Quality", str(model_quality))
     if lang:
         table.add_row("Phonemization Lang", f"{lang} (override)")
@@ -2384,7 +2397,7 @@ def _validate_short_sentence_or_abort(
         raise typer.BadParameter("Invalid short-sentence config: " + "; ".join(errors))
 
 
-def read(  # noqa: C901
+def read(
     ctx: typer.Context,
     input_file: Path | None,
     voice: str | None,
@@ -2437,11 +2450,8 @@ def read(  # noqa: C901
     import sys
     import time
 
-    from pykokoro import GenerationConfig, KokoroPipeline, PipelineConfig
-    from pykokoro.onnx_backend import LANG_CODE_TO_ONNX, Kokoro
-    from pykokoro.stages.audio_generation.onnx import OnnxAudioGenerationAdapter
-    from pykokoro.stages.audio_postprocessing.onnx import OnnxAudioPostprocessingAdapter
-    from pykokoro.stages.phoneme_processing.onnx import OnnxPhonemeProcessorAdapter
+    from pykokoro import GenerationConfig
+    from pykokoro.onnx_backend import LANG_CODE_TO_ONNX
 
     from ..audio_player import (
         PlaybackPosition,
@@ -2449,6 +2459,7 @@ def read(  # noqa: C901
         load_playback_position,
         save_playback_position,
     )
+    from ..pykokoro_adapter import build_standard_pipeline
 
     # Get model path from global context
     model_path = ctx.obj.get("model_path") if ctx.obj else None
@@ -2469,9 +2480,7 @@ def read(  # noqa: C901
         console.print(f"[red]{exc}[/red]")
         raise typer.Exit(code=2) from exc
     model_source, model_variant = _resolve_model_source_and_variant(config)
-    model_quality = cast(
-        ModelQuality, config.get("model_quality", DEFAULT_MODEL_QUALITY)
-    )
+    model_quality = cast(ModelQuality | None, config.get("model_quality"))
     text_postprocess_options = resolve_text_postprocess_options(config)
     resolved_defaults = resolve_conversion_defaults(
         config,
@@ -2591,7 +2600,7 @@ def read(  # noqa: C901
                 postprocess_options=text_postprocess_options,
             )
             metadata = reader.get_metadata()
-        except Exception as e:
+        except (OSError, ValueError, KeyError) as e:
             console.print(f"[red]Error loading file:[/red] {e}")
             sys.exit(1)
 
@@ -2611,7 +2620,7 @@ def read(  # noqa: C901
                     epub_pages = parser.get_pages(
                         synthetic_page_size=effective_page_size
                     )
-                except Exception as e:
+                except (OSError, ValueError, RuntimeError) as e:
                     console.print(f"[red]Error loading pages:[/red] {e}")
                     sys.exit(1)
 
@@ -2785,19 +2794,8 @@ def read(  # noqa: C901
 
     # Initialize TTS pipeline
     console.print("[dim]Loading TTS model...[/dim]")
-    kokoro = None
     pipeline = None
     try:
-        kokoro = Kokoro(
-            model_path=model_path,
-            voices_path=voices_path,
-            provider=effective_onnx_provider,
-            use_gpu=False,
-            short_sentence_config=effective_short_sentence_config,
-            model_quality=model_quality,
-            model_source=model_source,
-            model_variant=model_variant,
-        )
         generation = GenerationConfig(
             speed=effective_speed,
             lang=espeak_lang,
@@ -2809,7 +2807,7 @@ def read(  # noqa: C901
             pause_variance=effective_pause_variance,
             random_seed=random_seed,
         )
-        pipeline_config = PipelineConfig(
+        pipeline = build_standard_pipeline(
             voice=effective_voice,
             generation=generation,
             model_quality=model_quality,
@@ -2817,23 +2815,13 @@ def read(  # noqa: C901
             model_variant=model_variant,
             model_path=model_path,
             voices_path=voices_path,
+            provider=effective_onnx_provider,
             short_sentence_config=effective_short_sentence_config,
             prosody=build_pykokoro_prosody_config(effective_read_prosody_policy),
-            retain_segment_audio=False,
         )
-        pipeline = KokoroPipeline(
-            pipeline_config,
-            phoneme_processing=OnnxPhonemeProcessorAdapter(kokoro),
-            audio_generation=OnnxAudioGenerationAdapter(kokoro),
-            audio_postprocessing=OnnxAudioPostprocessingAdapter(kokoro),
-        )
-    except Exception as e:
-        try:
-            if pipeline is not None:
-                pipeline.close()
-        finally:
-            if kokoro is not None:
-                kokoro.close()
+    except (ImportError, OSError, RuntimeError) as e:
+        if pipeline is not None:
+            pipeline.close()
         console.print(f"[red]Error initializing TTS:[/red] {e}")
         sys.exit(1)
 
@@ -2944,7 +2932,7 @@ def read(  # noqa: C901
             # Wait for current audio to be ready
             try:
                 audio, sample_rate = current_future.result(timeout=60)
-            except Exception as e:
+            except (OSError, RuntimeError, TimeoutError) as e:
                 console.print(f"[red]TTS error:[/red] {e}")
                 # Move to next segment's future
                 if next_future:
@@ -2999,7 +2987,7 @@ def read(  # noqa: C901
             )
             console.print("[dim]Use --resume to continue from this position.[/dim]")
 
-    except Exception as e:
+    except (OSError, RuntimeError, ValueError) as e:
         console.print(f"[red]Error during playback:[/red] {e}")
         # Save position on error too
         position = PlaybackPosition(
@@ -3010,14 +2998,9 @@ def read(  # noqa: C901
         save_playback_position(position)
         raise
     finally:
-        # Restore original signal handler
         signal.signal(signal.SIGINT, original_handler)
-        try:
-            if pipeline is not None:
-                pipeline.close()
-        finally:
-            if kokoro is not None:
-                kokoro.close()
+        if pipeline is not None:
+            pipeline.close()
 
 
 def _split_text_into_segments(

@@ -13,7 +13,7 @@ import time
 from collections.abc import Callable
 from dataclasses import dataclass, field
 from pathlib import Path
-from typing import TYPE_CHECKING, Any
+from typing import Any
 
 import numpy as np
 
@@ -21,8 +21,6 @@ from .utils import atomic_write_json
 
 _LOGGER = logging.getLogger(__name__)
 
-if TYPE_CHECKING:
-    pass
 
 # Default sample rate for Kokoro models
 DEFAULT_SAMPLE_RATE = 24000

@@ -267,13 +267,13 @@ def test_paragraph_schema5_resume_is_rejected_explicitly(tmp_path: Path) -> None
     )
 
 
-def test_renderer_contract_uses_pykokoro_083_and_kokorog2p_080() -> None:
+def test_renderer_contract_uses_pykokoro_090_and_kokorog2p_092() -> None:
     contract = renderer_contract_payload()
-    assert contract["pykokoro"] == "0.8.4"
-    assert contract["kokorog2p"] == "0.8.0"
+    assert contract["pykokoro"] == "0.9.0"
+    assert contract["kokorog2p"] == "0.9.2"
     assert "pykokoro_runtime" in contract
     assert "kokorog2p_runtime" in contract
-    assert contract["schema"] == 3
+    assert contract["schema"] == 4
 
 
 def test_schema7_resume_rejects_pre_spokenform_renderer_contract_safely() -> None:
@@ -303,7 +303,7 @@ def test_schema7_resume_rejects_pre_spokenform_renderer_contract_safely() -> Non
         Path("."),
     )
 
-    assert validation.reason == "generation-fingerprint-changed"
+    assert validation.reason == "renderer-contract-changed"
     assert validation.reason != "generation-identity-corrupt"
     paths = {difference.path for difference in validation.differences}
     assert "ssmd_policy.renderer_contract.schema" in paths

@@ -38,6 +38,20 @@ def test_markdown_headings_scene_breaks_and_title_are_preserved() -> None:
     assert "\n...p\n" in ssmd
 
 
+def test_language_spans_survive_visible_markdown_transforms() -> None:
+    ssmd = chapter_to_ssmd(
+        chapter_title="",
+        chapter_text="",
+        chapter_markdown='The [Welt]{lang="de"} is *important*.',
+        source_format="markdown",
+        include_title=False,
+        phoneme_dict={"important": "ɪmˈpɔːtənt"},
+    )
+
+    assert '[Welt]{lang="de"}' in ssmd
+    assert '[important]{ph="ɪmˈpɔːtənt"}' in ssmd
+
+
 def test_phonemes_only_transform_visible_markdown_text() -> None:
     ssmd = chapter_to_ssmd(
         chapter_title="",

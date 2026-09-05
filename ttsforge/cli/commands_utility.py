@@ -5,20 +5,16 @@ import shutil
 import sys
 import tempfile
 from pathlib import Path
-from typing import Any, Literal, TypeAlias, cast
+from typing import Any, cast
 
 import numpy as np
 import typer
 from audiosig import generate_silence
-from pykokoro import GenerationConfig, KokoroPipeline, PipelineConfig
+from pykokoro import GenerationConfig, KokoroPipeline
 from pykokoro.model_assets import get_model_asset_paths
 from pykokoro.onnx_backend import (
     DEFAULT_MODEL_QUALITY,
-    DEFAULT_MODEL_SOURCE,
-    DEFAULT_MODEL_VARIANT,
     LANG_CODE_TO_ONNX,
-    VOICE_NAMES_BY_VARIANT,
-    Kokoro,
     ModelQuality,
     VoiceBlend,
     download_all_voices,
@@ -28,10 +24,6 @@ from pykokoro.onnx_backend import (
     download_voices_github,
     is_config_downloaded,
 )
-from pykokoro.onnx_backend import VOICE_NAMES_V1_0 as VOICE_NAMES
-from pykokoro.stages.audio_generation.onnx import OnnxAudioGenerationAdapter
-from pykokoro.stages.audio_postprocessing.onnx import OnnxAudioPostprocessingAdapter
-from pykokoro.stages.phoneme_processing.onnx import OnnxPhonemeProcessorAdapter
 from rich.progress import (
     BarColumn,
     Progress,
@@ -48,18 +40,17 @@ from ..constants import (
     VOICES,
 )
 from ..prosody_support import ProsodyPolicy, build_pykokoro_prosody_config
+from ..pykokoro_adapter import build_standard_pipeline
 from ..short_sentence_stats import ShortSentenceStats, format_short_sentence_stats
 from ..utils import format_size, load_config
+from .backend_config import resolve_model_source_and_variant as _resolve_model_metadata
 from .backend_config import resolve_onnx_provider
+from .backend_config import resolve_voice_names as _discover_voice_names
 from .helpers import DEMO_TEXT, VOICE_BLEND_PRESETS, console, parse_voice_parameter
-
-ModelSource: TypeAlias = Literal["huggingface", "github"]
-ModelVariant: TypeAlias = Literal["v1.0", "v1.1-zh", "v1.1-de"]
 
 
 def _close_pipeline_and_backend(
-    pipeline: KokoroPipeline | None,
-    kokoro: Kokoro | None,
+    pipeline: KokoroPipeline | None, kokoro: Any | None
 ) -> None:
     """Close an externally owned pipeline and backend in dependency order."""
     try:
@@ -87,7 +78,7 @@ def _require_sounddevice() -> Any:
     return sd
 
 
-def demo(  # noqa: C901
+def demo(
     ctx: typer.Context,
     output: Path | None,
     language: str | None,
@@ -197,31 +188,20 @@ def demo(  # noqa: C901
         console.print(f"[dim]ONNX Provider: {resolved_provider}[/dim]")
 
         # Initialize TTS pipeline
-        kokoro: Kokoro | None = None
+        # PyKokoro owns the standard backend and stage lifecycle.
         pipeline: KokoroPipeline | None = None
         try:
-            kokoro = Kokoro(
-                model_path=model_path,
-                voices_path=voices_path,
-                provider=resolved_provider,
-            )
             generation = GenerationConfig(speed=speed, lang="en-us")
-            pipeline_config = PipelineConfig(
+            pipeline = build_standard_pipeline(
                 voice=DEFAULT_CONFIG.get("default_voice", "af_heart"),
                 generation=generation,
                 model_path=model_path,
                 voices_path=voices_path,
+                provider=resolved_provider,
                 prosody=build_pykokoro_prosody_config(ProsodyPolicy()),
-                retain_segment_audio=False,
             )
-            pipeline = KokoroPipeline(
-                pipeline_config,
-                phoneme_processing=OnnxPhonemeProcessorAdapter(kokoro),
-                audio_generation=OnnxAudioGenerationAdapter(kokoro),
-                audio_postprocessing=OnnxAudioPostprocessingAdapter(kokoro),
-            )
-        except Exception as e:
-            _close_pipeline_and_backend(pipeline, kokoro)
+        except (ImportError, OSError, RuntimeError) as e:
+            _close_pipeline_and_backend(pipeline, None)
             console.print(f"[red]Error initializing TTS engine:[/red] {e}")
             sys.exit(1)
 
@@ -286,13 +266,13 @@ def demo(  # noqa: C901
                                 f"  [green]{description}[/green]: {voice_file}"
                             )
 
-                except Exception as e:
+                except (OSError, RuntimeError, ValueError) as e:
                     console.print(f"  [red]{blend_str}[/red]: Failed - {e}")
                 finally:
                     if result is not None:
                         try:
                             result.release_audio()
-                        except Exception as e:
+                        except (OSError, RuntimeError) as e:
                             console.print(
                                 f"  [yellow]{blend_str}[/yellow]: "
                                 f"Failed to release audio buffers - {e}"
@@ -311,7 +291,7 @@ def demo(  # noqa: C901
             "[dim]Short sentence handling: "
             f"{format_short_sentence_stats(short_sentence_stats)}[/dim]"
         )
-        _close_pipeline_and_backend(pipeline, kokoro)
+        _close_pipeline_and_backend(pipeline, None)
         return
 
     # Regular voice demo mode (no blending)
@@ -359,31 +339,19 @@ def demo(  # noqa: C901
     console.print(f"[dim]ONNX Provider: {resolved_provider}[/dim]")
 
     # Initialize TTS pipeline
-    demo_kokoro: Kokoro | None = None
     demo_pipeline: KokoroPipeline | None = None
     try:
-        demo_kokoro = Kokoro(
-            model_path=model_path,
-            voices_path=voices_path,
-            provider=resolved_provider,
-        )
         generation = GenerationConfig(speed=speed, lang="en-us")
-        pipeline_config = PipelineConfig(
+        demo_pipeline = build_standard_pipeline(
             voice=DEFAULT_CONFIG.get("default_voice", "af_heart"),
             generation=generation,
             model_path=model_path,
             voices_path=voices_path,
+            provider=resolved_provider,
             prosody=build_pykokoro_prosody_config(ProsodyPolicy()),
-            retain_segment_audio=False,
         )
-        demo_pipeline = KokoroPipeline(
-            pipeline_config,
-            phoneme_processing=OnnxPhonemeProcessorAdapter(demo_kokoro),
-            audio_generation=OnnxAudioGenerationAdapter(demo_kokoro),
-            audio_postprocessing=OnnxAudioPostprocessingAdapter(demo_kokoro),
-        )
-    except Exception as e:
-        _close_pipeline_and_backend(demo_pipeline, demo_kokoro)
+    except (ImportError, OSError, RuntimeError) as e:
+        _close_pipeline_and_backend(demo_pipeline, None)
         console.print(f"[red]Error initializing TTS engine:[/red] {e}")
         sys.exit(1)
 
@@ -436,13 +404,13 @@ def demo(  # noqa: C901
                     if voice != selected_voices[-1]:
                         all_samples.append(silence_samples)
 
-            except Exception as e:
+            except (OSError, RuntimeError, ValueError) as e:
                 console.print(f"  [red]{voice}[/red]: Failed - {e}")
             finally:
                 if result is not None:
                     try:
                         result.release_audio()
-                    except Exception as e:
+                    except (OSError, RuntimeError) as e:
                         console.print(
                             f"  [yellow]{voice}[/yellow]: "
                             f"Failed to release audio buffers - {e}"
@@ -487,29 +455,21 @@ def demo(  # noqa: C901
             f"{format_short_sentence_stats(short_sentence_stats)}[/dim]"
         )
 
-    _close_pipeline_and_backend(demo_pipeline, demo_kokoro)
+    _close_pipeline_and_backend(demo_pipeline, None)
 
 
-def _resolve_model_source_and_variant(cfg: dict) -> tuple[ModelSource, ModelVariant]:
-    """Resolve model_source/model_variant with safe defaults."""
-    source = str(cfg.get("model_source", DEFAULT_MODEL_SOURCE))
-    variant = str(cfg.get("model_variant", DEFAULT_MODEL_VARIANT))
-
-    # Keep this permissive; Kokoro/pykokoro will validate deeper.
-    if source not in ("huggingface", "github"):
-        source = DEFAULT_MODEL_SOURCE
-    if variant not in ("v1.0", "v1.1-zh", "v1.1-de"):
-        variant = DEFAULT_MODEL_VARIANT
-
-    return cast(ModelSource, source), cast(ModelVariant, variant)
+def _resolve_model_source_and_variant(
+    cfg: dict,
+) -> tuple[str | None, str | None]:
+    """Resolve explicit model choices through the shared metadata adapter."""
+    return _resolve_model_metadata(cfg)
 
 
 def _resolve_voice_names(
-    model_source: ModelSource = "huggingface",
-    model_variant: ModelVariant = "v1.0",
+    model_source: str | None = None, model_variant: str | None = None
 ) -> list[str]:
-    """Return the list of voice names for the given model variant."""
-    return list(VOICE_NAMES_BY_VARIANT.get(model_variant, VOICE_NAMES))
+    """Return model-specific voices from metadata-only discovery."""
+    return _discover_voice_names(model_source, model_variant)
 
 
 def _exists_nonempty(path: Path) -> bool:
@@ -549,9 +509,11 @@ def download(ctx: typer.Context, force: bool, quality: str | None) -> None:
 
     # Cast to ModelQuality - safe because Typer validates input
     # and config uses a valid default
-    model_quality = cast(ModelQuality, quality)
+    model_quality = cast(ModelQuality, quality or DEFAULT_MODEL_QUALITY)
 
     model_source, model_variant = _resolve_model_source_and_variant(cfg)
+    model_source = model_source or "github"
+    model_variant = model_variant or "v1.0"
 
     assets = get_model_asset_paths(
         quality=model_quality, source=model_source, variant=model_variant
@@ -619,7 +581,7 @@ def download(ctx: typer.Context, force: bool, quality: str | None) -> None:
                 progress.advance(config_task)
                 size = format_size(cache_config_path.stat().st_size)
                 console.print(f"  [green]config.json[/green]: {size}")
-            except Exception as e:
+            except (OSError, RuntimeError) as e:
                 console.print(f"  [red]config.json: Failed - {e}[/red]")
                 sys.exit(1)
         else:
@@ -642,7 +604,7 @@ def download(ctx: typer.Context, force: bool, quality: str | None) -> None:
                 progress.advance(model_task)
                 size = format_size(cache_model_path.stat().st_size)
                 console.print(f"  [green]{cache_model_path.name}[/green]:{size}")
-            except Exception as e:
+            except (OSError, RuntimeError) as e:
                 console.print(f"  [red]{cache_model_path.name}: Failed - {e}[/red]")
                 sys.exit(1)
         else:
@@ -675,7 +637,7 @@ def download(ctx: typer.Context, force: bool, quality: str | None) -> None:
                 progress.update(voices_task, completed=total_voices)
                 size = format_size(cache_voices_path.stat().st_size)
                 console.print(f"  [green]{cache_voices_path.name}[/green]: {size}")
-            except Exception as e:
+            except (OSError, RuntimeError) as e:
                 console.print(f"  [red]voices: Failed - {e}[/red]")
                 sys.exit(1)
         else:
@@ -688,7 +650,7 @@ def download(ctx: typer.Context, force: bool, quality: str | None) -> None:
                     progress.advance(voices_task)
                     size = format_size(cache_voices_path.stat().st_size)
                     console.print(f"  [green]{cache_voices_path.name}[/green]: {size}")
-                except Exception as e:
+                except (OSError, RuntimeError) as e:
                     console.print(
                         f"  [red]{cache_voices_path.name}: Failed - {e}[/red]"
                     )
@@ -708,7 +670,7 @@ def download(ctx: typer.Context, force: bool, quality: str | None) -> None:
         if voices_path_override and cache_voices_path != voices_path_override:
             _copy_to_target(cache_voices_path, voices_path_override)
             console.print(f"[green]Copied voices to:[/green] {voices_path_override}")
-    except Exception as e:
+    except (OSError, RuntimeError) as e:
         console.print(f"[red]Error copying files to custom paths:[/red] {e}")
         sys.exit(1)
     console.print("\n[green]All model files downloaded successfully![/green]")
@@ -811,7 +773,7 @@ def extract_names(
             for chapter in selected_chapters
         )
 
-    except Exception as e:
+    except (OSError, ValueError, KeyError) as e:
         console.print(f"[red]Error loading file:[/red] {e}")
         raise SystemExit(1) from None
 
@@ -926,7 +888,7 @@ def extract_names(
         )
 
 
-def list_names(  # noqa: C901
+def list_names(
     phoneme_dict: Path, sort_by: str, play: bool, voice: str, language: str
 ) -> None:
     """List all names in a phoneme dictionary for review.
@@ -964,7 +926,7 @@ def list_names(  # noqa: C901
     try:
         with open(phoneme_dict, encoding="utf-8") as f:
             data = json.load(f)
-    except Exception as e:
+    except (OSError, json.JSONDecodeError) as e:
         console.print(f"[red]Error loading dictionary:[/red] {e}")
         raise SystemExit(1) from None
 
@@ -1151,12 +1113,12 @@ def list_names(  # noqa: C901
                     if user_input != "r":
                         idx += 1
 
-                except Exception as e:
+                except (OSError, RuntimeError, ValueError) as e:
                     console.print(f"[red]Error playing audio:[/red] {e}")
                     idx += 1
                     continue
 
-        except Exception as e:
+        except (ImportError, OSError, RuntimeError) as e:
             console.print(f"[red]Error initializing audio preview:[/red] {e}")
             console.print("[yellow]Make sure you have the TTS model loaded.[/yellow]")
 

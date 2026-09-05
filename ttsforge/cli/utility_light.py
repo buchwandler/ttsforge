@@ -134,7 +134,7 @@ def _show_provider_status(config: dict[str, Any]) -> None:
         console.print(f"  Resolved: {resolved}")
         if caught:
             console.print(f"  [yellow]Runtime warning: {caught[0].message}[/yellow]")
-    except Exception:
+    except (ImportError, OSError, RuntimeError):
         console.print(
             "[bold]ONNX Runtime Providers:[/bold] [yellow]Status unavailable[/yellow]"
         )

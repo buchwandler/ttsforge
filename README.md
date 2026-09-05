@@ -18,7 +18,7 @@ with support for 54 neural voices across 9 languages.
 - **Custom Phoneme Dictionary**: Control pronunciation of names and technical terms
 - **Auto Name Extraction**: Automatically extract names from books for phoneme
   customization
-- **Mixed-Language Support**: Auto-detect and handle multiple languages in text
+- **Explicit Mixed-Language SSMD**: Annotate language changes with SSMD `lang` spans
 - **Resumable Conversions**: Interrupt and resume long audiobook conversions
 - **Phoneme Pre-tokenization**: Pre-process text for faster batch conversions
 - **Configurable Filenames**: Template-based output naming with book metadata
@@ -54,11 +54,15 @@ pip install "ttsforge[static_ffmpeg]"
 pip install "ttsforge[gpu]"
 ```
 
-TTSForge uses `pykokoro[cpu]>=0.8.4,<0.9` and `kokorog2p[espeak,en]>=0.8.0,<0.9`. The
-supported stack prepares ordinary written forms such as dates, times, measurements,
-currency, ordinals, and abbreviations for speech in kokorog2p before G2P. TTSForge does
-not duplicate that normalization, and explicit SSMD `say-as` remains an
-author-controlled override.
+TTSForge uses `pykokoro[cpu]>=0.9.0,<0.10`, `kokorog2p[espeak,en]>=0.9.2,<1.0`,
+`phrasplit>=0.3.7,<0.4`, and `ssmd>=0.8.6,<0.9`. The standard pipeline forwards the
+document language and ONNX provider through PyKokoro 0.9. Omitted model and voice values
+are resolved from PyKokoro metadata. Explicit model profiles, custom model paths, and
+custom voice databases remain supported.
+
+Mixed-language text must use explicit SSMD spans, for example `[Welt]{lang="de"}`.
+TTSForge does not automatically detect language changes. The legacy
+`use_mixed_language=true` setting is rejected with migration guidance.
 
 It uses compact segment results and releases completed chapter audio before the next
 chapter starts. Chapter conversion remains chapter-buffered. Paragraph conversion
@@ -182,7 +186,7 @@ than schema 6 cannot guarantee deterministic preparation and require a fresh run
 ttsforge convert book.epub
 ```
 
-Creates `book.m4b` with default settings (voice: `af_heart`, format: M4B).
+Creates `book.m4b` with PyKokoro metadata-selected voice and model defaults.
 
 ### Voice Selection
 
@@ -306,21 +310,14 @@ Available variables: `{book_title}`, `{author}`, `{chapter_title}`, `{chapter_nu
 
 ## Voices
 
-ttsforge includes 54 voices across 9 languages:
+`ttsforge voices` queries PyKokoro 0.9 metadata without initializing ONNX or downloading
+model assets. Use `--language` to filter the discovered voices. Omit `--voice` to let
+PyKokoro select the profile default for the document language. Explicit voice names and
+voice blends remain supported.
 
-| Language             | Code | Voices | Default       |
-| -------------------- | ---- | ------ | ------------- |
-| American English     | `a`  | 20     | `af_heart`    |
-| British English      | `b`  | 8      | `bf_emma`     |
-| Spanish              | `e`  | 3      | `ef_dora`     |
-| French               | `f`  | 1      | `ff_siwis`    |
-| Hindi                | `h`  | 4      | `hf_alpha`    |
-| Italian              | `i`  | 2      | `if_sara`     |
-| Japanese             | `j`  | 5      | `jf_alpha`    |
-| Brazilian Portuguese | `p`  | 3      | `pf_dora`     |
-| Mandarin Chinese     | `z`  | 8      | `zf_xiaoxiao` |
-
-Voice naming: `{lang}{gender}_{name}` (e.g., `am_adam` = American Male "Adam")
+Voice names are profile-provided identifiers such as `af_heart` and `bf_emma`; do not
+assume a fixed TTSForge-owned whitelist. Voice naming: `{lang}{gender}_{name}` (e.g.,
+`am_adam` = American Male "Adam")
 
 ### Voice Demo
 
@@ -356,39 +353,16 @@ ttsforge phonemes preview "Test blend" --voice "am_adam:50,am_michael:50" --play
 
 ### Mixed-Language Support
 
-For books with multiple languages (e.g., German text with English technical terms):
+Mixed-language changes must be marked explicitly in SSMD. For example:
 
-```bash
-# Enable mixed-language auto-detection
-ttsforge convert book.epub \
-  --use-mixed-language \
-  --mixed-language-primary de \
-  --mixed-language-allowed de,en-us
-
-# Test with a sample
-ttsforge sample \
-  "Das ist ein deutscher Satz. This is an English sentence." \
-  --use-mixed-language \
-  --mixed-language-primary de \
-  --mixed-language-allowed de,en-us
+```ssmd
+Das ist ein Satz. [This is an English sentence.]{lang="en-us"}
 ```
 
-**Requirements**: Install `lingua-language-detector` for automatic language detection:
-
-```bash
-pip install lingua-language-detector
-```
-
-**Configuration options:**
-
-- `--use-mixed-language` - Enable mixed-language mode
-- `--mixed-language-primary LANG` - Primary language (e.g., `de`, `en-us`)
-- `--mixed-language-allowed LANGS` - Comma-separated list of allowed languages
-- `--mixed-language-confidence FLOAT` - Detection confidence threshold (0.0-1.0,
-  default: 0.7)
-
-Supported languages: `en-us`, `en-gb`, `de`, `fr-fr`, `es`, `it`, `pt`, `pl`, `tr`,
-`ru`, `ko`, `ja`, `zh`/`cmn`
+Generate or edit the SSMD chapter, then convert it with the document language supplied
+by the conversion command. TTSForge does not perform automatic mixed-language detection.
+The legacy `--use-mixed-language` and related primary, allowed, and confidence options
+are rejected with migration guidance.
 
 ### SSMD Editing
 
@@ -561,8 +535,8 @@ And he also happened to be a wizard. ...p
 - **Emphasis corrections**: Add or remove emphasis on specific words
 - **Combine with phoneme dictionary**: Phoneme dictionary applied automatically to SSMD
 
-For detailed SSMD 0.8 syntax, validation, policy options, and Kokoro limitations, see
-[docs/ssmd.md](docs/ssmd.md).
+For detailed SSMD 0.8.6 syntax, explicit language spans, validation, policy options, and
+PyKokoro 0.9 limitations, see [docs/ssmd.md](docs/ssmd.md).
 
 ### Custom Phoneme Dictionary
 
@@ -799,14 +773,15 @@ build; use another available provider if NNAPI is not exposed.
 
 | Option                      | Default        | Description                                      |
 | --------------------------- | -------------- | ------------------------------------------------ |
-| `default_voice`             | `af_heart`     | Default TTS voice                                |
+| `default_voice`             | `None`         | PyKokoro metadata-selected profile voice         |
 | `default_language`          | `a`            | Default language code                            |
 | `default_speed`             | `1.0`          | Speech speed (0.5-2.0)                           |
 | `default_format`            | `m4b`          | Output format                                    |
 | `onnx_provider`             | `cpu`          | ONNX Runtime provider alias or full name         |
 | `use_gpu`                   | `false`        | Legacy compatibility shortcut (`true` => `auto`) |
-| `model_quality`             | `fp32`         | Model quality/quantization                       |
-| `model_variant`             | `v1.0`         | Model variant                                    |
+| `model_quality`             | `None`         | PyKokoro automatic quality or explicit quality   |
+| `model_source`              | `None`         | PyKokoro automatic source or explicit source     |
+| `model_variant`             | `None`         | PyKokoro automatic profile or explicit variant   |
 | `silence_between_chapters`  | `2.0`          | Chapter gap (seconds)                            |
 | `pause_clause`              | `0.5`          | Clause pause (seconds)                           |
 | `pause_sentence`            | `0.7`          | Sentence pause (seconds)                         |
@@ -820,10 +795,8 @@ build; use another available provider if NNAPI is not exposed.
 | `output_filename_template`  | `{book_title}` | Output filename template                         |
 | `default_content_mode`      | `chapters`     | `read` mode (`chapters`/`pages`)                 |
 | `default_page_size`         | `2000`         | Page size for `read` pages mode                  |
-| `use_mixed_language`        | `false`        | Enable mixed-language mode                       |
-| `mixed_language_primary`    | `None`         | Primary language for mixed mode                  |
-| `mixed_language_allowed`    | `None`         | Allowed languages (list)                         |
-| `mixed_language_confidence` | `0.7`          | Language detection threshold                     |
+| `use_mixed_language`        | `false`        | Deprecated; `true` is rejected                   |
+| `mixed_language_*`          | deprecated     | Use explicit SSMD `lang` spans                   |
 
 ## Documentation
 

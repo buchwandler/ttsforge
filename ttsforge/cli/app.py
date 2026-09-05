@@ -202,7 +202,7 @@ def cli_main() -> None:
     app(prog_name=PROGRAM_NAME)
 
 
-from . import typer_conversion, typer_phonemes, typer_ssmd, typer_utility  # noqa: E402
+from . import typer_conversion, typer_phonemes, typer_ssmd, typer_utility
 
 typer_conversion.register(app)
 typer_ssmd.register(app)

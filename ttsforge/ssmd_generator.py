@@ -36,8 +36,6 @@ from .ssmd_support import (
 class SSMDGenerationError(Exception):
     """Exception raised when SSMD generation fails."""
 
-    pass
-
 
 def hash_ssmd_content(content: str) -> str:
     """Generate a hash of content for change detection.
@@ -72,7 +70,7 @@ def _inject_phoneme_substitutions(
     if not phoneme_dict:
         return text
 
-    words = [word for word in phoneme_dict.keys() if word]
+    words = [word for word in phoneme_dict if word]
     if not words:
         return text
 
@@ -170,26 +168,6 @@ def _transform_visible_markdown(text: str, transform: Any) -> str:
 
     flush_visible()
     return "".join(parts)
-
-
-def _add_language_markers(text: str, mixed_language_config: dict | None = None) -> str:
-    """Add language markers for mixed-language segments.
-
-    Note: This is a placeholder for now. Full implementation would require
-    language detection library (lingua-language-detector).
-
-    Args:
-        text: Text to process
-        mixed_language_config: Configuration for mixed-language mode
-
-    Returns:
-        Text with language markers (currently returns text unchanged)
-    """
-    # TODO: Implement language detection and wrapping
-    # For now, return text unchanged
-    # Future: Use lingua-language-detector to identify foreign segments
-    # and wrap them with ``[segment]{lang="lang_code"}``.
-    return text
 
 
 def _add_structural_breaks(text: str) -> str:
@@ -328,10 +306,12 @@ def chapter_to_ssmd(
                 result, phoneme_dict, phoneme_dict_case_sensitive
             )
 
-        # Step 4: Add language markers (if mixed-language mode)
+        # PyKokoro 0.9 requires mixed-language changes to be explicit SSMD.
         if mixed_language_config and mixed_language_config.get("use_mixed_language"):
-            result = _add_language_markers(result, mixed_language_config)
-
+            raise ValueError(
+                "Automatic mixed-language detection is no longer supported. "
+                'Use explicit SSMD spans such as [Welt]{lang="de"}.'
+            )
         # Add exactly one synthetic chapter title when requested.
         if include_title and chapter_title:
             # Clean title and add as heading with double newline separation
@@ -348,7 +328,7 @@ def chapter_to_ssmd(
 
     except Exception as e:
         raise SSMDGenerationError(
-            f"Failed to generate SSMD for chapter '{chapter_title}': {str(e)}"
+            f"Failed to generate SSMD for chapter '{chapter_title}': {e!s}"
         ) from e
 
 
@@ -390,7 +370,7 @@ def save_ssmd_file(
         raise SSMDGenerationError(str(e)) from e
     except Exception as e:
         raise SSMDGenerationError(
-            f"Failed to save SSMD file to {output_path}: {str(e)}"
+            f"Failed to save SSMD file to {output_path}: {e!s}"
         ) from e
 
 
@@ -418,7 +398,7 @@ def load_ssmd_file(ssmd_path: Path) -> tuple[str, str]:
         raise
     except Exception as e:
         raise SSMDGenerationError(
-            f"Failed to load SSMD file from {ssmd_path}: {str(e)}"
+            f"Failed to load SSMD file from {ssmd_path}: {e!s}"
         ) from e
 
 

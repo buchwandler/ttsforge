@@ -97,12 +97,12 @@ class TestVoices:
 
     def test_american_english_voices_exist(self):
         """American English voices should exist."""
-        am_voices = [v for v in VOICES if v.startswith("af_") or v.startswith("am_")]
+        am_voices = [v for v in VOICES if v.startswith(("af_", "am_"))]
         assert len(am_voices) > 0, "Should have American English voices"
 
     def test_british_english_voices_exist(self):
         """British English voices should exist."""
-        br_voices = [v for v in VOICES if v.startswith("bf_") or v.startswith("bm_")]
+        br_voices = [v for v in VOICES if v.startswith(("bf_", "bm_"))]
         assert len(br_voices) > 0, "Should have British English voices"
 
 
@@ -196,9 +196,9 @@ class TestDefaultConfig:
     def test_default_onnx_provider_is_cpu(self):
         assert DEFAULT_CONFIG["onnx_provider"] == "cpu"
 
-    def test_default_voice_is_valid(self):
-        """Default voice should be in VOICES list."""
-        assert DEFAULT_CONFIG["default_voice"] in VOICES
+    def test_default_voice_is_automatic(self):
+        """Omitted voice lets PyKokoro choose the profile default."""
+        assert DEFAULT_CONFIG["default_voice"] is None
 
     def test_default_language_is_valid(self):
         """Default language should be valid."""

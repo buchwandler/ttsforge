@@ -721,7 +721,7 @@ class PhonemeConverter:
                         or sf.info(str(audio_path)).duration <= 0
                     ):
                         return False
-                except Exception:
+                except (OSError, ValueError, RuntimeError):
                     return False
         return True
 
@@ -1019,10 +1019,10 @@ class PhonemeConverter:
                 duration=total_duration,
             )
 
-        except Exception as e:
+        except (OSError, RuntimeError, ValueError) as e:
             import traceback
 
-            error_msg = f"{str(e)}\n\nTraceback:\n{traceback.format_exc()}"
+            error_msg = f"{e!s}\n\nTraceback:\n{traceback.format_exc()}"
             return PhonemeConversionResult(success=False, error_message=error_msg)
         finally:
             prevent_sleep_end()
@@ -1209,10 +1209,10 @@ class PhonemeConverter:
                 duration=current_time,
             )
 
-        except Exception as e:
+        except (OSError, RuntimeError, ValueError) as e:
             import traceback
 
-            error_msg = f"{str(e)}\n\nTraceback:\n{traceback.format_exc()}"
+            error_msg = f"{e!s}\n\nTraceback:\n{traceback.format_exc()}"
             return PhonemeConversionResult(success=False, error_message=error_msg)
         finally:
             prevent_sleep_end()

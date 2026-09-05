@@ -51,7 +51,7 @@ class TestChapterMarkerLeadingWhitespace:
 
         for text, expected in test_cases:
             result = re.sub(improved_pattern, "", text, count=1, flags=re.MULTILINE)
-            assert result == expected, f"Failed for input: {repr(text)}"
+            assert result == expected, f"Failed for input: {text!r}"
 
     def test_marker_not_at_line_start_still_removed_with_multiline(self):
         """Test that marker after newline is removed (MULTILINE mode)."""

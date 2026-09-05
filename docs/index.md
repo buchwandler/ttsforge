@@ -29,7 +29,8 @@ api/index
 
 - **EPUB to Audiobook Conversion**: Convert EPUB files to M4B, MP3, WAV, FLAC, or OPUS
   formats
-- **50+ High-Quality Voices**: Support for 9 languages with multiple voice options
+- **PyKokoro metadata voices**: Discover profile voices without a fixed TTSForge
+  whitelist
 - **SSMD Editing**: Edit intermediate SSMD files to fine-tune pronunciation and pacing
 - **Resumable Conversions**: Long audiobook conversions can be interrupted and resumed
 - **Phoneme Pre-tokenization**: Pre-process text to phonemes for faster batch
@@ -38,7 +39,7 @@ api/index
 - **Voice Blending**: Mix multiple voices for custom narration styles
 - **GPU Acceleration**: Optional GPU support for faster processing
 - **Chapter Selection**: Convert specific chapters or chapter ranges
-- **Metadata Support**: Automatic language detection and metadata embedding
+- **Explicit SSMD language spans**: Mark mixed-language text with `lang` annotations
 - **Streaming Read**: Real-time playback with the `read` command (optional audio extra)
 
 ## Quick Example
@@ -79,6 +80,7 @@ ttsforge supports 9 languages with native TTS voices:
 - Python 3.10 or later
 - ffmpeg (required for MP3/FLAC/OPUS/M4B output and chapter merging)
 - espeak-ng (for phonemization)
+- PyKokoro 0.9 with kokorog2p 0.9.2 and SSMD 0.8.6
 - ~330MB disk space for ONNX models (downloaded automatically)
 - sounddevice (optional, for playback features)
 

@@ -3,7 +3,7 @@ from __future__ import annotations
 
 from collections.abc import Collection, Iterator, Sequence
 from dataclasses import dataclass, field
-from typing import Any, Literal, Protocol, cast
+from typing import Any, Literal, Protocol, Self, cast
 
 import numpy as np
 from pykokoro import GenerationConfig, KokoroPipeline, PipelineConfig
@@ -33,12 +33,12 @@ from .short_sentence_stats import ShortSentenceStats
 from .spacy_policy import SPACY_POLICY_VERSION
 from .ssmd_support import SSMDPolicy, build_pykokoro_ssmd_config
 
-SUPPORTED_PYKOKORO = ">=0.8.4,<0.9"
+SUPPORTED_PYKOKORO = ">=0.9.0,<0.10"
 
 
 @dataclass(slots=True)
 class KokoroRunOptions:
-    voice: str
+    voice: str | None
     speed: float
     use_gpu: bool
     pause_clause: float
@@ -47,9 +47,10 @@ class KokoroRunOptions:
     pause_variance: float
     random_seed: int | None = None
     enable_short_sentence: bool | None = None
-    model_quality: ModelQuality | None = DEFAULT_MODEL_QUALITY
-    model_source: ModelSource = DEFAULT_MODEL_SOURCE
-    model_variant: ModelVariant = DEFAULT_MODEL_VARIANT
+    language: str = "en-us"
+    model_quality: ModelQuality | None = None
+    model_source: ModelSource | None = None
+    model_variant: ModelVariant | None = None
     model_path: Any | None = None
     voices_path: Any | None = None
     voice_blend: str | None = None
@@ -103,7 +104,7 @@ class PreparedParagraphUnits:
                 self._runner.log(str(warning), "warning")
             yield result
 
-    def __enter__(self) -> PreparedParagraphUnits:
+    def __enter__(self) -> Self:
         self._prepared.__enter__()
         return self
 
@@ -134,6 +135,11 @@ class KokoroRunner:
     def ensure_ready(self) -> None:
         if self._pipeline is not None:
             return
+        if not self.opts.language:
+            raise ValueError(
+                "A document language is required before text preparation. "
+                "Pass generation.lang=... or run(..., lang=...)."
+            )
 
         log_snapshot(
             self.log,
@@ -141,69 +147,67 @@ class KokoroRunner:
             provider=self.opts.effective_onnx_provider(),
         )
 
-        if self.opts.model_path is None or self.opts.voices_path is None:
+        custom_backend = self.opts.voice_database is not None
+        if custom_backend and (
+            self.opts.model_path is None or self.opts.voices_path is None
+        ):
             model_quality = self.opts.model_quality or DEFAULT_MODEL_QUALITY
             model_source = self.opts.model_source or DEFAULT_MODEL_SOURCE
+            model_variant = self.opts.model_variant or DEFAULT_MODEL_VARIANT
             models_ready = are_models_downloaded(
                 quality=model_quality,
                 source=model_source,
-                variant=self.opts.model_variant,
+                variant=model_variant,
             )
             if not models_ready and model_source == "github":
                 self.log("Downloading ONNX model files from GitHub...")
                 download_all_models_github(
-                    variant=self.opts.model_variant,
+                    variant=model_variant,
                     quality=model_quality,
                 )
             elif not models_ready:
                 self.log("Downloading ONNX model files...")
                 download_all_models(
-                    variant=self.opts.model_variant,
+                    variant=model_variant,
                     quality=model_quality,
                 )
 
-        self._kokoro = Kokoro(
-            model_path=self.opts.model_path,
-            voices_path=self.opts.voices_path,
-            provider=self.opts.effective_onnx_provider(),
-            tokenizer_config=self.opts.tokenizer_config,
-            short_sentence_config=self.opts.short_sentence_config,
-            model_quality=self.opts.model_quality,
-            model_source=self.opts.model_source,
-            model_variant=self.opts.model_variant,
-        )
-
-        assert self._kokoro is not None
-
-        if self.opts.voice_database:
-            try:
-                self._kokoro.load_voice_database(self.opts.voice_database)
-                self.log(f"Loaded voice database: {self.opts.voice_database}")
-            except Exception as e:
-                self.log(f"Failed to load voice database: {e}", "warning")
-
-        if self.opts.voice_blend:
-            self._voice_style = VoiceBlend.parse(self.opts.voice_blend)
-        else:
-            # if voice_database provides overrides, let Kokoro resolve it
+        if custom_backend:
+            self._kokoro = Kokoro(
+                model_path=self.opts.model_path,
+                voices_path=self.opts.voices_path,
+                provider=self.opts.effective_onnx_provider(),
+                tokenizer_config=self.opts.tokenizer_config,
+                short_sentence_config=self.opts.short_sentence_config,
+                model_quality=self.opts.model_quality,
+                model_source=self.opts.model_source,
+                model_variant=self.opts.model_variant,
+            )
             if self.opts.voice_database:
+                try:
+                    self._kokoro.load_voice_database(self.opts.voice_database)
+                    self.log(f"Loaded voice database: {self.opts.voice_database}")
+                except (OSError, RuntimeError, ValueError) as e:
+                    self.log(f"Failed to load voice database: {e}", "warning")
+            if self.opts.voice_blend:
+                self._voice_style = VoiceBlend.parse(self.opts.voice_blend)
+            else:
                 db_voice = cast(
                     str | VoiceBlend | None,
-                    self._kokoro.get_voice_from_database(self.opts.voice),
+                    self._kokoro.get_voice_from_database(self.opts.voice or ""),
                 )
                 self._voice_style = (
                     db_voice if db_voice is not None else self.opts.voice
                 )
-            else:
-                self._voice_style = self.opts.voice
-
-        # GenerationConfig will be supplied per call because lang / is_phonemes
-        # can vary.
+        elif self.opts.voice_blend:
+            self._voice_style = VoiceBlend.parse(self.opts.voice_blend)
+        else:
+            self._voice_style = self.opts.voice
         pipeline_cfg = PipelineConfig(
             voice=self._voice_style,
             generation=GenerationConfig(
                 speed=self.opts.speed,
-                lang="en-us",
+                lang=self.opts.language,
                 random_seed=self.opts.random_seed,
             ),
             model_quality=self.opts.model_quality,
@@ -211,6 +215,7 @@ class KokoroRunner:
             model_variant=self.opts.model_variant,
             model_path=self.opts.model_path,
             voices_path=self.opts.voices_path,
+            provider=self.opts.effective_onnx_provider(),
             tokenizer_config=self.opts.tokenizer_config,
             short_sentence_config=self.opts.short_sentence_config,
             ssmd=build_pykokoro_ssmd_config(self.opts.ssmd_policy),
@@ -219,14 +224,32 @@ class KokoroRunner:
             retain_segment_audio=False,
         )
 
-        # Use the same adapters everywhere (text + phonemes)
-        self._pipeline = build_pipeline(
-            config=pipeline_cfg,
-            backend=self._kokoro,
-            phoneme_processing=OnnxPhonemeProcessorAdapter(self._kokoro),
-            audio_generation=OnnxAudioGenerationAdapter(self._kokoro),
-            audio_postprocessing=OnnxAudioPostprocessingAdapter(self._kokoro),
-        )
+        if custom_backend:
+            assert self._kokoro is not None
+            self._pipeline = build_pipeline(
+                config=pipeline_cfg,
+                backend=self._kokoro,
+                phoneme_processing=OnnxPhonemeProcessorAdapter(self._kokoro),
+                audio_generation=OnnxAudioGenerationAdapter(self._kokoro),
+                audio_postprocessing=OnnxAudioPostprocessingAdapter(self._kokoro),
+            )
+        else:
+            from .pykokoro_adapter import build_standard_pipeline
+
+            self._pipeline = build_standard_pipeline(
+                voice=self._voice_style,
+                generation=pipeline_cfg.generation,
+                model_quality=pipeline_cfg.model_quality,
+                model_source=pipeline_cfg.model_source,
+                model_variant=pipeline_cfg.model_variant,
+                model_path=pipeline_cfg.model_path,
+                voices_path=pipeline_cfg.voices_path,
+                provider=pipeline_cfg.provider,
+                tokenizer_config=pipeline_cfg.tokenizer_config,
+                short_sentence_config=pipeline_cfg.short_sentence_config,
+                ssmd=pipeline_cfg.ssmd,
+                prosody=pipeline_cfg.prosody,
+            )
         log_snapshot(
             self.log,
             "after runner initialization",
@@ -362,7 +385,7 @@ class KokoroRunner:
             if kokoro is not None:
                 kokoro.close()
 
-    def __enter__(self) -> KokoroRunner:
+    def __enter__(self) -> Self:
         self.ensure_ready()
         return self
 

@@ -13,7 +13,7 @@ def inspect_manifest(path: Path, *, print_ordered_list: bool = False) -> int:
     manifest = json.loads(path.read_text(encoding="utf-8"))
     entries = manifest.get("files")
     if not isinstance(entries, list):
-        raise ValueError("manifest files must be a list")
+        raise TypeError("manifest files must be a list")
 
     expected_sequence = 1
     for entry in entries:

@@ -147,7 +147,7 @@ def parse_config_cli_value(key: str, raw: str, default: object) -> object:
         expected_type = list if isinstance(default, list) else dict
         if not isinstance(value, expected_type):
             expected = "JSON list" if expected_type is list else "JSON object"
-            raise ValueError(f"must be a {expected}")
+            raise TypeError(f"must be a {expected}")
         return value
 
     return raw
@@ -310,7 +310,7 @@ def validate_config_value(key: str, value: Any) -> None:
     if bounds is None:
         return
     if isinstance(value, bool) or not isinstance(value, (int, float)):
-        raise ValueError("must be a number")
+        raise TypeError("must be a number")
 
     number = float(value)
     if not math.isfinite(number):
@@ -492,7 +492,7 @@ def load_phoneme_dictionary(
             phoneme_dict = normalized
 
         return phoneme_dict
-    except Exception as exc:
+    except (OSError, json.JSONDecodeError, KeyError) as exc:
         warn_once(f"Failed to load phoneme dictionary from {path_obj}: {exc}")
         return None
 
@@ -572,7 +572,7 @@ def detect_encoding(file_path: str | Path) -> str:
             if result and result.get("encoding"):
                 detected_encoding = result["encoding"]
                 break
-        except Exception as exc:
+        except (AttributeError, KeyError, TypeError, ValueError) as exc:
             _LOGGER.debug("Encoding detector failed: %s", exc)
             continue
 
@@ -613,7 +613,7 @@ def get_gpu_info(enabled: bool = True) -> tuple[str, bool]:
         return f"No GPU providers available. Using CPU. (Available: {providers})", False
     except ImportError:
         return "ONNX Runtime not installed. Using CPU.", False
-    except Exception as e:
+    except (RuntimeError, OSError) as e:
         return f"Error checking GPU: {e}", False
 
 
@@ -681,7 +681,7 @@ def run_process(
         kwargs["encoding"] = DEFAULT_ENCODING
         kwargs["errors"] = "replace"
 
-    return subprocess.run(cmd, **kwargs)
+    return subprocess.run(cmd, check=check, **kwargs)
 
 
 @overload
@@ -799,7 +799,7 @@ def create_process(
                             chunk.decode(DEFAULT_ENCODING, errors="replace")
                         )
                         sys.stdout.flush()
-                    except Exception as exc:
+                    except UnicodeDecodeError as exc:
                         _LOGGER.debug("Failed to decode subprocess output: %s", exc)
             stream.close()
 
@@ -843,7 +843,7 @@ def ensure_ffmpeg() -> bool:
     if static_ffmpeg is not None:
         try:
             static_ffmpeg.add_paths()
-        except Exception as exc:
+        except (ImportError, OSError, RuntimeError) as exc:
             _LOGGER.debug("static-ffmpeg add_paths failed: %s", exc)
 
     if shutil.which("ffmpeg"):
@@ -905,7 +905,7 @@ class LoadPipelineThread(Thread):
         try:
             np_module, kokoro_class = load_tts_pipeline()
             self.callback(np_module, kokoro_class, None)
-        except Exception as e:
+        except (ImportError, RuntimeError, OSError) as e:
             self.callback(None, None, str(e))
 
 

@@ -34,7 +34,7 @@ def test_enabled_memory_snapshot_includes_phase_and_provider(monkeypatch) -> Non
     assert messages == [
         (
             "Memory phase=after synthesis provider=nnapi rss_bytes=100 "
-            "peak_rss_bytes=200 available_bytes=300",
+            + "peak_rss_bytes=200 available_bytes=300",
             "info",
         )
     ]

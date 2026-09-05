@@ -1,8 +1,8 @@
-# SSMD 0.8
+# SSMD 0.8.6
 
-ttsforge treats SSMD 0.8 as a document format, not as decorated plain text. Generated,
+ttsforge treats SSMD 0.8.6 as a document format, not as decorated plain text. Generated,
 edited, and direct `.ssmd` documents are validated with the public `ssmd` APIs and the
-pykokoro Kokoro profile before synthesis. Header metadata is never sent to speech.
+PyKokoro 0.9 profile before synthesis. Header metadata is never sent to speech.
 
 ## Basic workflow
 
@@ -73,7 +73,7 @@ heading, and supported audio attributes are passed to the renderer.
 
 ### Automatic written-to-spoken preparation vs explicit say-as
 
-Ordinary unannotated text flows through the PyKokoro/kokorog2p 0.8.x preparation
+Ordinary unannotated text flows through the PyKokoro 0.9/kokorog2p 0.9.2 preparation
 boundary. For supported languages and forms, kokorog2p may prepare dates, times,
 measurements, currency, ordinals, and abbreviations as speakable text before G2P.
 TTSForge does not rewrite source SSMD into automatic annotations or duplicate that

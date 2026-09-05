@@ -1,7 +1,9 @@
 # Voices
 
-ttsforge uses Kokoro TTS which provides 54 high-quality neural voices across 9
-languages.
+TTSForge queries PyKokoro 0.9 model metadata for available voices. The inventory may
+vary by selected model source and variant, so this document's examples are not a
+TTSForge-owned global whitelist. Use `ttsforge voices` for the active metadata
+inventory.
 
 ## Voice Naming Convention
 

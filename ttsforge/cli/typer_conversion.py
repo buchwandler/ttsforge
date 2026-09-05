@@ -394,7 +394,7 @@ def convert_command(
         bool | None,
         typer.Option(
             "--use-mixed-language/--no-use-mixed-language",
-            help="Enable mixed-language support (auto-detect multiple languages in text).",
+            help="Deprecated compatibility option; true is rejected. Use explicit SSMD lang spans.",
         ),
     ] = None,
     mixed_language_primary: Annotated[
@@ -767,7 +767,7 @@ def sample_command(
         bool,
         typer.Option(
             "--use-mixed-language",
-            help="Enable mixed-language support (auto-detect multiple languages in text).",
+            help="Deprecated compatibility option; true is rejected. Use explicit SSMD lang spans.",
         ),
     ] = False,
     mixed_language_primary: Annotated[

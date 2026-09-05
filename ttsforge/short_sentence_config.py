@@ -123,7 +123,7 @@ def load_short_sentence_json_config(path: Path) -> dict[str, Any]:
     with open(path, encoding="utf-8") as f:
         data = json.load(f)
     if not isinstance(data, dict):
-        raise ValueError("short sentence config JSON must contain an object")
+        raise TypeError("short sentence config JSON must contain an object")
     return data
 
 
@@ -159,7 +159,7 @@ def validate_short_sentence_config(
     ]
     mode = str(data.get("mode", "randomized")).strip()
     if mode not in _MODE_ALIASES:
-        valid_modes = ", ".join(("off", "wrap", "phrase", "randomized"))
+        valid_modes = "off, wrap, phrase, randomized"
         errors.append(
             f"Unknown short-sentence mode '{mode}'. Valid modes: {valid_modes}"
         )
@@ -298,7 +298,7 @@ def _load_linked_config(
 
     try:
         loaded = load_short_sentence_json_config(path)
-    except Exception as exc:
+    except (OSError, json.JSONDecodeError, TypeError, ValueError) as exc:
         _warn(warn, f"Failed to load short-sentence config '{path}': {exc}")
         return {key: value for key, value in data.items() if key != "config"}
 

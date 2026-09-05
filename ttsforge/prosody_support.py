@@ -37,7 +37,7 @@ def _normalize_fallback_methods(
     primary: str, fallback_methods: object
 ) -> tuple[str, ...]:
     if not isinstance(fallback_methods, tuple):
-        raise ValueError("fallback_methods must be a tuple of prosody methods")
+        raise TypeError("fallback_methods must be a tuple of prosody methods")
 
     primary_canonical = canonical_prosody_method(primary)  # type: ignore[arg-type]
     result: list[str] = []
@@ -69,11 +69,11 @@ class ProsodyPolicy:
     def __post_init__(self) -> None:
         method = _validate_method(self.method, "method")
         if not isinstance(self.strict, bool):
-            raise ValueError("strict must be a boolean")
+            raise TypeError("strict must be a boolean")
         if not isinstance(self.clip, bool):
-            raise ValueError("clip must be a boolean")
+            raise TypeError("clip must be a boolean")
         if isinstance(self.n_fft, bool) or not isinstance(self.n_fft, int):
-            raise ValueError("n_fft must be an integer >= 2")
+            raise TypeError("n_fft must be an integer >= 2")
         if self.n_fft < 2:
             raise ValueError("n_fft must be an integer >= 2")
         if self.hop_length is not None:
@@ -88,17 +88,17 @@ class ProsodyPolicy:
         if isinstance(self.filter_width, bool) or not isinstance(
             self.filter_width, int
         ):
-            raise ValueError("filter_width must be an integer > 0")
+            raise TypeError("filter_width must be an integer > 0")
         if self.filter_width <= 0:
             raise ValueError("filter_width must be an integer > 0")
         if isinstance(self.rolloff, bool) or not isinstance(self.rolloff, (int, float)):
-            raise ValueError("rolloff must be finite and greater than 0 and at most 1")
+            raise TypeError("rolloff must be finite and greater than 0 and at most 1")
         if not math.isfinite(float(self.rolloff)) or not 0 < self.rolloff <= 1:
             raise ValueError("rolloff must be finite and greater than 0 and at most 1")
         if isinstance(self.boundary_blend_ms, bool) or not isinstance(
             self.boundary_blend_ms, (int, float)
         ):
-            raise ValueError("boundary_blend_ms must be finite and non-negative")
+            raise TypeError("boundary_blend_ms must be finite and non-negative")
         if (
             not math.isfinite(float(self.boundary_blend_ms))
             or self.boundary_blend_ms < 0

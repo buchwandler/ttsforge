@@ -106,12 +106,12 @@ class TestModelPaths:
         path = get_model_path("fp32")
         assert isinstance(path, Path)
         # The actual filename includes subdirectory for HuggingFace
-        self._assert_model_filename(path, MODEL_QUALITY_FILES_HF["fp32"])
+        self._assert_model_filename(path, "fp32.onnx")
 
     def test_get_model_path_q8(self):
         """Should return correct path for q8 quality."""
         path = get_model_path("q8")
-        self._assert_model_filename(path, MODEL_QUALITY_FILES_HF["q8"])
+        self._assert_model_filename(path, "q8.onnx")
 
     def test_get_model_filename(self):
         """Should return correct filename for each quality."""

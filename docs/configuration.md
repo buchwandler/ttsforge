@@ -3,6 +3,10 @@
 ttsforge stores its configuration in a JSON file and provides a CLI interface for
 managing settings.
 
+The active generation stack is PyKokoro 0.9 with kokorog2p 0.9.2, phrasplit 0.3.7, and
+SSMD 0.8.6. Omitted model and voice settings remain `None` so PyKokoro can select
+language-aware metadata defaults.
+
 ## Configuration File Location
 
 The configuration file is stored at:
@@ -106,7 +110,7 @@ Name extraction additionally accepts `--spacy-model`, `--spacy-model-size`, and
 `--language`; its output metadata records the concrete NER-capable package. Existing
 configurations without these keys migrate to automatic selection.
 
-### SSMD 0.8 policies
+### SSMD 0.8.6 policies
 
 The following keys configure SSMD rendering. Persistent configuration is lower
 precedence than a document header; explicit CLI/API values are higher precedence. Do not
@@ -179,13 +183,13 @@ local/HTTPS audio annotation resolution. Remote audio is opt-in.
 
 ### Voice and Language Settings
 
-`default_voice` : Default TTS voice to use.
+`default_voice` : Optional default TTS voice. When `None`, PyKokoro selects the profile
+default for the document language from metadata.
 
-- Type: string
-- Default: `af_heart`
-- Example: `ttsforge config --set default_voice am_adam`
-
-`default_language` : Default language code.
+- Type: string or null
+- Default: `None`
+- Example: `ttsforge config --set default_voice am_adam` `default_language` : Default
+  language code.
 
 - Type: string
 - Default: `a` (American English)
@@ -233,19 +237,25 @@ availability.
 - Default: `false`
 - Example: `ttsforge config --set use_gpu true`
 
-`model_quality` : ONNX model quality/quantization.
+`model_quality` : Optional ONNX model quality/quantization. When `None`, PyKokoro
+resolves the profile-supported default quality.
 
-- Type: string
-- Default: `fp32`
+- Type: string or null
+- Default: `None`
 - Choices: `fp32`, `fp16`, `q8`, `q8f16`, `q4`, `q4f16`, `uint8`, `uint8f16`
 - Example: `ttsforge config --set model_quality fp16`
 
-`model_variant` : Model variant to download.
+`model_source` : Optional model source. Omit it for PyKokoro metadata-driven selection.
 
-- Type: string
-- Default: `v1.0`
-- Choices: `v1.0`, `v1.1-zh`, `v1.1-de`
-- Example: `ttsforge config --set model_variant v1.1-de`
+- Type: string or null
+- Default: `None`
+- Choices: `github`, `huggingface`
+
+`model_variant` : Optional model profile variant. Omit it for automatic selection.
+
+- Type: string or null
+- Default: `None`
+- Explicit examples: `v1.0` and German `v1.2-de-martin` (voice `martin`)
 
 `auto_detect_language` : Automatically detect language from EPUB metadata.
 
@@ -281,37 +291,14 @@ saved choice is restored on resume and cannot be changed without `--fresh`.
 
 ### Mixed-Language Settings
 
-`use_mixed_language` : Enable automatic detection and handling of multiple languages in
-text.
+TTSForge does not automatically detect language changes. Mark each change explicitly in
+SSMD, for example `[Welt]{lang="de"}`. The document language is still required for the
+overall pipeline and model selection.
 
-- Type: boolean
-- Default: `false`
-- Requires: `lingua-language-detector` package (`pip install lingua-language-detector`)
-- Example: `ttsforge config --set use_mixed_language true`
-
-`mixed_language_primary` : Primary/fallback language for mixed-language mode.
-
-- Type: string or null
-- Default: `None`
-- Supported: `en-us`, `en-gb`, `de`, `fr-fr`, `es`, `it`, `pt`, `pl`, `tr`, `ru`, `ko`,
-  `ja`, `zh`/`cmn`
-- Example: `ttsforge config --set mixed_language_primary de`
-
-`mixed_language_allowed` : List of languages allowed for auto-detection in
-mixed-language mode.
-
-- Type: list of strings or null
-- Default: `None`
-- Required when `use_mixed_language` is enabled
-- Example: `ttsforge config --set mixed_language_allowed "['de', 'en-us']"`
-
-`mixed_language_confidence` : Confidence threshold for language detection (0.0-1.0).
-
-- Type: float
-- Default: `0.7`
-- Range: `0.0` to `1.0`
-- Higher values require more confidence before switching languages
-- Example: `ttsforge config --set mixed_language_confidence 0.8`
+`use_mixed_language` is a deprecated compatibility setting. `true` is rejected with
+migration guidance, and `false` is accepted only as a transitional value.
+`mixed_language_primary`, `mixed_language_allowed`, and `mixed_language_confidence` are
+obsolete and non-default values are rejected.
 
 ### Audio Timing Settings
 
@@ -529,21 +516,12 @@ details.
   - `Untitled`
   - Fallback title
 * - `use_mixed_language`
-  - boolean
+  - boolean (deprecated compatibility setting)
   - `false`
-  - Enable mixed-language mode
-* - `mixed_language_primary`
-  - string/null
-  - `None`
-  - Primary language for mixed mode
-* - `mixed_language_allowed`
-  - list/null
-  - `None`
-  - Allowed languages list
-* - `mixed_language_confidence`
-  - float
-  - `0.7`
-  - Language detection threshold
+  - `true` is rejected; use explicit SSMD `lang` spans
+* - `mixed_language_primary`, `mixed_language_allowed`, `mixed_language_confidence`
+  - deprecated/obsolete
+  - not used for automatic detection
 ```
 
 ## Example Configuration File
@@ -557,8 +535,9 @@ Here's an example `config.json` with custom settings:
   "default_speed": 1.1,
   "default_format": "m4b",
   "onnx_provider": "auto",
-  "model_quality": "fp32",
-  "model_variant": "v1.0",
+  "model_quality": null,
+  "model_source": null,
+  "model_variant": null,
   "silence_between_chapters": 2.5,
   "pause_clause": 0.5,
   "pause_sentence": 0.7,
@@ -619,7 +598,7 @@ state saves, final merging, and converter cleanup. RSS may remain elevated becau
 native allocators retain high-water pages; that alone is not evidence of a provider
 leak.
 
-TTSForge requires PyKokoro `>=0.8.4,<0.9`, uses compact segment results, and releases
+TTSForge requires PyKokoro `>=0.9.0,<0.10`, uses compact segment results, and releases
 completed chapter audio before the next chapter synthesis. Whole-chapter synthesis
 remains buffered and streaming is future work.
 

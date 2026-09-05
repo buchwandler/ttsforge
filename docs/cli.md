@@ -38,7 +38,8 @@ the same directory.
 - Single voice: `af_heart`, `am_adam`, etc.
 - Voice blend: `af_nicole:50,am_michael:50` (auto-detects blend format)
 
-See {doc}`voices` for available voices. Default: `af_heart`.
+See {doc}`voices` for PyKokoro metadata-discovered voices. Omit the option to use the
+profile default for the document language.
 
 `-l, --language LANG` : Language code for TTS. Choices: `a` (American English), `b`
 (British English), `e` (Spanish), `f` (French), `h` (Hindi), `i` (Italian), `j`
@@ -91,7 +92,7 @@ chapter content. Default: enabled.
 
 `--cover PATH` : Cover image for M4B format.
 
-### SSMD 0.8 options
+### SSMD 0.8.6 options
 
 `--ssmd-header / --no-ssmd-header` : Parse or preserve an exact leading front-matter
 block.
@@ -199,18 +200,12 @@ overrides.
 `--phoneme-dict-case-sensitive` : Make phoneme dictionary matching case-sensitive
 (default: case-insensitive).
 
-`--use-mixed-language` : Enable mixed-language support (auto-detect multiple languages
-in text).
+`--use-mixed-language` : Deprecated compatibility option. `true` is rejected because
+TTSForge does not automatically detect language changes.
 
-`--mixed-language-primary LANG` : Primary language for mixed-language mode (e.g., `de`,
-`en-us`). This language is used as the fallback when detection is uncertain.
-
-`--mixed-language-allowed LANGS` : Comma-separated list of allowed languages for
-detection (e.g., `de,en-us`). Required when `--use-mixed-language` is enabled.
-
-`--mixed-language-confidence FLOAT` : Detection confidence threshold for mixed-language
-mode (0.0-1.0). Default: `0.7`. Higher values require more confidence for language
-switches.
+`--mixed-language-primary`, `--mixed-language-allowed`, and
+`--mixed-language-confidence` are deprecated compatibility options. Use explicit SSMD
+spans such as `[Welt]{lang="de"}` instead.
 
 Phoneme export exposes the same spaCy request options and stores the concrete sentence
 model in export metadata. Name extraction exposes `--spacy-model`, `--spacy-model-size`,
@@ -371,20 +366,13 @@ ttsforge sample [TEXT] [OPTIONS]
 
 **Note:** Playback requires the optional `ttsforge[audio]` extra.
 
-`--use-mixed-language` : Enable mixed-language support (auto-detect multiple languages
-in text).
+`--use-mixed-language` : Deprecated compatibility option. `true` is rejected because
+automatic mixed-language detection is not provided.
 
-`--mixed-language-primary LANG` : Primary language for mixed-language mode (e.g., `de`,
-`en-us`).
-
-`--mixed-language-allowed LANGS` : Comma-separated list of allowed languages (e.g.,
-`de,en-us`).
-
-`--mixed-language-confidence FLOAT` : Detection confidence threshold (0.0-1.0). Default:
-`0.7`.
-
-`--phoneme-dict PATH` : Path to custom phoneme dictionary JSON file for pronunciation
-overrides.
+`--mixed-language-primary`, `--mixed-language-allowed`, and
+`--mixed-language-confidence` are deprecated. Use explicit SSMD spans such as
+`[Welt]{lang="de"}`. `--phoneme-dict PATH` : Path to custom phoneme dictionary JSON file
+for pronunciation overrides.
 
 `--phoneme-dict-case-sensitive` : Make phoneme dictionary matching case-sensitive
 (default: case-insensitive).
@@ -400,13 +388,6 @@ ttsforge sample "Hello, this is a test."
 
 # With voice and output options
 ttsforge sample "Testing voice" --voice am_adam -o test.wav
-
-# Mixed-language sample
-ttsforge sample \
-   "Das ist ein Test. This is a test." \
-   --use-mixed-language \
-   --mixed-language-primary de \
-   --mixed-language-allowed de,en-us
 ```
 
 ## read

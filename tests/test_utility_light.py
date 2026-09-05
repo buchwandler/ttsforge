@@ -64,7 +64,7 @@ def test_pykokoro_asset_api_owns_source_specific_voice_filenames() -> None:
     huggingface = get_model_asset_paths(
         source="huggingface", variant="v1.0", quality="fp32"
     )
-    assert github.voices.name == "voices-v1.0.bin"
+    assert github.voices.name == "voices-v1.0.npz"
     assert huggingface.voices.name == "voices.bin.npz"
 
 
@@ -193,20 +193,12 @@ def test_demo_combined_gap_uses_exact_generated_silence(monkeypatch, tmp_path) -
         def close(self) -> None:
             pass
 
-    monkeypatch.setattr(commands_utility, "load_config", lambda: {})
+    monkeypatch.setattr(commands_utility, "load_config", dict)
     monkeypatch.setattr(
         commands_utility, "resolve_onnx_provider", lambda *args, **kwargs: "cpu"
     )
-    monkeypatch.setattr(commands_utility, "Kokoro", lambda **kwargs: Backend())
-    monkeypatch.setattr(commands_utility, "KokoroPipeline", Pipeline)
     monkeypatch.setattr(
-        commands_utility, "OnnxPhonemeProcessorAdapter", lambda backend: backend
-    )
-    monkeypatch.setattr(
-        commands_utility, "OnnxAudioGenerationAdapter", lambda backend: backend
-    )
-    monkeypatch.setattr(
-        commands_utility, "OnnxAudioPostprocessingAdapter", lambda backend: backend
+        commands_utility, "build_standard_pipeline", lambda **kwargs: Pipeline()
     )
 
     output = tmp_path / "demo.wav"

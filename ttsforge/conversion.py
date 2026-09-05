@@ -13,7 +13,7 @@ import time
 from collections.abc import Callable, Mapping, Sequence
 from dataclasses import dataclass, field
 from pathlib import Path, PurePosixPath, PureWindowsPath
-from typing import TYPE_CHECKING, Any, Literal, cast
+from typing import TYPE_CHECKING, Any, Literal, Self, cast
 
 import numpy as np
 import soundfile as sf
@@ -848,11 +848,37 @@ def validate_generation_ranges(
             raise ValueError(f"{name} must be non-negative")
 
 
+def validate_legacy_mixed_language(options: Any) -> None:
+    """Reject the removed PyKokoro tokenizer language-detection settings."""
+    if getattr(options, "use_mixed_language", False):
+        raise ValueError(
+            "Automatic mixed-language detection is no longer provided by the "
+            "PyKokoro 0.9 tokenizer. TTSForge requires an explicit document "
+            'language and SSMD language spans such as [Welt]{lang="de"}. '
+            "Disable use_mixed_language and annotate language changes explicitly."
+        )
+    if (
+        any(
+            getattr(options, name, None) is not None
+            for name in (
+                "mixed_language_primary",
+                "mixed_language_allowed",
+            )
+        )
+        or getattr(options, "mixed_language_confidence", 0.7) != 0.7
+    ):
+        raise ValueError(
+            "The mixed_language_primary, mixed_language_allowed, and "
+            "mixed_language_confidence settings are obsolete with PyKokoro 0.9. "
+            "Use an explicit document language and SSMD lang spans instead."
+        )
+
+
 @dataclass
 class ConversionOptions:
     """Options for TTS conversion."""
 
-    voice: str = "af_bella"
+    voice: str | None = None
     language: str = "a"
     speed: float = 1.0
     output_format: str = "m4b"
@@ -907,9 +933,9 @@ class ConversionOptions:
     # Filename template for chapter files
     chapter_filename_template: str = "{chapter_num:03d}_{book_title}_{chapter_title}"
     # Custom ONNX model path (None = use default downloaded model)
-    model_quality: ModelQuality | None = DEFAULT_MODEL_QUALITY
-    model_source: ModelSource = DEFAULT_MODEL_SOURCE
-    model_variant: ModelVariant = DEFAULT_MODEL_VARIANT
+    model_quality: ModelQuality | None = None
+    model_source: ModelSource | None = None
+    model_variant: ModelVariant | None = None
     model_path: Path | None = None
     # Custom voices.bin path (None = use default downloaded voices)
     voices_path: Path | None = None
@@ -932,6 +958,7 @@ class ConversionOptions:
         return "auto" if self.use_gpu else "cpu"
 
     def __post_init__(self) -> None:
+        validate_legacy_mixed_language(self)
         from .spacy_policy import normalize_spacy_model, normalize_spacy_model_size
 
         self.spacy_model = normalize_spacy_model(self.spacy_model)
@@ -1040,7 +1067,7 @@ class TTSConverter:
         finally:
             log_snapshot(self.log, "after converter close", provider=provider)
 
-    def __enter__(self) -> TTSConverter:
+    def __enter__(self) -> Self:
         return self
 
     def __exit__(self, exc_type: object, exc: object, tb: object) -> None:
@@ -1062,10 +1089,6 @@ class TTSConverter:
             use_spacy=self.options.use_spacy,
             spacy_model=self.options.spacy_model,
             spacy_model_size=self.options.spacy_model_size,
-            use_mixed_language=self.options.use_mixed_language,
-            mixed_language_primary=self.options.mixed_language_primary,
-            mixed_language_allowed=self.options.mixed_language_allowed,
-            mixed_language_confidence=self.options.mixed_language_confidence,
             phoneme_dictionary_path=self.options.phoneme_dictionary_path,
             phoneme_dict_case_sensitive=self.options.phoneme_dict_case_sensitive,
         )
@@ -1073,6 +1096,7 @@ class TTSConverter:
         opts = KokoroRunOptions(
             voice=self.options.voice,
             speed=self.options.speed,
+            language=get_onnx_lang_code(self.options.language),
             use_gpu=self.options.use_gpu,
             onnx_provider=self.options.effective_onnx_provider(),
             pause_clause=self.options.pause_clause,
@@ -1352,7 +1376,7 @@ class TTSConverter:
             if result is not None:
                 try:
                     result.release_audio()
-                except Exception as exc:
+                except (OSError, RuntimeError) as exc:
                     self.log(
                         f"Failed to release PyKokoro audio buffers: {exc}",
                         "warning",
@@ -1583,7 +1607,7 @@ class TTSConverter:
                                 "unit_index": unit.unit_index,
                             }
                         )
-                base_samples += int(round(unit.duration * unit.sample_rate))
+                base_samples += round(unit.duration * unit.sample_rate)
         return records
 
     def _merge_paragraph_state(
@@ -1897,20 +1921,21 @@ class TTSConverter:
                                 f"sequence={difference.index}",
                                 f"(displayed={difference.index + 1}),",
                                 "chapter_position="
-                                f"{getattr(planned_unit, 'chapter_position', '?')},",
+                                + f"{getattr(planned_unit, 'chapter_position', '?')},",
                                 f"chapter={chapter_position + 1} {chapter.title!r},",
                                 f"kind={getattr(planned_unit, 'kind', '?')},",
                                 "chapter_unit_index="
-                                f"{getattr(planned_unit, 'chapter_unit_index', '?')},",
+                                + f"{getattr(planned_unit, 'chapter_unit_index', '?')}"
+                                ",",
                                 "source_paragraph_index="
-                                f"{planned_source_paragraph_index},",
+                                + f"{planned_source_paragraph_index},",
                                 f"field={difference.field},",
                                 f"saved={difference.saved!r},",
                                 f"planned={difference.planned!r},",
                                 "saved_char_count="
-                                f"{getattr(saved_unit, 'char_count', '?')},",
+                                + f"{getattr(saved_unit, 'char_count', '?')},",
                                 "planned_char_count="
-                                f"{getattr(planned_unit, 'char_count', '?')},",
+                                + f"{getattr(planned_unit, 'char_count', '?')},",
                                 f"saved_ssmd_hash={saved_ssmd_hash!r},",
                                 f"planned_ssmd_hash={ssmd_hash!r},",
                                 f"preparation_seed={effective_seed!r}.",
@@ -2123,7 +2148,7 @@ class TTSConverter:
                     finally:
                         try:
                             result.release_audio()
-                        except Exception as exc:
+                        except (OSError, RuntimeError) as exc:
                             self.log(
                                 f"Failed to release PyKokoro unit audio: {exc}",
                                 "warning",
@@ -2373,6 +2398,22 @@ class TTSConverter:
                 state.generation_identity, current_identity.payload
             )
             if differences or state.generation_fingerprint != current_fingerprint:
+                renderer_contract_changed = any(
+                    difference.path.startswith("ssmd_policy.renderer_contract")
+                    and difference.saved is not None
+                    for difference in differences
+                )
+                if renderer_contract_changed:
+                    self.log(
+                        "Saved renderer/preparation contract is incompatible with "
+                        "PyKokoro 0.9; restart is required",
+                        "warning",
+                    )
+                    return ResumeValidation(
+                        reusable=False,
+                        reason="renderer-contract-changed",
+                        differences=differences,
+                    )
                 legacy_runtime_only = bool(differences) and all(
                     difference.path
                     in {
@@ -2461,7 +2502,7 @@ class TTSConverter:
                         return ResumeValidation(
                             reusable=False, reason="audio-file-invalid"
                         )
-                except Exception:
+                except (OSError, ValueError, KeyError):
                     return ResumeValidation(
                         reusable=False, reason="audio-file-unreadable"
                     )
@@ -2496,7 +2537,7 @@ class TTSConverter:
             )
         return ResumeValidation(reusable=True)
 
-    def convert_chapters_resumable(  # noqa: C901 - Complex but necessary for resume logic
+    def convert_chapters_resumable(
         self,
         chapters: list[Chapter],
         output_path: Path,
@@ -3211,10 +3252,10 @@ class TTSConverter:
                 markers=aggregate_markers,
             )
 
-        except Exception as e:
+        except (OSError, RuntimeError, ValueError) as e:
             import traceback
 
-            error_msg = f"{str(e)}\n\nTraceback:\n{traceback.format_exc()}"
+            error_msg = f"{e!s}\n\nTraceback:\n{traceback.format_exc()}"
             return ConversionResult(success=False, error_message=error_msg)
         finally:
             prevent_sleep_end()
@@ -3299,7 +3340,7 @@ class TTSConverter:
         try:
             parser = EPUBParser(str(epub_path))
             epub_chapters = parser.get_chapters()
-        except Exception as e:
+        except (OSError, ValueError, KeyError) as e:
             return ConversionResult(
                 success=False,
                 error_message=f"Failed to parse EPUB: {e}",

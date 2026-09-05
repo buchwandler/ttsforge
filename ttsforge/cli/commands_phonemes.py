@@ -81,7 +81,6 @@ def phonemes() -> None:
     - Faster repeated conversions (skip phonemization step)
     - Archiving phoneme data for different vocabulary versions
     """
-    pass
 
 
 def phonemes_export(
@@ -153,7 +152,7 @@ def phonemes_export(
         )
         metadata = reader.get_metadata()
         epub_chapters = reader.get_chapters()
-    except Exception as e:
+    except (OSError, ValueError, KeyError) as e:
         console.print(f"[red]Error loading file:[/red] {e}")
         sys.exit(1)
 
@@ -218,7 +217,7 @@ def phonemes_export(
     console.print(f"[dim]Initializing tokenizer (vocab: {vocab_version})...[/dim]")
     try:
         tokenizer = Tokenizer(vocab_version=vocab_version)
-    except Exception as e:
+    except (ImportError, OSError, RuntimeError) as e:
         console.print(f"[red]Error initializing tokenizer:[/red] {e}")
         sys.exit(1)
 
@@ -377,7 +376,7 @@ def phonemes_convert(
 
     try:
         book = PhonemeBook.load(phoneme_file)
-    except Exception as e:
+    except (OSError, ValueError, KeyError) as e:
         console.print(f"[red]Error loading phoneme file:[/red] {e}")
         sys.exit(1)
 
@@ -555,10 +554,9 @@ def phonemes_convert(
     mode_str = "streaming" if streaming else "resumable (chapter-at-a-time)"
     console.print(f"[dim]Mode: {mode_str}[/dim]")
 
-    if not yes:
-        if not Confirm.ask("Proceed with conversion?"):
-            console.print("[yellow]Cancelled.[/yellow]")
-            return
+    if not yes and not Confirm.ask("Proceed with conversion?"):
+        console.print("[yellow]Cancelled.[/yellow]")
+        return
 
     # Progress tracking with Rich
     progress_bar: Progress | None = None
@@ -673,7 +671,7 @@ def phonemes_preview(
 
     try:
         tokenizer = Tokenizer(vocab_version=vocab_version)
-    except Exception as e:
+    except (ImportError, OSError, RuntimeError) as e:
         console.print(f"[red]Error initializing tokenizer:[/red] {e}")
         sys.exit(1)
 
@@ -748,7 +746,7 @@ def phonemes_preview(
                 if temp_output.exists():
                     temp_output.unlink()
 
-        except Exception as e:
+        except (OSError, RuntimeError, ValueError) as e:
             console.print(f"[red]Error playing audio:[/red] {e}")
             import traceback
 
@@ -767,7 +765,7 @@ def phonemes_info(phoneme_file: Path, stats: bool) -> None:
 
     try:
         book = PhonemeBook.load(phoneme_file)
-    except Exception as e:
+    except (OSError, ValueError, KeyError) as e:
         console.print(f"[red]Error loading phoneme file:[/red] {e}")
         sys.exit(1)
 

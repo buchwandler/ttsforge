@@ -22,21 +22,22 @@ AudioSig does not replace TTSForge's file, FFmpeg, or audiobook orchestration la
 
 ### PyKokoro, kokorog2p, and spaCy model policy
 
-The package requires released PyKokoro `>=0.8.4,<0.9`, kokorog2p `>=0.8.0,<0.9`, SSMD
-`>=0.8.1,<0.9`, and phrasplit `>=0.3.4,<0.4`. TTSForge directly owns the PyKokoro and
-kokorog2p runtime boundary; the ownership chain is
-`TTSForge -> PyKokoro -> kokorog2p -> Spokenform/abbr2words`. These releases provide the
-public spaCy request/resolution and memory-ownership APIs used by TTSForge. TTSForge
-selects only already installed spaCy packages and never downloads them automatically.
-The default `use_spacy=null` policy selects the highest compatible local model and falls
-back to non-spaCy splitting when no compatible model is installed. `use_spacy=true`,
-`--spacy`, an exact package, or an exact tier is strict; `use_spacy=false` and
-`--no-spacy` disable spaCy.
+The package requires PyKokoro `>=0.9.0,<0.10`, kokorog2p `>=0.9.2,<1.0`, SSMD
+`>=0.8.6,<0.9`, and phrasplit `>=0.3.7,<0.4`. TTSForge forwards document language and
+ONNX provider through the PyKokoro 0.9 pipeline. Omitted model and voice values use
+PyKokoro metadata discovery; explicit profiles, custom model paths, and voice databases
+remain supported.
+
+PyKokoro owns written-form preparation and language-aware model selection.
+Mixed-language changes must be explicit SSMD spans such as `[Welt]{lang="de"}`. TTSForge
+no longer provides automatic mixed-language detection, and the legacy mixed-language
+settings are rejected with migration guidance.
+
+The default `use_spacy=null` policy selects the highest compatible installed local model
+and falls back when none is installed; strict requests require a model.
 
 Users should not install `spokenform` separately for TTSForge. The compatible kokorog2p
-release owns its Spokenform and abbr2words constraints. The exact PyKokoro 0.8.4 and
-kokorog2p 0.8.0 releases must be available from the package index before installing the
-TTSForge 0.3.4 release.
+release owns its Spokenform and abbr2words constraints.
 
 Install one or more compatible local spaCy packages when strict behavior or higher
 quality automatic selection is wanted:
@@ -228,31 +229,12 @@ result release, state saves, final merging, and converter cleanup. Native alloca
 retain pages at a high-water mark after audio release; this diagnostic does not claim a
 provider-native leak from RSS alone.
 
-## Mixed-Language Support (Optional)
+## Mixed-Language Support
 
-For automatic detection and handling of multiple languages in text (e.g., German text
-with English technical terms):
-
-```bash
-pip install lingua-language-detector
-```
-
-Then enable mixed-language mode:
-
-```bash
-ttsforge config --set use_mixed_language true
-ttsforge config --set mixed_language_primary de
-ttsforge config --set mixed_language_allowed "['de', 'en-us']"
-```
-
-Or use the `--use-mixed-language` flag with commands:
-
-```bash
-ttsforge convert book.epub \
-    --use-mixed-language \
-    --mixed-language-primary de \
-    --mixed-language-allowed de,en-us
-```
+Mixed-language changes must be explicit SSMD spans, for example `[Welt]{lang="de"}`.
+TTSForge does not automatically detect language changes. The legacy
+`use_mixed_language=true` setting and related CLI options are rejected with migration
+guidance.
 
 ## Downloading Models
 

@@ -9,7 +9,7 @@ import json
 import logging
 from collections import Counter
 from collections.abc import Callable
-from datetime import datetime
+from datetime import datetime, timezone
 from pathlib import Path
 from typing import Any, cast
 
@@ -259,7 +259,7 @@ def generate_phoneme_suggestions(
                 "occurrences": count,
                 "suggestion_quality": "auto",
             }
-        except Exception as e:
+        except (OSError, RuntimeError, ValueError) as e:
             logger.warning(f"Failed to generate phoneme for '{name}': {e}")
             # Add placeholder
             suggestions[name] = {
@@ -288,7 +288,7 @@ def save_phoneme_dictionary(
         language: Language code for metadata
     """
     metadata = {
-        "generated_at": datetime.now().isoformat(),
+        "generated_at": datetime.now(tz=timezone.utc).isoformat(),
         "language": language,
         "total_names": len(names_with_phonemes),
         "note": (

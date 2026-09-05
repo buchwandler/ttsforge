@@ -24,8 +24,6 @@ from kokorog2p.vocab import (
     ids_to_phonemes,
 )
 
-if TYPE_CHECKING:
-    pass
 
 # Default version identifier (for compatibility)
 DEFAULT_VERSION = "v1.0"
@@ -121,19 +119,19 @@ def list_versions() -> list[str]:
 __all__ = [
     # Compatibility functions
     "DEFAULT_VERSION",
-    "SUPPORTED_VERSIONS",
-    "get_config_path",
-    "is_config_downloaded",
-    "load_vocab",
-    "get_vocab_info",
-    "list_versions",
     # kokorog2p re-exports
     "N_TOKENS",
     "PAD_IDX",
-    "encode",
+    "SUPPORTED_VERSIONS",
     "decode",
-    "validate_for_kokoro",
+    "encode",
     "filter_for_kokoro",
-    "phonemes_to_ids",
+    "get_config_path",
+    "get_vocab_info",
     "ids_to_phonemes",
+    "is_config_downloaded",
+    "list_versions",
+    "load_vocab",
+    "phonemes_to_ids",
+    "validate_for_kokoro",
 ]

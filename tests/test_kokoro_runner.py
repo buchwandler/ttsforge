@@ -1,6 +1,7 @@
 """Tests for ttsforge.kokoro_runner."""
 
 from pathlib import Path
+from typing import ClassVar
 
 import numpy as np
 import pytest
@@ -33,6 +34,9 @@ def test_kokoro_runner_passes_short_sentence_config_to_backend(monkeypatch):
         def __init__(self, **kwargs):
             captured.update(kwargs)
 
+        def get_voice_from_database(self, voice):
+            return None
+
     def fake_build_pipeline(**kwargs):
         return object()
 
@@ -49,6 +53,7 @@ def test_kokoro_runner_passes_short_sentence_config_to_backend(monkeypatch):
         pause_variance=0.05,
         model_path=Path("model.onnx"),
         voices_path=Path("voices.bin"),
+        voice_database=Path("voices.db"),
         short_sentence_config=short_sentence_config,
     )
 
@@ -112,6 +117,9 @@ def test_kokoro_runner_builds_ssmd_pipeline_config_and_returns_result(monkeypatc
         def __init__(self, **kwargs):
             pass
 
+        def get_voice_from_database(self, voice):
+            return None
+
     class FakePipeline:
         def run(self, text, **kwargs):
             captured.update(kwargs)
@@ -139,6 +147,7 @@ def test_kokoro_runner_builds_ssmd_pipeline_config_and_returns_result(monkeypatc
             model_path=Path("model.onnx"),
             voices_path=Path("voices.bin"),
             ssmd_policy=policy,
+            voice_database=Path("voices.db"),
         ),
         log=lambda message, level="info": None,
     )
@@ -160,6 +169,9 @@ def test_kokoro_runner_passes_provider_to_backend(monkeypatch):
     class FakeKokoro:
         def __init__(self, **kwargs):
             captured.update(kwargs)
+
+        def get_voice_from_database(self, voice):
+            return None
 
     monkeypatch.setattr("ttsforge.kokoro_runner.Kokoro", FakeKokoro)
     monkeypatch.setattr(
@@ -234,7 +246,7 @@ def test_short_sentence_stats_read_compact_segment_metadata() -> None:
     class CompactSegment:
         raw_audio = None
         processed_audio = None
-        ssmd_metadata = {
+        ssmd_metadata: ClassVar[dict] = {
             SHORT_SENTENCE_META_KEY: {
                 "retry_attempts": 2,
                 "fallback_used": "wrap",
@@ -250,6 +262,11 @@ def test_short_sentence_stats_read_compact_segment_metadata() -> None:
     assert (stats.total, stats.retries, stats.fallbacks) == (1, 2, 1)
 
 
+class FakeBackend:
+    def get_voice_from_database(self, voice):
+        return None
+
+
 def _runner_options(**kwargs):
     values = {
         "voice": "af_heart",
@@ -262,9 +279,38 @@ def _runner_options(**kwargs):
         "model_source": "github",
         "model_variant": "v1.0",
         "model_quality": "fp32",
+        "voice_database": Path("voices.db"),
     }
     values.update(kwargs)
     return KokoroRunOptions(**values)
+
+
+def test_standard_runner_forwards_language_provider_and_auto_models(monkeypatch):
+    captured = {}
+    monkeypatch.setattr(
+        "ttsforge.pykokoro_adapter.build_standard_pipeline",
+        lambda **kwargs: captured.update(kwargs) or object(),
+    )
+    opts = KokoroRunOptions(
+        voice=None,
+        speed=1.0,
+        use_gpu=False,
+        pause_clause=0.3,
+        pause_sentence=0.5,
+        pause_paragraph=0.9,
+        pause_variance=0.05,
+        language="de",
+        onnx_provider="nnapi",
+    )
+
+    KokoroRunner(opts, log=lambda message, level="info": None).ensure_ready()
+
+    assert captured["voice"] is None
+    assert captured["generation"].lang == "de"
+    assert captured["provider"] == "nnapi"
+    assert captured["model_quality"] is None
+    assert captured["model_source"] is None
+    assert captured["model_variant"] is None
 
 
 def test_runner_readiness_uses_source_variant_quality_and_skips_complete_download(
@@ -276,7 +322,7 @@ def test_runner_readiness_uses_source_variant_quality_and_skips_complete_downloa
         "ttsforge.kokoro_runner.are_models_downloaded",
         lambda **kwargs: calls.update(kwargs) or True,
     )
-    monkeypatch.setattr("ttsforge.kokoro_runner.Kokoro", lambda **kwargs: object())
+    monkeypatch.setattr("ttsforge.kokoro_runner.Kokoro", lambda **kwargs: FakeBackend())
     monkeypatch.setattr(
         "ttsforge.kokoro_runner.build_pipeline", lambda **kwargs: object()
     )
@@ -298,7 +344,7 @@ def test_runner_downloads_only_incomplete_configured_source(monkeypatch):
         "ttsforge.kokoro_runner.are_models_downloaded",
         lambda **kwargs: calls.update(kwargs) or False,
     )
-    monkeypatch.setattr("ttsforge.kokoro_runner.Kokoro", lambda **kwargs: object())
+    monkeypatch.setattr("ttsforge.kokoro_runner.Kokoro", lambda **kwargs: FakeBackend())
     monkeypatch.setattr(
         "ttsforge.kokoro_runner.build_pipeline", lambda **kwargs: object()
     )
@@ -319,7 +365,7 @@ def test_runner_downloads_incomplete_huggingface_set(monkeypatch):
     monkeypatch.setattr(
         "ttsforge.kokoro_runner.are_models_downloaded", lambda **kwargs: False
     )
-    monkeypatch.setattr("ttsforge.kokoro_runner.Kokoro", lambda **kwargs: object())
+    monkeypatch.setattr("ttsforge.kokoro_runner.Kokoro", lambda **kwargs: FakeBackend())
     monkeypatch.setattr(
         "ttsforge.kokoro_runner.build_pipeline", lambda **kwargs: object()
     )

@@ -2,6 +2,7 @@
 
 import tempfile
 from pathlib import Path
+from typing import ClassVar
 from unittest.mock import MagicMock
 
 import numpy as np
@@ -230,7 +231,7 @@ class TestConversionOptions:
     def test_default_values(self):
         """Should have sensible defaults."""
         options = ConversionOptions()
-        assert options.voice == "af_bella"
+        assert options.voice is None
         assert options.language == "a"
         assert options.speed == 1.0
         assert options.output_format == "m4b"
@@ -508,9 +509,8 @@ class TestTTSConverterInit:
         runner = MagicMock()
         converter._runner = runner
 
-        with pytest.raises(RuntimeError, match="boom"):
-            with converter:
-                raise RuntimeError("boom")
+        with pytest.raises(RuntimeError, match="boom"), converter:
+            raise RuntimeError("boom")
 
         runner.close.assert_called_once_with()
 
@@ -525,9 +525,11 @@ class TestChapterRendering:
         class Result:
             audio = np.array([0.0, 0.25, -0.25], dtype=np.float32)
             sample_rate = 16000
-            markers = [{"name": "start", "char_offset": 2, "sample_offset": 16000}]
+            markers: ClassVar[list] = [
+                {"name": "start", "char_offset": 2, "sample_offset": 16000}
+            ]
             trace = type("Trace", (), {"warnings": ["ssmd.warning: copied"]})()
-            document_metadata = {
+            document_metadata: ClassVar[dict] = {
                 "title": "Title",
                 "voice_bindings": {"narrator": "af_bella"},
                 "pause_defaults": {"sentence": "250ms"},

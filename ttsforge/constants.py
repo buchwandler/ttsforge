@@ -162,8 +162,9 @@ FFMPEG_FORMATS = ["m4b", "opus"]
 SOUNDFILE_FORMATS = ["wav", "mp3", "flac"]
 
 # Default configuration values
+# None lets PyKokoro 0.9 resolve a language-aware voice profile.
 DEFAULT_CONFIG = {
-    "default_voice": "af_heart",
+    "default_voice": None,
     "default_language": "a",
     "default_speed": 1.0,
     "default_format": "m4b",
@@ -175,9 +176,9 @@ DEFAULT_CONFIG = {
     "spacy_model": None,
     "spacy_model_size": None,
     # Model quality: fp32, fp16, q8, q8f16, q4, q4f16, uint8, uint8f16
-    "model_quality": "fp32",
-    "model_source": DEFAULT_MODEL_SOURCE,
-    "model_variant": "v1.0",
+    "model_quality": None,
+    "model_source": None,
+    "model_variant": None,
     "silence_between_chapters": 2.0,
     "save_chapters_separately": False,
     "merge_at_end": True,
@@ -204,11 +205,7 @@ DEFAULT_CONFIG = {
     "phoneme_export_template": "{book_title}",
     # Fallback title when metadata is missing
     "default_title": "Untitled",
-    # Mixed-language phonemization settings (disabled by default)
-    "use_mixed_language": False,  # Enable automatic language detection
-    "mixed_language_primary": None,  # Primary language (None = use current lang)
-    "mixed_language_allowed": None,  # List of allowed languages (required if enabled)
-    "mixed_language_confidence": 0.7,  # Detection confidence threshold (0.0-1.0)
+    # Mixed-language changes are represented by explicit SSMD lang spans.
     # SSMD 0.8 rendering policies.  Pause values above remain pipeline
     # defaults; they are intentionally not implicit SSMD header overrides.
     "ssmd_parse_header": True,
@@ -250,9 +247,9 @@ SAMPLE_TEXTS = {
     "d": "Dies ist ein Beispiel für die ausgewählte Stimme.",
     "e": "Este es una muestra de la voz seleccionada.",
     "f": "Ceci est un exemple de la voix sélectionnée.",
-    "h": "यह चयनित आवाज़ का एक नमूना है।",  # noqa: E501
+    "h": "यह चयनित आवाज़ का एक नमूना है।",
     "i": "Questo è un esempio della voce selezionata.",
-    "j": "これは選択した声のサンプルです。",  # noqa: E501
+    "j": "これは選択した声のサンプルです。",
     "p": "Este é um exemplo da voz selecionada.",
     "z": "这是所选语音的示例。",
 }
