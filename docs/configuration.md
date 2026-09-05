@@ -519,9 +519,18 @@ details.
   - boolean (deprecated compatibility setting)
   - `false`
   - `true` is rejected; use explicit SSMD `lang` spans
-* - `mixed_language_primary`, `mixed_language_allowed`, `mixed_language_confidence`
+* - `mixed_language_primary`
   - deprecated/obsolete
-  - not used for automatic detection
+  - —
+  - Not used for automatic detection
+* - `mixed_language_allowed`
+  - deprecated/obsolete
+  - —
+  - Not used for automatic detection
+* - `mixed_language_confidence`
+  - deprecated/obsolete
+  - —
+  - Not used for automatic detection
 ```
 
 ## Example Configuration File
