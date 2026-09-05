@@ -33,6 +33,7 @@ dependencies = [
     "kokorog2p[espeak,en]>=0.9.2,<1.0",
     "phrasplit>=0.3.7,<0.4",
     "ssmd>=0.8.6,<0.9",
+    "typing_extensions>=4.0.0",
 ]
 classifiers=[
     'Intended Audience :: End Users/Desktop',

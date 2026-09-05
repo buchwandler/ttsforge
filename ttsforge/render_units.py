@@ -14,7 +14,8 @@ from collections.abc import Callable, Iterable, Sequence
 from dataclasses import dataclass, field
 from importlib.metadata import PackageNotFoundError
 from importlib.metadata import version as package_version
-from typing import Literal, Protocol, Self, TypeVar, cast
+from typing import Literal, Protocol, TypeVar, cast
+from typing_extensions import Self
 
 ConversionUnit = Literal["chapter", "paragraph"]
 RenderUnitKind = Literal["title", "paragraph"]

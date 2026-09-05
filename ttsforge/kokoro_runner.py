@@ -3,7 +3,8 @@ from __future__ import annotations
 
 from collections.abc import Collection, Iterator, Sequence
 from dataclasses import dataclass, field
-from typing import Any, Literal, Protocol, Self, cast
+from typing import Any, Literal, Protocol, cast
+from typing_extensions import Self
 
 import numpy as np
 from pykokoro import GenerationConfig, KokoroPipeline, PipelineConfig
