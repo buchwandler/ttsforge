@@ -27,7 +27,10 @@ PARAGRAPH_UNIT_IDENTITY_SCHEMA = 2
 PARAGRAPH_CONTENT_HASH_SCHEMA = "ttsforge-prepared-text-sha256-v1"
 UNIT_FILENAME_SCHEMA = 1
 PARAGRAPH_PAUSE_OWNERSHIP = "following-boundary-owned-by-previous-v1"
-PYKOKORO_RENDERER_VERSION = "0.9.0"
+# The paragraph render contract baseline introduced by PyKokoro 0.9.0.
+# PyKokoro 0.9.1 added metadata-only resolution but did not change the
+# contract; completed 0.9.0 paragraph workspaces remain compatible.
+PYKOKORO_RENDERER_CONTRACT_BASELINE = "0.9.0"
 KOKOROG2P_TEXT_PREPARATION_VERSION = "0.9.2"
 
 
@@ -44,7 +47,7 @@ def renderer_contract_payload() -> dict[str, object]:
     return {
         "schema": 4,
         "ssmd": "0.8",
-        "pykokoro": PYKOKORO_RENDERER_VERSION,
+        "pykokoro": PYKOKORO_RENDERER_CONTRACT_BASELINE,
         "pykokoro_runtime": _runtime_package_version("pykokoro"),
         "kokorog2p": KOKOROG2P_TEXT_PREPARATION_VERSION,
         "kokorog2p_runtime": _runtime_package_version("kokorog2p"),

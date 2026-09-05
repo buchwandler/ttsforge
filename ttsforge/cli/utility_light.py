@@ -4,17 +4,14 @@ from __future__ import annotations
 
 import json
 import warnings
-from typing import Any
+from typing import Any, cast
 
 import typer
 from rich.table import Table
 
 from ..constants import (
     DEFAULT_CONFIG,
-    DEFAULT_VOICE_FOR_LANG,
     LANGUAGE_DESCRIPTIONS,
-    VOICE_PREFIX_TO_LANG,
-    VOICES,
 )
 from ..utils import (
     load_config,
@@ -27,23 +24,92 @@ from .helpers import console
 
 
 def voices(language: str | None) -> None:
-    """List available TTS voices without loading provider code."""
+    """List available TTS voices from PyKokoro metadata."""
+    try:
+        from pykokoro import discover_models
+    except ImportError:
+        console.print(
+            "[red]PyKokoro metadata unavailable:[/red] install pykokoro to list voices."
+        )
+        return
+
+    from ..kokoro_lang import get_pykokoro_language
+
+    # Build primary-language -> TTSForge codes mapping for filtering.
+    # e.g. "en" -> ["a", "b"], "de" -> ["d"], "fr" -> ["f"]
+    primary_to_tf: dict[str, list[str]] = {}
+    for tf_code in LANGUAGE_DESCRIPTIONS:
+        bcp47 = get_pykokoro_language(tf_code)
+        primary = bcp47.split("-")[0]
+        primary_to_tf.setdefault(primary, []).append(tf_code)
+    tf_lang_to_label = {
+        k: LANGUAGE_DESCRIPTIONS.get(k, k) for k in LANGUAGE_DESCRIPTIONS
+    }
+
+    try:
+        inventory = discover_models()
+    except Exception as exc:  # noqa: BLE001 - metadata loading can raise various errors
+        console.print(f"[red]Failed to load voice metadata:[/red] {exc}")
+        return
+
+    # Collect all voices with their language metadata and model provenance.
+    # A voice appearing in multiple models gets all languages merged.
+    voice_data: dict[str, dict[str, object]] = {}
+    for model in inventory.models:
+        if not model.voices:
+            continue
+        model_tf_codes: list[str] = []
+        for bcp47 in model.languages or []:
+            primary = (bcp47 or "").split("-")[0]
+            for tf in primary_to_tf.get(primary, []):
+                if tf not in model_tf_codes:
+                    model_tf_codes.append(tf)
+        variant = model.model_id or "default"
+        for voice_name in model.voices:
+            if voice_name in voice_data:
+                existing = voice_data[voice_name]
+                for tf in model_tf_codes:
+                    if tf not in existing["tf_codes"]:
+                        cast(list, existing["tf_codes"]).append(tf)
+            else:
+                voice_data[voice_name] = {
+                    "tf_codes": list(model_tf_codes),
+                    "variant": variant,
+                }
+
+    if not voice_data:
+        console.print("[yellow]No voices found in metadata.[/yellow]")
+        return
+
+    # Resolve the automatic default voice for the requested language.
+    default_voice: str | None = None
+    if language:
+        try:
+            from ..cli.backend_config import resolve_pykokoro_pipeline_defaults
+
+            resolved = resolve_pykokoro_pipeline_defaults(ttsforge_language=language)
+            default_voice = resolved.voice
+        except Exception:  # noqa: BLE001, S110 - display-only default, not critical
+            pass
+
+    # Filter and sort deterministically.
+    items = sorted(
+        [
+            (name, v["tf_codes"], v["variant"])
+            for name, v in voice_data.items()
+            if not language or language in v["tf_codes"]
+        ]
+    )
+
     table = Table(title="Available Voices")
     table.add_column("Voice", style="bold")
     table.add_column("Language")
-    table.add_column("Gender")
+    table.add_column("Model")
     table.add_column("Default", style="dim")
-    for voice in VOICES:
-        prefix = voice[:2]
-        lang_code = VOICE_PREFIX_TO_LANG.get(prefix, "?")
-        if language and lang_code != language:
-            continue
-        table.add_row(
-            voice,
-            LANGUAGE_DESCRIPTIONS.get(lang_code, "Unknown"),
-            "Female" if prefix[1] == "f" else "Male",
-            "Yes" if DEFAULT_VOICE_FOR_LANG.get(lang_code) == voice else "",
-        )
+    for voice_name, langs, variant in items:
+        lang_str = ", ".join(tf_lang_to_label.get(lc, lc) for lc in sorted(langs))
+        is_default = "Yes" if voice_name == default_voice else ""
+        table.add_row(voice_name, lang_str or "Unknown", variant, is_default)
     console.print(table)
 
 
@@ -58,10 +124,9 @@ def _show_model_status(config: dict[str, Any]) -> None:
         )
         return
 
-    from ..cli.backend_config import resolve_model_source_and_variant
+    from ..cli.backend_config import resolve_model_source_variant_quality
 
-    source, variant = resolve_model_source_and_variant(config)
-    quality = str(config.get("model_quality", "fp32"))
+    source, variant, quality = resolve_model_source_variant_quality(config)
     try:
         assets = get_model_asset_paths(
             quality=quality,

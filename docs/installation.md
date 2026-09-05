@@ -22,7 +22,7 @@ AudioSig does not replace TTSForge's file, FFmpeg, or audiobook orchestration la
 
 ### PyKokoro, kokorog2p, and spaCy model policy
 
-The package requires PyKokoro `>=0.9.0,<0.10`, kokorog2p `>=0.9.2,<1.0`, SSMD
+The package requires PyKokoro `>=0.9.1,<0.10`, kokorog2p `>=0.9.2,<1.0`, SSMD
 `>=0.8.6,<0.9`, and phrasplit `>=0.3.7,<0.4`. TTSForge forwards document language and
 ONNX provider through the PyKokoro 0.9 pipeline. Omitted model and voice values use
 PyKokoro metadata discovery; explicit profiles, custom model paths, and voice databases

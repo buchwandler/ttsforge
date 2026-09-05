@@ -13,7 +13,6 @@ from audiosig import generate_silence
 from pykokoro import GenerationConfig, KokoroPipeline
 from pykokoro.model_assets import get_model_asset_paths
 from pykokoro.onnx_backend import (
-    DEFAULT_MODEL_QUALITY,
     LANG_CODE_TO_ONNX,
     ModelQuality,
     VoiceBlend,
@@ -465,6 +464,19 @@ def _resolve_model_source_and_variant(
     return _resolve_model_metadata(cfg)
 
 
+def _resolve_model_source_variant_quality(
+    cfg: dict,
+) -> tuple[str, str, str]:
+    """Resolve concrete model source, variant, and quality.
+
+    Automatic values are filled through the public PyKokoro resolver so
+    download/asset paths receive the same defaults the runtime uses.
+    """
+    from .backend_config import resolve_model_source_variant_quality
+
+    return resolve_model_source_variant_quality(cfg)
+
+
 def _resolve_voice_names(
     model_source: str | None = None, model_variant: str | None = None
 ) -> list[str]:
@@ -504,16 +516,13 @@ def download(ctx: typer.Context, force: bool, quality: str | None) -> None:
     cfg = load_config()
 
     # Get quality from config if not specified
-    if quality is None:
-        quality = cfg.get("model_quality", DEFAULT_MODEL_QUALITY)
-
-    # Cast to ModelQuality - safe because Typer validates input
-    # and config uses a valid default
-    model_quality = cast(ModelQuality, quality or DEFAULT_MODEL_QUALITY)
-
-    model_source, model_variant = _resolve_model_source_and_variant(cfg)
-    model_source = model_source or "github"
-    model_variant = model_variant or "v1.0"
+    # Resolve concrete model settings. Automatic values are filled through the
+    # public PyKokoro resolver so download/asset paths match the runtime defaults.
+    cfg["model_quality"] = quality if quality is not None else cfg.get("model_quality")
+    source, variant, quality_str = _resolve_model_source_variant_quality(cfg)
+    model_source = source
+    model_variant = variant
+    model_quality = cast(ModelQuality, quality_str)
 
     assets = get_model_asset_paths(
         quality=model_quality, source=model_source, variant=model_variant
@@ -1014,10 +1023,10 @@ def list_names(
         console.print("[dim]Type 'q' to quit, 's' to skip, 'r' to replay.[/dim]\n")
 
         cfg = load_config()
-        model_source, model_variant = _resolve_model_source_and_variant(cfg)
-        model_quality = cast(
-            ModelQuality, cfg.get("model_quality", DEFAULT_MODEL_QUALITY)
-        )
+        source, variant, quality_str = _resolve_model_source_variant_quality(cfg)
+        model_source = source
+        model_variant = variant
+        model_quality = cast(ModelQuality, quality_str)
 
         # Initialize converter with phoneme dictionary
         try:

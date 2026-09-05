@@ -21,7 +21,21 @@ def deterministic_rich_console(monkeypatch: pytest.MonkeyPatch) -> None:
         "ttsforge.cli.commands_conversion",
         "ttsforge.cli.commands_phonemes",
         "ttsforge.cli.commands_utility",
+        "ttsforge.cli.utility_light",
     ):
         module = sys.modules.get(module_name)
         if module is not None and hasattr(module, "console"):
             monkeypatch.setattr(module, "console", console)
+
+
+@pytest.fixture
+def runner(monkeypatch):
+    """Create a CLI runner with deterministic terminal settings."""
+    monkeypatch.delenv("FORCE_COLOR", raising=False)
+    monkeypatch.delenv("CLICOLOR_FORCE", raising=False)
+    monkeypatch.delenv("CLICOLOR", raising=False)
+    monkeypatch.setenv("NO_COLOR", "1")
+    monkeypatch.setenv("COLUMNS", "160")
+    from typer.testing import CliRunner
+
+    return CliRunner()

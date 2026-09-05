@@ -826,3 +826,172 @@ def test_strict_resume_mismatch_returns_actionable_error_without_replacement(
     assert "--fresh" in (result.error_message or "")
     assert not output.exists()
     assert state_file.read_text(encoding="utf-8") == "{}"
+
+
+# ---------------------------------------------------------------------------
+# Language propagation into ConversionOptions (01_todo.md P0)
+# ---------------------------------------------------------------------------
+
+
+class TestConvertLanguagePropagation:
+    """The EPUB-detected document language must reach ConversionOptions.
+
+    Regression coverage for the fresh-conversion dataflow: language
+    detection printed ``Auto-detected language: German`` while the actual
+    ``ConversionOptions.language`` stayed at the default ``"a"``.
+    """
+
+    def _run_convert(
+        self,
+        runner,
+        tmp_path: Path,
+        monkeypatch,
+        *,
+        epub_language: str | None,
+        args: list[str] = (),
+        saved_language: str | None = None,
+    ):
+        from types import SimpleNamespace
+
+        from ttsforge.cli import app, commands_conversion
+        from ttsforge.conversion import ConversionState
+        from ttsforge.input_reader import Chapter as ReaderChapter
+        from ttsforge.input_reader import Metadata
+
+        epub_file = tmp_path / "book.epub"
+        epub_file.write_bytes(b"fake epub bytes")
+
+        def fake_input_reader(*_args, **_kwargs):
+            return SimpleNamespace(
+                get_metadata=lambda: Metadata(
+                    title="Book", authors=["Author"], language=epub_language
+                ),
+                get_chapters=lambda: [
+                    ReaderChapter(title="Chapter 1", text="Hallo Welt", index=0)
+                ],
+            )
+
+        captured: dict[str, object] = {}
+
+        class FakeResult:
+            success = True
+            output_path = str(tmp_path / "out" / "book.m4b")
+            paragraphs_dir = None
+            short_sentence_stats = SimpleNamespace(total=0, retries=0, fallbacks=0)
+            error_message = ""
+
+        class FakeConverter:
+            def __init__(self, options=None, **_kwargs):
+                captured["options"] = options
+
+            def validate_resume_candidate(self, *_args, **_kwargs):
+                return SimpleNamespace(reusable=True, reason=None)
+
+            def __enter__(self):
+                return self
+
+            def __exit__(self, *_args):
+                return False
+
+            def convert_chapters_resumable(self, *_args, **_kwargs):
+                return FakeResult()
+
+        monkeypatch.setattr("ttsforge.input_reader.InputReader", fake_input_reader)
+        monkeypatch.setattr(commands_conversion, "TTSConverter", FakeConverter)
+        monkeypatch.setattr(commands_conversion, "load_config", dict)
+
+        out_dir = tmp_path / "out"
+        out_dir.mkdir()
+        output = out_dir / "book.m4b"
+
+        if saved_language is not None:
+            workspace = resolve_conversion_workspace(
+                output_dir=out_dir,
+                book_title="Book",
+                source_file=epub_file,
+            )
+            workspace.work_dir.mkdir(parents=True)
+            ConversionState(
+                version=8,
+                source_hash=workspace.source_hash,
+                output_file="book.m4b",
+                source_selection=[0],
+                chapters=[
+                    ChapterState(index=0, title="Chapter 1", content_hash="hash")
+                ],
+                generation_identity_schema=2,
+                generation_identity={"language": saved_language},
+            ).save(workspace.state_file)
+
+        result = runner.invoke(
+            app,
+            [
+                "convert",
+                str(epub_file),
+                "--output",
+                str(output),
+                "--yes",
+                *args,
+            ],
+        )
+        return captured, result
+
+    def test_fresh_epub_language_reaches_conversion_options(
+        self, runner, tmp_path, monkeypatch
+    ) -> None:
+        """de EPUB metadata with no --language must yield language=d."""
+        from ttsforge.kokoro_lang import get_onnx_lang_code
+
+        captured, result = self._run_convert(
+            runner, tmp_path, monkeypatch, epub_language="de"
+        )
+
+        assert result.exit_code == 0, result.output
+        options = captured["options"]
+        assert options is not None
+        assert options.language == "d"
+        assert get_onnx_lang_code(options.language) == "de"
+        assert "Auto-detected language: German" in result.output
+
+    def test_explicit_cli_language_overrides_epub_metadata(
+        self, runner, tmp_path, monkeypatch
+    ) -> None:
+        """Explicit --language must win over EPUB metadata."""
+        captured, result = self._run_convert(
+            runner, tmp_path, monkeypatch, epub_language="de", args=["--language", "b"]
+        )
+
+        assert result.exit_code == 0, result.output
+        options = captured["options"]
+        assert options is not None
+        assert options.language == "b"
+
+    def test_resume_saved_language_wins_without_explicit_override(
+        self, runner, tmp_path, monkeypatch
+    ) -> None:
+        """A saved schema-2 identity language stays authoritative on resume."""
+        captured, result = self._run_convert(
+            runner,
+            tmp_path,
+            monkeypatch,
+            epub_language="de",
+            saved_language="z",
+        )
+
+        assert result.exit_code == 0, result.output
+        options = captured["options"]
+        assert options is not None
+        assert options.language == "z"
+
+    def test_fresh_conversion_keeps_voice_none_for_automatic_selection(
+        self, runner, tmp_path, monkeypatch
+    ) -> None:
+        """Without explicit/configured voice, voice must stay None."""
+        captured, result = self._run_convert(
+            runner, tmp_path, monkeypatch, epub_language="de"
+        )
+
+        assert result.exit_code == 0, result.output
+        options = captured["options"]
+        assert options is not None
+        assert options.voice is None

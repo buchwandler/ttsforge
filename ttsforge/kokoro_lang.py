@@ -10,3 +10,14 @@ def get_onnx_lang_code(ttsforge_lang: str) -> str:
     if isinstance(lang, str):
         return lang
     return ttsforge_lang or "en-us"
+
+
+def get_pykokoro_language(ttsforge_lang: str) -> str:
+    """Convert a TTSForge language code to a PyKokoro document language.
+
+    Uses PyKokoro's dependency-light language table so metadata-only
+    resolution never imports the ONNX backend.
+    """
+    from pykokoro.config_types import LANG_CODE_TO_ONNX
+
+    return LANG_CODE_TO_ONNX.get(ttsforge_lang, "en-us")

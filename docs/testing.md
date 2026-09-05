@@ -25,7 +25,7 @@ hash and verifies that a saved prefix is not rendered again.
 
 Release CI separately installs the exact lower-bound generation stack:
 
-- PyKokoro 0.9.0
+- PyKokoro 0.9.1
 - kokorog2p 0.9.2
 - phrasplit 0.3.7
 - SSMD 0.8.6

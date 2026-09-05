@@ -40,7 +40,6 @@ from ..chapter_selection import parse_chapter_selection, resolve_chapter_selecti
 from ..constants import (
     DEFAULT_CONFIG,
     LANGUAGE_DESCRIPTIONS,
-    VOICE_PREFIX_TO_LANG,
 )
 from ..conversion import (
     Chapter,
@@ -48,7 +47,6 @@ from ..conversion import (
     ConversionProgress,
     TTSConverter,
     detect_language_from_iso,
-    get_default_voice_for_language,
     validate_generation_ranges,
 )
 from ..paragraph_output import ensure_owned_directory, paragraph_directory
@@ -877,22 +875,14 @@ def convert(
         else:
             language = config.get("default_language", "a")
 
-    # Get voice
-    if voice is None:
-        voice = config.get("default_voice")
-        # Ensure voice matches language
-        if voice and language:
-            voice_lang = VOICE_PREFIX_TO_LANG.get(voice[:2], "a")
-            if voice_lang != language:
-                voice = get_default_voice_for_language(language)
-        elif language:
-            voice = get_default_voice_for_language(language)
-        else:
-            voice = "af_heart"
-
     # Ensure language has a default
     if language is None:
         language = "a"
+
+    # The EPUB-derived document language is authoritative for the effective
+    # settings so PyKokoro receives the language that was detected.
+    effective_language = language
+    resolved_defaults["language"] = effective_language
 
     # Track whether the user explicitly supplied selection arguments.
     selection_is_explicit = chapters is not None or skip_chapters is not None

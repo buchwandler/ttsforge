@@ -221,3 +221,206 @@ def test_demo_combined_gap_uses_exact_generated_silence(monkeypatch, tmp_path) -
     rendered, sample_rate = sf.read(output, dtype="float32")
     assert sample_rate == 24000
     assert rendered.shape == (4 + int(0.125 * 24000) + 4,)
+
+
+def test_default_config_resolves_automatic_model_profile(monkeypatch, capsys) -> None:
+    """Default config must resolve a concrete model set before asset lookup."""
+    captured_args: dict[str, object] = {}
+
+    def fake_asset_paths(**kwargs):
+        captured_args.update(kwargs)
+        return _assets(kwargs["source"], complete=True)
+
+    monkeypatch.setattr("pykokoro.model_assets.get_model_asset_paths", fake_asset_paths)
+
+    utility_light._show_model_status(
+        {
+            "model_source": None,
+            "model_variant": None,
+            "model_quality": None,
+            "default_language": "a",
+        }
+    )
+
+    assert "source" in captured_args
+    assert "variant" in captured_args
+    assert "quality" in captured_args
+    assert captured_args["source"] is not None
+    assert captured_args["variant"] is not None
+    assert captured_args["quality"] is not None
+    assert captured_args["quality"] != "None"
+    output = capsys.readouterr().out
+    assert "Status unavailable" not in output
+
+
+def test_explicit_config_model_status_passes_explicit_values(
+    monkeypatch, capsys
+) -> None:
+    """Explicit config values remain explicit in model-status display."""
+    captured_args: dict[str, object] = {}
+
+    def fake_asset_paths(**kwargs):
+        captured_args.update(kwargs)
+        return _assets(kwargs["source"], complete=True)
+
+    monkeypatch.setattr("pykokoro.model_assets.get_model_asset_paths", fake_asset_paths)
+
+    utility_light._show_model_status(
+        {
+            "model_source": "github",
+            "model_variant": "v1.2-de-martin",
+            "model_quality": "fp16",
+            "default_language": "d",
+        }
+    )
+
+    assert captured_args["source"] == "github"
+    assert captured_args["variant"] == "v1.2-de-martin"
+    assert captured_args["quality"] == "fp16"
+    output = capsys.readouterr().out
+    assert "v1.2-de-martin" in output
+    assert "fp16" in output
+
+
+def _make_fake_inventory(*model_specs):
+    """Create a fake PyKokoro inventory from model spec tuples."""
+    from types import SimpleNamespace
+
+    return SimpleNamespace(
+        models=[
+            SimpleNamespace(source=src, model_id=mid, languages=langs, voices=vs)
+            for src, mid, langs, vs in model_specs
+        ]
+    )
+
+
+def test_voices_uses_discover_models(monkeypatch, capsys) -> None:
+    """voices() must call pykokoro.discover_models()."""
+    called = []
+
+    def fake_discover_models():
+        called.append(True)
+        return _make_fake_inventory(("github", "v1.0", ("en",), ("af_heart",)))
+
+    monkeypatch.setattr("pykokoro.discover_models", fake_discover_models)
+    utility_light.voices(None)
+    assert called
+    output = capsys.readouterr().out
+    assert "af_heart" in output
+
+
+def test_voices_german_metadata_visible(monkeypatch, capsys) -> None:
+    """German voices from the Martin profile must appear in output."""
+    monkeypatch.setattr(
+        "pykokoro.discover_models",
+        lambda: _make_fake_inventory(
+            ("github", "v1.0", ("en",), ("af_heart",)),
+            ("github", "v1.2-de-martin", ("de",), ("martin",)),
+        ),
+    )
+    utility_light.voices(None)
+    output = capsys.readouterr().out
+    assert "martin" in output
+    assert "af_heart" in output
+
+
+def test_voices_filter_by_language_uses_metadata(monkeypatch, capsys) -> None:
+    """Language filter must use model language metadata, not voice prefixes."""
+    monkeypatch.setattr(
+        "pykokoro.discover_models",
+        lambda: _make_fake_inventory(
+            ("github", "v1.0", ("en",), ("af_heart",)),
+            ("github", "v1.2-de-martin", ("de",), ("martin",)),
+        ),
+    )
+    utility_light.voices("d")
+    output = capsys.readouterr().out
+    assert "martin" in output
+    assert "af_heart" not in output
+
+
+def test_voices_non_prefix_names_displayed(monkeypatch, capsys) -> None:
+    """Non-prefix voice names must appear correctly."""
+    monkeypatch.setattr(
+        "pykokoro.discover_models",
+        lambda: _make_fake_inventory(
+            ("github", "v1.2-de-martin", ("de",), ("martin",)),
+            ("github", "sv-joakim", ("sv",), ("Alice", "Anton")),
+        ),
+    )
+    utility_light.voices(None)
+    output = capsys.readouterr().out
+    assert "martin" in output
+    assert "Alice" in output
+    assert "Anton" in output
+
+
+def test_voices_no_onnx_initialization(monkeypatch) -> None:
+    """voices() must not import ONNX runtime modules."""
+    import sys
+
+    onnx_modules_before = {m for m in sys.modules if m.startswith("onnxruntime")}
+    monkeypatch.setattr(
+        "pykokoro.discover_models",
+        lambda: _make_fake_inventory(),
+    )
+    utility_light.voices(None)
+    onnx_modules_after = {m for m in sys.modules if m.startswith("onnxruntime")}
+    assert onnx_modules_after == onnx_modules_before
+
+
+def test_voices_duplicate_voices_across_profiles(monkeypatch, capsys) -> None:
+    """Voices appearing in multiple models get languages merged."""
+    monkeypatch.setattr(
+        "pykokoro.discover_models",
+        lambda: _make_fake_inventory(
+            ("github", "v1.0", ("en",), ("af_heart",)),
+            ("github", "v1.1", ("en", "zh"), ("af_heart", "zf_xia")),
+        ),
+    )
+    utility_light.voices(None)
+    output = capsys.readouterr().out
+    # af_heart appears in both models with "en"; v1.1 also has "zh"
+    assert output.count("af_heart") == 1
+    # "en" primary language maps to both American and British English;
+    # "zh" maps to Mandarin Chinese.  Table column may wrap long strings
+    # so check each expected token separately.
+    assert "American English" in output
+    assert "Mandarin Chinese" in output or "Mandarin" in output
+
+
+def test_voices_metadata_unavailable_shows_error(monkeypatch, capsys) -> None:
+    """When discover_models raises, voices must show a clear error message."""
+    monkeypatch.setattr(
+        "pykokoro.discover_models",
+        lambda: (_ for _ in ()).throw(RuntimeError("metadata broken")),
+    )
+    utility_light.voices(None)
+    output = capsys.readouterr().out
+    assert "Failed to load voice metadata" in output
+    assert "metadata broken" in output
+
+
+def test_voices_empty_inventory(monkeypatch, capsys) -> None:
+    """Empty metadata inventory must display a clear message."""
+    monkeypatch.setattr(
+        "pykokoro.discover_models",
+        lambda: _make_fake_inventory(),
+    )
+    utility_light.voices(None)
+    output = capsys.readouterr().out
+    assert "No voices found in metadata" in output
+
+
+def test_voices_marks_automatic_default_for_language(monkeypatch, capsys) -> None:
+    """When filtering by language, the automatic voice is marked as default."""
+    monkeypatch.setattr(
+        "pykokoro.discover_models",
+        lambda: _make_fake_inventory(
+            ("github", "v1.2-de-martin", ("de",), ("martin",)),
+        ),
+    )
+    utility_light.voices("d")
+    output = capsys.readouterr().out
+    assert "martin" in output
+    assert "Yes" in output

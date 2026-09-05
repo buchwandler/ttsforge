@@ -8,12 +8,12 @@
 Convert EPUB files to audiobooks using Kokoro ONNX TTS.
 
 ttsforge is a command-line tool that transforms EPUB ebooks into high-quality audiobooks
-with support for 54 neural voices across 9 languages.
+with support for neural voices across 10 languages.
 
 ## Features
 
 - **EPUB to Audiobook**: Convert EPUB files to M4B, MP3, WAV, FLAC, or OPUS
-- **54 Neural Voices**: High-quality TTS in 9 languages
+- **Neural Voices**: High-quality TTS in 10 languages (German included)
 - **SSMD Editing**: Edit intermediate SSMD files to fine-tune pronunciation and pacing
 - **Custom Phoneme Dictionary**: Control pronunciation of names and technical terms
 - **Auto Name Extraction**: Automatically extract names from books for phoneme
@@ -54,7 +54,7 @@ pip install "ttsforge[static_ffmpeg]"
 pip install "ttsforge[gpu]"
 ```
 
-TTSForge uses `pykokoro[cpu]>=0.9.0,<0.10`, `kokorog2p[espeak,en]>=0.9.2,<1.0`,
+TTSForge uses `pykokoro[cpu]>=0.9.1,<0.10`, `kokorog2p[espeak,en]>=0.9.2,<1.0`,
 `phrasplit>=0.3.7,<0.4`, and `ssmd>=0.8.6,<0.9`. The standard pipeline forwards the
 document language and ONNX provider through PyKokoro 0.9. Omitted model and voice values
 are resolved from PyKokoro metadata. Explicit model profiles, custom model paths, and
@@ -315,9 +315,9 @@ model assets. Use `--language` to filter the discovered voices. Omit `--voice` t
 PyKokoro select the profile default for the document language. Explicit voice names and
 voice blends remain supported.
 
-Voice names are profile-provided identifiers such as `af_heart` and `bf_emma`; do not
-assume a fixed TTSForge-owned whitelist. Voice naming: `{lang}{gender}_{name}` (e.g.,
-`am_adam` = American Male "Adam")
+Voice names are profile-provided identifiers. Legacy voices such as `af_heart` follow
+the `{lang}{gender}_{name}` convention, but modern profile voices may not (e.g.,
+`martin`, `Alice`). Run `ttsforge voices` for the current metadata-driven inventory.
 
 ### Voice Demo
 

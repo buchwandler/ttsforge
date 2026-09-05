@@ -7,6 +7,7 @@ catalogues are loaded only when a command needs to render or download assets.
 from __future__ import annotations
 
 from collections.abc import Mapping
+from dataclasses import dataclass
 from typing import Any
 
 from ..utils import validate_config_value
@@ -50,10 +51,72 @@ def resolve_onnx_provider(
     return "auto" if bool(config.get("use_gpu", False)) else "cpu"
 
 
+@dataclass(frozen=True)
+class ResolvedPipelineDefaults:
+    """Concrete pipeline values resolved from PyKokoro metadata.
+
+    Automatic (``None``) requests are filled with the values the PyKokoro
+    runtime would use; explicit requests are preserved as supplied.
+    """
+
+    language: str
+    model_source: str
+    model_variant: str
+    model_quality: str
+    voice: str | None
+
+
+def resolve_pykokoro_pipeline_defaults(
+    *,
+    ttsforge_language: str,
+    voice: str | None = None,
+    model_source: str | None = None,
+    model_variant: str | None = None,
+    model_quality: str | None = None,
+    provider: str | None = None,
+) -> ResolvedPipelineDefaults:
+    """Resolve concrete pipeline defaults through the public PyKokoro API.
+
+    Metadata-only: this never constructs an ONNX session or the synthesis
+    pipeline, so preflight, status, and dry-run paths can share the exact
+    default policy used by the runtime (``pykokoro.resolve_pipeline_config``).
+    """
+    from pykokoro import (
+        GenerationConfig,
+        PipelineConfig,
+        resolve_pipeline_config,
+    )
+
+    from ..kokoro_lang import get_pykokoro_language
+
+    requested = PipelineConfig(
+        generation=GenerationConfig(lang=get_pykokoro_language(ttsforge_language)),
+        voice=voice,
+        model_source=model_source,
+        model_variant=model_variant,
+        model_quality=model_quality,
+        provider=provider,
+    )
+    resolved = resolve_pipeline_config(requested)
+    return ResolvedPipelineDefaults(
+        language=resolved.generation.lang,
+        model_source=resolved.model_source,
+        model_variant=resolved.model_variant,
+        model_quality=resolved.model_quality,
+        voice=resolved.voice,
+    )
+
+
 def resolve_model_source_and_variant(
     config: Mapping[str, Any],
 ) -> tuple[str | None, str | None]:
-    """Resolve explicit model choices without importing ONNX Runtime."""
+    """Resolve explicit model choices without importing ONNX Runtime.
+
+    Automatic values (both unset) stay ``None`` so callers resolve them
+    through :func:`resolve_pykokoro_pipeline_defaults`.  Explicit variants
+    are validated through the public resolver instead of private upstream
+    model-profile modules.
+    """
     raw_source = config.get("model_source")
     raw_variant = config.get("model_variant")
     if raw_source is None and raw_variant is None:
@@ -65,12 +128,46 @@ def resolve_model_source_and_variant(
     if variant is None:
         return source, None
     try:
-        from pykokoro.model_profiles import get_model_profile
-
-        get_model_profile(variant, source)
-    except (ImportError, ValueError) as exc:
+        resolve_pykokoro_pipeline_defaults(
+            ttsforge_language="a",
+            model_source=source,
+            model_variant=variant,
+        )
+    except ValueError as exc:
         raise ValueError(f"Unknown model profile: {source}/{variant}") from exc
     return source, variant
+
+
+def resolve_model_source_variant_quality(
+    config: Mapping[str, Any],
+) -> tuple[str, str, str]:
+    """Resolve concrete model source, variant, and quality.
+
+    Automatic (``None``) values are filled through the public PyKokoro
+    resolver so ``config --show`` and download/asset paths receive the same
+    defaults the runtime uses.
+    """
+    raw_source, raw_variant = resolve_model_source_and_variant(config)
+    raw_quality = config.get("model_quality")
+    needs_automatic = raw_source is None or raw_variant is None or raw_quality is None
+    if needs_automatic:
+        resolved = resolve_pykokoro_pipeline_defaults(
+            ttsforge_language=config.get("default_language", "a"),
+            model_source=raw_source,
+            model_variant=raw_variant,
+            model_quality=str(raw_quality) if raw_quality is not None else None,
+        )
+        source = raw_source or resolved.model_source
+        variant = raw_variant or resolved.model_variant
+        if raw_quality is not None:
+            quality = str(raw_quality)
+        else:
+            quality = resolved.model_quality
+    else:
+        source = raw_source
+        variant = raw_variant
+        quality = str(raw_quality)
+    return source, variant, quality
 
 
 def resolve_voice_names(

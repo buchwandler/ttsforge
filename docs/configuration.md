@@ -598,7 +598,7 @@ state saves, final merging, and converter cleanup. RSS may remain elevated becau
 native allocators retain high-water pages; that alone is not evidence of a provider
 leak.
 
-TTSForge requires PyKokoro `>=0.9.0,<0.10`, uses compact segment results, and releases
+TTSForge requires PyKokoro `>=0.9.1,<0.10`, uses compact segment results, and releases
 completed chapter audio before the next chapter synthesis. Whole-chapter synthesis
 remains buffered and streaming is future work.
 

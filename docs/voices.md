@@ -1,29 +1,21 @@
 # Voices
 
-TTSForge queries PyKokoro 0.9 model metadata for available voices. The inventory may
+TTSForge queries PyKokoro 0.9.1 model metadata for available voices. The inventory may
 vary by selected model source and variant, so this document's examples are not a
 TTSForge-owned global whitelist. Use `ttsforge voices` for the active metadata
 inventory.
 
 ## Voice Naming Convention
 
-Voices follow a consistent naming pattern:
-
-```text
-{language}{gender}_{name}
-```
-
-Where:
-
-- **Language**: Two-letter code (`af`, `am`, `bf`, etc.)
-- **Gender**: `f` = female, `m` = male
-- **Name**: Voice identifier
+Legacy voices follow a `{language}{gender}_{name}` pattern (e.g., `af_heart`,
+`bf_emma`). Modern profile voices may use different naming conventions (e.g., `martin`,
+`Alice`, `default`). Do not assume a fixed prefix scheme.
 
 For example:
 
-- `af_heart` = American English, Female, "Heart" voice
-- `am_adam` = American English, Male, "Adam" voice
-- `bf_emma` = British English, Female, "Emma" voice
+- `af_heart` = American English, Female, "Heart" voice (legacy naming)
+- `martin` = German (v1.2-de-martin profile)
+- `Alice` = Swedish (sv-joakim profile)
 
 ## Listing Voices
 
@@ -38,6 +30,7 @@ List voices for a specific language:
 ```bash
 ttsforge voices -l a  # American English
 ttsforge voices -l b  # British English
+ttsforge voices -l d  # German
 ```
 
 ## Voice Demo
@@ -187,6 +180,22 @@ ttsforge demo --separate -o ./voice_samples/
 * - `bm_lewis`
   - Modern British voice
   -
+```
+
+### German (d)
+
+German uses the `v1.2-de-martin` profile with the `martin` voice.
+
+```{list-table}
+:header-rows: 1
+:widths: 20 50 30
+
+* - Voice
+  - Description
+  - Default
+* - `martin`
+  - German male voice (v1.2-de-martin profile)
+  - Yes
 ```
 
 ### Spanish (e)

@@ -63,17 +63,18 @@ ttsforge voices
 
 ## Supported Languages
 
-ttsforge supports 9 languages with native TTS voices:
+ttsforge supports 10 languages with native TTS voices (including German):
 
-- **American English** (a) - 20 voices
-- **British English** (b) - 8 voices
-- **Spanish** (e) - 3 voices
-- **French** (f) - 1 voice
-- **Hindi** (h) - 4 voices
-- **Italian** (i) - 2 voices
-- **Japanese** (j) - 5 voices
-- **Brazilian Portuguese** (p) - 3 voices
-- **Mandarin Chinese** (z) - 8 voices
+- **American English** (a)
+- **British English** (b)
+- **German** (d)
+- **Spanish** (e)
+- **French** (f)
+- **Hindi** (h)
+- **Italian** (i)
+- **Japanese** (j)
+- **Brazilian Portuguese** (p)
+- **Mandarin Chinese** (z)
 
 ## Requirements
 
