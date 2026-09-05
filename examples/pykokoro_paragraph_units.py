@@ -1,4 +1,3 @@
-#!/usr/bin/env python3
 """Render PyKokoro public paragraph units one at a time."""
 
 from __future__ import annotations

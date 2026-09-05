@@ -1,4 +1,3 @@
-#!/usr/bin/env python3
 """Convert an EPUB into bounded, resumable paragraph render units."""
 
 from __future__ import annotations

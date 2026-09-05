@@ -1,4 +1,3 @@
-#!/usr/bin/env python3
 """Interrupt paragraph conversion, then resume at the first incomplete unit."""
 
 from __future__ import annotations

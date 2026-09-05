@@ -1,4 +1,3 @@
-#!/usr/bin/env python3
 """
 Phoneme export example using ttsforge.
 

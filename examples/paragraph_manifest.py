@@ -1,4 +1,3 @@
-#!/usr/bin/env python3
 """Inspect a paragraph manifest without loading ONNX or TTS models."""
 
 from __future__ import annotations
