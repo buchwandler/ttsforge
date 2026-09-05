@@ -14,6 +14,7 @@ from pathlib import Path
 from typing import Any, Literal
 
 from pykokoro.exceptions import SSMDDocumentError
+
 IssueSeverity = Literal["info", "warn", "error"]
 UnknownHeaderPolicy = Literal["warn", "error", "ignore"]
 MissingVoicePolicy = Literal["error", "use-default"]

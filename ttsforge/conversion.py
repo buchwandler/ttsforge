@@ -14,7 +14,6 @@ from collections.abc import Callable, Mapping, Sequence
 from dataclasses import dataclass, field
 from pathlib import Path, PurePosixPath, PureWindowsPath
 from typing import TYPE_CHECKING, Any, Literal, cast
-from typing_extensions import Self
 
 import numpy as np
 import soundfile as sf
@@ -25,6 +24,7 @@ from pykokoro.config_types import (
     ModelSource,
     ModelVariant,
 )
+from typing_extensions import Self
 
 from .audio_merge import AudioMerger, ChapterBoundary, MergeMeta, OrderedAudioInput
 from .constants import (

@@ -4,7 +4,6 @@ from __future__ import annotations
 from collections.abc import Collection, Iterator, Sequence
 from dataclasses import dataclass, field
 from typing import Any, Literal, Protocol, cast
-from typing_extensions import Self
 
 import numpy as np
 from pykokoro import GenerationConfig, KokoroPipeline, PipelineConfig
@@ -26,6 +25,7 @@ from pykokoro.short_sentence_handler import ShortSentenceConfig
 from pykokoro.stages.audio_generation.onnx import OnnxAudioGenerationAdapter
 from pykokoro.stages.audio_postprocessing.onnx import OnnxAudioPostprocessingAdapter
 from pykokoro.stages.phoneme_processing.onnx import OnnxPhonemeProcessorAdapter
+from typing_extensions import Self
 
 from .memory_diagnostics import log_snapshot
 from .prosody_support import ProsodyPolicy, build_pykokoro_prosody_config

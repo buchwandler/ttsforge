@@ -253,7 +253,7 @@ ttsforge demo --separate -o ./voice_samples/
 Mixed-language changes must be explicit SSMD spans. Generate or edit the chapter SSMD
 and annotate the foreign segment:
 
-```ssmd
+```text
 Das ist ein deutscher Satz. [This is an English sentence.]{lang="en-us"}
 ```
 

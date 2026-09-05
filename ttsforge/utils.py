@@ -681,7 +681,9 @@ def run_process(
         kwargs["encoding"] = DEFAULT_ENCODING
         kwargs["errors"] = "replace"
 
-    return subprocess.run(cmd, check=check, **{k: v for k, v in kwargs.items() if k != "check"})
+    return subprocess.run(
+        cmd, check=check, **{k: v for k, v in kwargs.items() if k != "check"}
+    )
 
 
 @overload
