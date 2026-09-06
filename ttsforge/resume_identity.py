@@ -234,6 +234,7 @@ def _common_generation_payload(
         "lang": _attribute(options, "lang"),
         "speed": _attribute(options, "speed"),
         "output_format": _attribute(options, "output_format"),
+        "conversion_plan_hash": getattr(options, "conversion_plan_hash", None),
         "use_gpu": _attribute(options, "use_gpu"),
         "onnx_provider": _attribute(options, "effective_onnx_provider")(),
         "model_quality": str(_attribute(options, "model_quality")),
@@ -363,6 +364,8 @@ def diff_generation_identity(
         # Schema-2 identities created before the gain-scale field used the
         # renderer's default 1.0. Treat that omitted field as its migrated
         # value so old approximate workspaces remain resumable.
+        if path == "conversion_plan_hash" and saved_value is None:
+            return
         if path == "ssmd_policy.emphasis_gain_scale" and saved_value is None:
             saved_value = 1.0
         if isinstance(saved_value, dict) and isinstance(current_value, dict):

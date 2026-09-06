@@ -74,9 +74,8 @@ class KokoroRunOptions:
             return self.onnx_provider
         return "auto" if self.use_gpu else "cpu"
 
-
-class PreparedParagraphUnits:
-    """TTSForge's dependency-light facade over PyKokoro's public provider."""
+class PreparedUnits:
+    """TTSForge's dependency-light facade over PyKokoro prepared units."""
 
     def __init__(self, runner: KokoroRunner, prepared: Any):
         self._runner = runner
@@ -112,6 +111,8 @@ class PreparedParagraphUnits:
     def __exit__(self, exc_type: object, exc: object, tb: object) -> None:
         self._prepared.__exit__(exc_type, exc, tb)
 
+
+PreparedParagraphUnits = PreparedUnits
 
 class KokoroRunner:
     class LogCallback(Protocol):
@@ -319,22 +320,23 @@ class KokoroRunner:
         )
         return cast(np.ndarray, result.audio)
 
-    def prepare_paragraph_units(
+    def prepare_units(
         self,
         text: str,
         *,
+        unit: Literal["paragraph", "sentence"],
         lang_code: str,
         pause_mode: Literal["tts", "manual", "auto"],
         ssmd_policy: SSMDPolicy | None = None,
         audio_resolver: object | None = None,
         random_seed: int | None = None,
-    ) -> PreparedParagraphUnits:
-        """Prepare a complete document using PyKokoro's public unit API."""
+    ) -> PreparedUnits:
+        """Prepare text with PyKokoro's public unit API."""
         self.ensure_ready()
         pipeline = self._pipeline
         if pipeline is None or not callable(getattr(pipeline, "prepare_units", None)):
             raise RuntimeError(
-                "Installed PyKokoro does not provide the public paragraph-unit API; "
+                "Installed PyKokoro does not provide the public prepared-unit API; "
                 f"install pykokoro{SUPPORTED_PYKOKORO}."
             )
         effective_seed = (
@@ -358,18 +360,34 @@ class KokoroRunner:
                 effective_policy, audio_resolver=audio_resolver
             )
         try:
-            prepared = pipeline.prepare_units(
-                text,
-                unit="paragraph",
-                **overrides,
-            )
+            prepared = pipeline.prepare_units(text, unit=unit, **overrides)
         except (AttributeError, TypeError) as exc:
             raise RuntimeError(
-                "Installed PyKokoro cannot satisfy the public paragraph-unit API; "
+                "Installed PyKokoro cannot satisfy the public prepared-unit API; "
                 f"install pykokoro{SUPPORTED_PYKOKORO}."
             ) from exc
-        return PreparedParagraphUnits(self, prepared)
+        return PreparedUnits(self, prepared)
 
+    def prepare_paragraph_units(
+        self,
+        text: str,
+        *,
+        lang_code: str,
+        pause_mode: Literal["tts", "manual", "auto"],
+        ssmd_policy: SSMDPolicy | None = None,
+        audio_resolver: object | None = None,
+        random_seed: int | None = None,
+    ) -> PreparedUnits:
+        """Compatibility wrapper for paragraph conversion callers."""
+        return self.prepare_units(
+            text,
+            unit="paragraph",
+            lang_code=lang_code,
+            pause_mode=pause_mode,
+            ssmd_policy=ssmd_policy,
+            audio_resolver=audio_resolver,
+            random_seed=random_seed,
+        )
     def get_short_sentence_stats(self) -> ShortSentenceStats:
         return self.short_sentence_stats.copy()
 

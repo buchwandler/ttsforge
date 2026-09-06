@@ -883,6 +883,7 @@ class ConversionOptions:
     language: str = "a"
     speed: float = 1.0
     output_format: str = "m4b"
+    conversion_plan_hash: str | None = None
     output_dir: Path | None = None
     use_gpu: bool = False  # Legacy compatibility; use onnx_provider instead.
     onnx_provider: str | None = None

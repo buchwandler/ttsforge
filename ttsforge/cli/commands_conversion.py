@@ -9,7 +9,6 @@ Commands for converting EPUB/text files to audiobooks:
 """
 
 import logging
-import re
 import sys
 import tempfile
 from collections.abc import Mapping
@@ -18,7 +17,6 @@ from pathlib import Path
 from types import FrameType
 from typing import Any, Literal, TypedDict, cast
 
-import numpy as np
 import typer
 from pykokoro.config_types import ModelQuality
 from rich.panel import Panel
@@ -52,7 +50,6 @@ from ..conversion import (
 from ..paragraph_output import ensure_owned_directory, paragraph_directory
 from ..prosody_support import (
     ProsodyPolicy,
-    build_pykokoro_prosody_config,
 )
 from ..render_units import validate_conversion_unit
 from ..resume_identity import IdentityDifference, JsonValue
@@ -654,11 +651,52 @@ def convert(
     ssmd_audio_max_duration: float | None = None,
     embed_ssmd_voice_bindings: bool | None = None,
     embed_ssmd_pause_defaults: bool | None = None,
+    dry_run: bool = False,
+    manifest: bool = False,
+    as_json: bool = False,
 ) -> None:
     """Convert an EPUB file to an audiobook.
 
     EPUB_FILE is the path to the EPUB file to convert.
     """
+    if dry_run:
+        from ..conversion_plan import plan_json, resolve_conversion_plan
+
+        try:
+            plan = resolve_conversion_plan(
+                epub_file,
+                request={
+                    "output": output,
+                    "output_format": output_format,
+                    "voice": voice,
+                    "language": language,
+                    "lang": lang,
+                    "speed": speed,
+                    "provider": provider,
+                    "use_gpu": use_gpu,
+                    "chapters": chapters,
+                    "skip_chapters": skip_chapters,
+                    "pause_clause": pause_clause,
+                    "pause_sentence": pause_sentence,
+                    "pause_paragraph": pause_paragraph,
+                    "pause_variance": pause_variance,
+                    "pause_mode": pause_mode,
+                    "enable_short_sentence": enable_short_sentence,
+                    "short_sentence": short_sentence,
+                    "conversion_unit": conversion_unit,
+                    "epub_content_mode": epub_content_mode,
+                    "prosody_method": prosody_method,
+                    "prosody_strict": prosody_strict,
+                    "title": title,
+                    "author": author,
+                    "keep_chapter_files": keep_chapter_files,
+                },
+            )
+        except (OSError, ValueError, TypeError, RuntimeError) as exc:
+            typer.echo(f"Plan error: {exc}", err=True)
+            raise typer.Exit(code=2) from exc
+        typer.echo(plan_json(plan, pretty=not as_json))
+        return
     if verbose:
         logging.basicConfig(
             level=logging.DEBUG,
@@ -1316,6 +1354,47 @@ def convert(
             saved_identity=saved_identity_payload,
         )
 
+    from ..conversion_plan import resolve_conversion_plan
+
+    try:
+        execution_plan = resolve_conversion_plan(
+            epub_file,
+            request={
+                "output": output,
+                "output_format": output_format,
+                "voice": resolved_defaults["voice"],
+                "language": effective_language,
+                "lang": lang,
+                "speed": resolved_defaults["speed"],
+                "provider": resolved_provider,
+                "use_gpu": use_gpu,
+                "chapter_count": len(epub_chapters),
+                "selected_chapters": selected_indices
+                or list(range(len(epub_chapters))),
+                "conversion_unit": effective_conversion_unit,
+                "pause_clause": pause_clause,
+                "pause_sentence": pause_sentence,
+                "pause_paragraph": pause_paragraph,
+                "pause_variance": pause_variance,
+                "pause_mode": pause_mode,
+                "enable_short_sentence": effective_enable_short_sentence,
+                "short_sentence": effective_short_sentence,
+                "model_source": model_source,
+                "model_variant": model_variant,
+                "model_quality": model_quality,
+                "epub_content_mode": effective_epub_content_mode,
+                "prosody_method": prosody_method,
+                "prosody_strict": prosody_strict,
+                "title": effective_title,
+                "author": effective_author,
+                "keep_chapter_files": keep_chapter_files,
+            },
+            config=config,
+        )
+    except (OSError, ValueError, TypeError, RuntimeError) as exc:
+        console.print(f"[red]Invalid conversion plan:[/red] {exc}")
+        raise typer.Exit(code=2) from exc
+
     # Validate all effective settings before showing a summary or asking for
     # confirmation. Config-derived values do not pass through Typer's bounds.
     try:
@@ -1328,6 +1407,7 @@ def convert(
                 if output_format is not None
                 else config.get("default_format", "m4b")
             ),
+            conversion_plan_hash=execution_plan.generation_sha256,
             output_dir=output.parent,
             use_gpu=use_gpu if use_gpu is not None else config.get("use_gpu", False),
             onnx_provider=resolved_provider,
@@ -1768,6 +1848,30 @@ def convert(
 
     # Show result
     if result.success:
+        if manifest and not generate_ssmd_only and result.output_path is not None:
+            from ..render_manifest import build_render_manifest, write_render_manifest
+
+            marker_path = result.output_path.with_suffix(
+                result.output_path.suffix + ".markers.json"
+            )
+            try:
+                manifest_payload = build_render_manifest(
+                    output_path=result.output_path,
+                    plan=execution_plan,
+                    source_path=epub_file,
+                    selected_chapters=[
+                        chapter.index for chapter in chapters_to_convert
+                    ],
+                    generation_fingerprint=execution_plan.generation_sha256,
+                    marker_path=marker_path if marker_path.is_file() else None,
+                )
+                manifest_file = write_render_manifest(
+                    result.output_path, manifest_payload
+                )
+            except (OSError, TypeError, ValueError) as exc:
+                console.print(f"[red]Manifest write failed:[/red] {exc}")
+                raise typer.Exit(code=1) from exc
+            console.print(f"[dim]Render manifest:[/dim] {manifest_file}")
         console.print()
         if generate_ssmd_only:
             console.print(
@@ -1801,6 +1905,24 @@ def convert(
             )
         )
         sys.exit(1)
+
+
+def plan_conversion(
+    source_file: Path,
+    *,
+    request: Mapping[str, Any] | None = None,
+    as_json: bool = False,
+    config: Mapping[str, Any] | None = None,
+) -> None:
+    """Resolve and print a backend-light conversion plan."""
+    from ..conversion_plan import plan_json, resolve_conversion_plan
+
+    try:
+        plan = resolve_conversion_plan(source_file, request=request, config=config)
+    except (OSError, ValueError, TypeError, RuntimeError) as exc:
+        console.print(f"[red]Plan error:[/red] {exc}")
+        raise typer.Exit(code=2) from exc
+    typer.echo(plan_json(plan, pretty=not as_json))
 
 
 def list_chapters(epub_file: Path) -> None:
@@ -2435,12 +2557,9 @@ def read(
     Controls:
         Ctrl+C - Stop reading (position is saved for resume)
     """
-    import random
     import signal
     import sys
-    import time
 
-    from pykokoro import GenerationConfig
     from pykokoro.onnx_backend import LANG_CODE_TO_ONNX
 
     from ..audio_player import (
@@ -2449,7 +2568,8 @@ def read(
         load_playback_position,
         save_playback_position,
     )
-    from ..pykokoro_adapter import build_standard_pipeline
+    from ..kokoro_runner import KokoroRunner, KokoroRunOptions
+    from ..render_runtime import PlaybackSink, render_prepared
 
     # Get model path from global context
     model_path = ctx.obj.get("model_path") if ctx.obj else None
@@ -2742,30 +2862,34 @@ def read(
             selected_indices = list(range(start_chapter - 1, len(content_data)))
 
     # Handle resume
-    start_segment_index = 0
+    # Handle resume using prepared-unit cursors.
+    start_unit_index = 0
+    legacy_resume = False
     if resume:
         saved_position = load_playback_position()
         if saved_position and saved_position.file_path == file_identifier:
-            # Resume from saved position
             resume_index = saved_position.chapter_index
-            start_segment_index = saved_position.segment_index
-
+            legacy_resume = saved_position.legacy_segment_cursor
+            start_unit_index = 0 if legacy_resume else saved_position.unit_index
             if selected_indices is None:
                 selected_indices = list(range(resume_index, len(content_data)))
             else:
-                # Filter to only include items from resume point
                 selected_indices = [i for i in selected_indices if i >= resume_index]
-
-            console.print(
-                f"[yellow]Resuming from {content_label} {resume_index + 1}, "
-                f"segment {start_segment_index + 1}[/yellow]"
-            )
+            if legacy_resume:
+                console.print(
+                    f"[yellow]Resuming from {content_label} {resume_index + 1} "
+                    "at the beginning (legacy segment cursor migrated).[/yellow]"
+                )
+            else:
+                console.print(
+                    f"[yellow]Resuming from {content_label} {resume_index + 1}, "
+                    f"unit {start_unit_index + 1}[/yellow]"
+                )
         else:
             console.print(
                 "[dim]No saved position found for this file, "
                 "starting from beginning.[/dim]"
             )
-
     # Final selection
     if selected_indices is None:
         selected_indices = list(range(len(content_data)))
@@ -2782,293 +2906,145 @@ def read(
     )
     console.print()
 
-    # Initialize TTS pipeline
+    # Initialize the runner lazily; preparation owns segmentation and pause policy.
     console.print("[dim]Loading TTS model...[/dim]")
-    pipeline = None
-    try:
-        generation = GenerationConfig(
+    runner = KokoroRunner(
+        KokoroRunOptions(
+            voice=effective_voice,
             speed=effective_speed,
-            lang=espeak_lang,
-            pause_mode=cast(Literal["tts", "manual", "auto"], effective_pause_mode),
-            enable_short_sentence=effective_enable_short_sentence,
+            use_gpu=effective_onnx_provider != "cpu",
             pause_clause=effective_pause_clause,
             pause_sentence=effective_pause_sentence,
             pause_paragraph=effective_pause_paragraph,
             pause_variance=effective_pause_variance,
             random_seed=random_seed,
-        )
-        pipeline = build_standard_pipeline(
-            voice=effective_voice,
-            generation=generation,
+            enable_short_sentence=effective_enable_short_sentence,
+            language=espeak_lang,
             model_quality=model_quality,
             model_source=model_source,
             model_variant=model_variant,
             model_path=model_path,
             voices_path=voices_path,
-            provider=effective_onnx_provider,
             short_sentence_config=effective_short_sentence_config,
-            prosody=build_pykokoro_prosody_config(effective_read_prosody_policy),
-        )
-    except (ImportError, OSError, RuntimeError) as e:
-        if pipeline is not None:
-            pipeline.close()
-        console.print(f"[red]Error initializing TTS:[/red] {e}")
-        sys.exit(1)
-
-    # Track current position for saving
+            onnx_provider=effective_onnx_provider,
+            prosody_policy=effective_read_prosody_policy,
+        ),
+        log=lambda message, level="info": console.print(
+            f"[{level}]{message}[/{level}]"
+            if level != "info"
+            else f"[dim]{message}[/dim]"
+        ),
+    )
+    sink = PlaybackSink()
     current_content_idx = selected_indices[0]
-    current_segment_idx = 0
+    current_unit_idx = start_unit_index
     stop_requested = False
 
     def signal_handler(signum: int, frame: FrameType | None) -> None:
-        """Handle Ctrl+C gracefully."""
+        """Stop after the current submitted unit and retain its cursor."""
         nonlocal stop_requested
         console.print("\n[yellow]Stopping... (position saved)[/yellow]")
         stop_requested = True
 
-    # Set up signal handler
     original_handler = signal.signal(signal.SIGINT, signal_handler)
-
     try:
-        import concurrent.futures
-
-        import sounddevice as sd
-
-        # Create a thread pool for TTS generation (1 worker for lookahead)
-        executor = concurrent.futures.ThreadPoolExecutor(max_workers=1)
-
-        def generate_audio(text_segment: str) -> tuple[np.ndarray, int]:
-            """Generate audio for a text segment."""
-            result = pipeline.run(text_segment)
-            samples = result.audio
-            sample_rate = result.sample_rate
-            try:
-                return samples, sample_rate
-            finally:
-                result.release_audio()
-
-        # Collect all segments across content items with their metadata
-        all_segments: list[
-            tuple[int, int, str, str]
-        ] = []  # (content_idx, seg_idx, text, display)
-
+        unit_kind = "sentence" if effective_split_mode == "sentence" else "paragraph"
+        rendered_any = False
         for content_position, content_idx in enumerate(selected_indices):
+            if stop_requested:
+                break
+            current_content_idx = content_idx
             content_item = content_data[content_idx]
             text = content_item["text"].strip()
             if not text:
                 continue
+            console.print()
+            label = content_label.capitalize()
+            console.print(
+                f"[bold cyan]{label} {content_idx + 1}:[/bold cyan] "
+                f"{content_item['title']}"
+            )
+            console.print("-" * 60)
+            if content_position == 0 and start_unit_index > 0:
+                console.print(f"[dim](resuming from unit {start_unit_index + 1})[/dim]")
 
-            segments = _split_text_into_segments(text, split_mode=effective_split_mode)
+            with runner.prepare_units(
+                text,
+                unit=unit_kind,
+                lang_code=espeak_lang,
+                pause_mode=cast(Literal["tts", "manual", "auto"], effective_pause_mode),
+                random_seed=random_seed,
+            ) as prepared:
+                unit_indices = [unit.index for unit in prepared.units]
+                if content_position == 0 and start_unit_index > 0:
+                    unit_indices = [
+                        index for index in unit_indices if index >= start_unit_index
+                    ]
+                if not unit_indices:
+                    continue
+                for unit in prepared.units:
+                    if unit.index in unit_indices:
+                        console.print(f"[dim]{' '.join(unit.text.split())}[/dim]")
 
-            # Skip segments if resuming mid-content
-            seg_offset = 0
-            if content_position == 0 and start_segment_index > 0:
-                segments = segments[start_segment_index:]
-                seg_offset = start_segment_index
-
-            for seg_idx, segment in enumerate(segments):
-                actual_seg_idx = seg_idx + seg_offset
-                # Clean up text for display (normalize whitespace)
-                display_text = " ".join(segment.split())
-                all_segments.append(
-                    (content_idx, actual_seg_idx, segment, display_text)
-                )
-
-        if not all_segments:
-            console.print("[yellow]No text to read.[/yellow]")
-            return
-
-        # Pre-generate first segment
-        current_future = executor.submit(generate_audio, all_segments[0][2])
-        next_future = None
-
-        last_content_idx = -1
-
-        for i, (content_idx, seg_idx, _segment_text, display_text) in enumerate(
-            all_segments
-        ):
-            if stop_requested:
-                break
-
-            current_content_idx = content_idx
-            current_segment_idx = seg_idx
-
-            # Detect content change for paragraph pause
-            content_changed = content_idx != last_content_idx
-
-            # Show header when content item changes
-            if content_changed:
-                content_item = content_data[content_idx]
-                console.print()
-                label = content_label.capitalize()
-                console.print(
-                    f"[bold cyan]{label} {content_idx + 1}:[/bold cyan] "
-                    f"{content_item['title']}"
-                )
-                console.print("-" * 60)
-                if last_content_idx == -1 and start_segment_index > 0:
-                    console.print(
-                        f"[dim](resuming from segment {start_segment_index + 1})[/dim]"
+                def on_unit_complete(
+                    unit_index: int,
+                    content_index: int = content_idx,
+                ) -> None:
+                    nonlocal current_unit_idx, rendered_any
+                    current_unit_idx = unit_index
+                    rendered_any = True
+                    save_playback_position(
+                        PlaybackPosition(
+                            file_path=file_identifier,
+                            chapter_index=content_index,
+                            unit_index=current_unit_idx,
+                            content_mode=effective_content_mode,
+                        )
                     )
-                last_content_idx = content_idx
+                    if stop_requested:
+                        return
 
-            # Display current segment
-            console.print(f"[dim]{display_text}[/dim]")
-
-            # Start generating next segment while we wait for current
-            if i + 1 < len(all_segments):
-                next_future = executor.submit(generate_audio, all_segments[i + 1][2])
-
-            # Wait for current audio to be ready
-            try:
-                audio, sample_rate = current_future.result(timeout=60)
-            except (OSError, RuntimeError, TimeoutError) as e:
-                console.print(f"[red]TTS error:[/red] {e}")
-                # Move to next segment's future
-                if next_future:
-                    current_future = next_future
-                    next_future = None
-                continue
-
-            # Play audio
-            if not stop_requested:
-                sd.play(audio, sample_rate)
-                sd.wait()
-
-                # Add pause after segment (if not the last segment)
-                if i + 1 < len(all_segments) and not stop_requested:
-                    next_content_idx = all_segments[i + 1][0]
-                    if next_content_idx != content_idx:
-                        # Paragraph pause (between content items)
-                        pause = effective_pause_paragraph + random.uniform(
-                            -effective_pause_variance, effective_pause_variance
-                        )
-                    else:
-                        # Segment pause (within content item)
-                        pause = effective_pause_sentence + random.uniform(
-                            -effective_pause_variance, effective_pause_variance
-                        )
-                    time.sleep(max(0, pause))  # Ensure non-negative
-
-            # Swap futures: next becomes current
-            if next_future:
-                current_future = next_future
-                next_future = None
-
-        executor.shutdown(wait=False)
-
-        # Finished
-        if not stop_requested:
-            # Clear saved position on successful completion
+                render_prepared(
+                    prepared,
+                    sink,
+                    indices=unit_indices,
+                    on_unit_complete=on_unit_complete,
+                )
+            start_unit_index = 0
+        if not rendered_any:
+            console.print("[yellow]No text to read.[/yellow]")
+        elif not stop_requested:
+            sink.finish()
             clear_playback_position()
             console.print("\n[green]Finished reading.[/green]")
         else:
-            # Save position for resume
-            position = PlaybackPosition(
-                file_path=file_identifier,
-                chapter_index=current_content_idx,
-                segment_index=current_segment_idx,
+            save_playback_position(
+                PlaybackPosition(
+                    file_path=file_identifier,
+                    chapter_index=current_content_idx,
+                    unit_index=current_unit_idx,
+                    content_mode=effective_content_mode,
+                )
             )
-            save_playback_position(position)
-            label = content_label.capitalize()
             console.print(
-                f"[dim]Position saved: {label} {current_content_idx + 1}, "
-                f"Segment {current_segment_idx + 1}[/dim]"
+                f"[dim]Position saved: {content_label.capitalize()} "
+                f"{current_content_idx + 1}, Unit {current_unit_idx + 1}[/dim]"
             )
             console.print("[dim]Use --resume to continue from this position.[/dim]")
-
-    except (OSError, RuntimeError, ValueError) as e:
-        console.print(f"[red]Error during playback:[/red] {e}")
-        # Save position on error too
-        position = PlaybackPosition(
-            file_path=file_identifier,
-            chapter_index=current_content_idx,
-            segment_index=current_segment_idx,
+    except (OSError, RuntimeError, ValueError) as exc:
+        console.print(f"[red]Error during playback:[/red] {exc}")
+        save_playback_position(
+            PlaybackPosition(
+                file_path=file_identifier,
+                chapter_index=current_content_idx,
+                unit_index=current_unit_idx,
+                content_mode=effective_content_mode,
+            )
         )
-        save_playback_position(position)
         raise
     finally:
         signal.signal(signal.SIGINT, original_handler)
-        if pipeline is not None:
-            pipeline.close()
-
-
-def _split_text_into_segments(
-    text: str, split_mode: str = "paragraph", max_length: int = 500
-) -> list[str]:
-    """Split text into readable segments for streaming.
-
-    Args:
-        text: Text to split
-        split_mode: "sentence" for individual sentences, "paragraph" for grouped
-        max_length: Maximum segment length (used for paragraph mode)
-
-    Returns:
-        List of text segments
-    """
-
-    # First split on sentence-ending punctuation
-    sentence_pattern = r"(?<=[.!?])\s+"
-    sentences = re.split(sentence_pattern, text)
-    sentences = [s.strip() for s in sentences if s.strip()]
-
-    if split_mode == "sentence":
-        # Return individual sentences, but split very long ones
-        result = []
-        for sentence in sentences:
-            if len(sentence) > max_length:
-                # Split long sentences on clause boundaries
-                clause_parts = re.split(r"(?<=[,;:])\s+", sentence)
-                for part in clause_parts:
-                    part = part.strip()
-                    if part:
-                        result.append(part)
-            else:
-                result.append(sentence)
-        return result
-
-    # Paragraph mode: group sentences up to max_length
-    segments = []
-    current_segment = ""
-
-    for sentence in sentences:
-        # If adding this sentence would exceed max_length
-        if len(current_segment) + len(sentence) + 1 > max_length:
-            if current_segment:
-                segments.append(current_segment.strip())
-
-            # If single sentence is too long, split it further
-            if len(sentence) > max_length:
-                # Split on clause boundaries
-                clause_parts = re.split(r"(?<=[,;:])\s+", sentence)
-                for part in clause_parts:
-                    part = part.strip()
-                    if len(part) > max_length:
-                        # Last resort: split at word boundaries
-                        words = part.split()
-                        sub_segment = ""
-                        for word in words:
-                            if len(sub_segment) + len(word) + 1 > max_length:
-                                if sub_segment:
-                                    segments.append(sub_segment.strip())
-                                sub_segment = word
-                            else:
-                                sub_segment = (
-                                    f"{sub_segment} {word}" if sub_segment else word
-                                )
-                        if sub_segment:
-                            current_segment = sub_segment
-                    else:
-                        segments.append(part)
-                current_segment = ""
-            else:
-                current_segment = sentence
-        else:
-            current_segment = (
-                f"{current_segment} {sentence}" if current_segment else sentence
-            )
-
-    if current_segment.strip():
-        segments.append(current_segment.strip())
-
-    return [s for s in segments if s.strip()]
+        try:
+            sink.close()
+        finally:
+            runner.close()

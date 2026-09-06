@@ -40,31 +40,79 @@ def _import_sounddevice() -> Any:
 
 @dataclass
 class PlaybackPosition:
-    """Represents the current playback position for resume functionality."""
+    """Prepared-unit playback cursor with an explicit migration boundary."""
 
     file_path: str
     chapter_index: int
-    segment_index: int
+    unit_index: int
     timestamp: float = field(default_factory=time.time)
+    schema_version: int = 2
+    content_mode: str = "chapters"
+    generation_fingerprint: str | None = None
+    source_sha256: str | None = None
+    legacy_segment_cursor: bool = False
+
+    @property
+    def segment_index(self) -> int:
+        """Compatibility alias for callers of the schema-1 API."""
+        return self.unit_index
 
     def to_dict(self) -> dict[str, Any]:
-        """Convert to dictionary for JSON serialization."""
+        """Convert to the schema-2 unit cursor representation."""
+        if self.legacy_segment_cursor or self.schema_version < 2:
+            return {
+                "file_path": self.file_path,
+                "chapter_index": self.chapter_index,
+                "segment_index": self.unit_index,
+                "timestamp": self.timestamp,
+            }
         return {
-            "file_path": self.file_path,
-            "chapter_index": self.chapter_index,
-            "segment_index": self.segment_index,
+            "schema_version": 2,
+            "source": {
+                "path": self.file_path,
+                **({"sha256": self.source_sha256} if self.source_sha256 else {}),
+            },
+            "content_mode": self.content_mode,
+            "content_index": self.chapter_index,
+            "unit": "prepared",
+            "unit_index": self.unit_index,
+            "generation_fingerprint": self.generation_fingerprint,
             "timestamp": self.timestamp,
         }
 
     @classmethod
     def from_dict(cls, data: dict[str, Any]) -> PlaybackPosition:
-        """Create from dictionary."""
-        return cls(
-            file_path=data["file_path"],
-            chapter_index=data["chapter_index"],
-            segment_index=data["segment_index"],
-            timestamp=data.get("timestamp", time.time()),
-        )
+        """Load schema-2 cursors and mark schema-1 cursors as best effort."""
+        source = data.get("source")
+        if isinstance(source, dict):
+            file_path = str(source.get("path", data.get("file_path", "")))
+            source_sha256 = source.get("sha256")
+        else:
+            file_path = str(data.get("file_path", ""))
+            source_sha256 = None
+        if "unit_index" in data:
+            return cls(
+                file_path=file_path,
+                chapter_index=int(
+                    data.get("content_index", data.get("chapter_index", 0))
+                ),
+                unit_index=int(data["unit_index"]),
+                timestamp=float(data.get("timestamp", time.time())),
+                schema_version=int(data.get("schema_version", 2)),
+                content_mode=str(data.get("content_mode", "chapters")),
+                generation_fingerprint=data.get("generation_fingerprint"),
+                source_sha256=source_sha256,
+            )
+        if "segment_index" in data:
+            return cls(
+                file_path=file_path,
+                chapter_index=int(data["chapter_index"]),
+                unit_index=int(data["segment_index"]),
+                timestamp=float(data.get("timestamp", time.time())),
+                schema_version=1,
+                legacy_segment_cursor=True,
+            )
+        raise KeyError("playback cursor is missing unit_index/segment_index")
 
 
 class StreamingAudioPlayer:

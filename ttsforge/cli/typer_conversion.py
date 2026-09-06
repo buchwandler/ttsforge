@@ -563,6 +563,27 @@ def convert_command(
             help="Embed explicit SSMD pause defaults in generated headers.",
         ),
     ] = None,
+    dry_run: Annotated[
+        bool,
+        typer.Option(
+            "--dry-run",
+            help="Resolve and display the conversion plan without synthesizing audio.",
+        ),
+    ] = False,
+    manifest: Annotated[
+        bool,
+        typer.Option(
+            "--manifest",
+            help="Write a final deterministic render provenance manifest.",
+        ),
+    ] = False,
+    as_json: Annotated[
+        bool,
+        typer.Option(
+            "--json",
+            help="Emit the resolved dry-run plan as machine-readable JSON.",
+        ),
+    ] = False,
 ) -> None:
     """Convert an EPUB file to an audiobook.
 
@@ -642,6 +663,61 @@ def convert_command(
         ssmd_audio_max_duration=ssmd_audio_max_duration,
         embed_ssmd_voice_bindings=embed_ssmd_voice_bindings,
         embed_ssmd_pause_defaults=embed_ssmd_pause_defaults,
+        dry_run=dry_run,
+        manifest=manifest,
+        as_json=as_json,
+    )
+
+
+def plan_command(
+    source_file: Annotated[
+        Path,
+        typer.Argument(
+            exists=True,
+            file_okay=True,
+            dir_okay=False,
+            readable=True,
+            resolve_path=False,
+        ),
+    ],
+    output: Annotated[
+        Path | None,
+        typer.Option("-o", "--output", help="Planned output path."),
+    ] = None,
+    output_format: Annotated[
+        AudioFormat | None,
+        typer.Option("-f", "--format", help="Planned output format."),
+    ] = None,
+    voice: Annotated[str | None, typer.Option("-v", "--voice")] = None,
+    language: Annotated[LanguageCode | None, typer.Option("-l", "--language")] = None,
+    speed: Annotated[float | None, typer.Option("-s", "--speed")] = None,
+    provider: Annotated[str | None, typer.Option("--provider")] = None,
+    chapters: Annotated[str | None, typer.Option("--chapters")] = None,
+    skip_chapters: Annotated[str | None, typer.Option("--skip-chapters")] = None,
+    conversion_unit: Annotated[str | None, typer.Option("--conversion-unit")] = None,
+    as_json: Annotated[bool, typer.Option("--json", help="Emit compact JSON.")] = False,
+    epub_content_mode: Annotated[
+        Literal["markdown", "plain"] | None, typer.Option("--epub-content-mode")
+    ] = None,
+) -> None:
+    """Resolve a conversion plan without loading the TTS backend."""
+    from .commands_conversion import plan_conversion
+
+    plan_conversion(
+        source_file,
+        request={
+            "output": output,
+            "output_format": output_format,
+            "voice": voice,
+            "language": language,
+            "speed": speed,
+            "provider": provider,
+            "chapters": chapters,
+            "skip_chapters": skip_chapters,
+            "conversion_unit": conversion_unit,
+            "epub_content_mode": epub_content_mode,
+        },
+        as_json=as_json,
     )
 
 
@@ -1075,6 +1151,7 @@ def read_command(
 def register(app: typer.Typer) -> None:
     """Register conversion commands without importing implementations."""
     app.command(name="convert")(convert_command)
+    app.command(name="plan")(plan_command)
     app.command(name="list")(list_chapters_command)
     app.command(name="info")(info_command)
     app.command(name="sample")(sample_command)
