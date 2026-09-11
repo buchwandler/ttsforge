@@ -2,7 +2,6 @@
 
 from pathlib import Path
 
-
 WORKFLOW = Path(__file__).parents[1] / ".github" / "workflows" / "tests.yml"
 
 
