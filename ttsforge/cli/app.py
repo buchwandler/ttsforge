@@ -100,6 +100,11 @@ class _ColorAwareTyperCommand(TyperCommand):
                 "\n\n--conversion-unit chapter|paragraph: "
                 "output and resume granularity."
             )
+        if self.name == "convert" and "--emphasis-level" not in help_text:
+            help_text += (
+                "\n\n--emphasis-level INTEGER RANGE [0<=x<=3]: "
+                "Audible emphasis strength: 0=off, 1=light, 2=normal, 3=strong."
+            )
         return help_text
 
     def main(self, *args, **kwargs):  # type: ignore[no-untyped-def]
