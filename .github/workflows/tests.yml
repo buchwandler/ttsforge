@@ -38,6 +38,7 @@ jobs:
         python -m pip install -r requirements-test.txt
         python -m pip install spacy
         python -m spacy download en_core_web_sm
+        python -m lexphon data install en-us:gold
         pytest
 
   minimum-dependencies:
@@ -63,6 +64,8 @@ jobs:
           "phrasplit==0.3.7" \
           "ssmd==0.8.7"
         python -m pip install -e ".[dev]"
+    - name: Install kokorog2p lexicon data
+      run: python -m lexphon data install en-us:gold
     - name: Verify exact minimum versions
       run: |
         python - <<'PY'
