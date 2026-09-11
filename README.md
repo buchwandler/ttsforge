@@ -54,8 +54,8 @@ pip install "ttsforge[static_ffmpeg]"
 pip install "ttsforge[gpu]"
 ```
 
-TTSForge uses `pykokoro[cpu]>=0.9.1,<0.10`, `kokorog2p[espeak,en]>=0.9.2,<1.0`,
-`phrasplit>=0.3.7,<0.4`, and `ssmd>=0.8.6,<0.9`. The standard pipeline forwards the
+TTSForge targets `pykokoro[cpu]>=0.9.4,<0.10`, `kokorog2p[espeak,en]>=0.9.5,<1.0`,
+`phrasplit>=0.3.7,<0.4`, and `ssmd>=0.8.7,<0.9`. The standard pipeline forwards the
 document language and ONNX provider through PyKokoro 0.9. Omitted model and voice values
 are resolved from PyKokoro metadata. Explicit model profiles, custom model paths, and
 custom voice databases remain supported.
@@ -294,8 +294,6 @@ ttsforge config short-sentence show
 ttsforge config short-sentence reset
 ```
 
-The former `short-sentence-advanced-config` root command remains available as a
-deprecated compatibility alias.
 
 ### Filename Templates
 
@@ -465,9 +463,9 @@ plain extraction; the second preserves or unwraps inline emphasis without affect
 headings; the third controls friendly audible strength; the fourth remains the advanced
 SSMD policy; and the fifth selects AudioSig processing for explicit rate and pitch
 annotations. The default preserves EPUB emphasis but leaves automatic audible emphasis
-off. Level 2 is the backward-compatible equivalent of `--enable-ssmd-emphasis`; that
-legacy flag remains available with a deprecation warning. `psola` is accepted as an
-alias for AudioSig's canonical `td_psola`.
+The default preserves EPUB emphasis but leaves automatic audible emphasis off. Level 2 is
+the normal emphasis approximation. `psola` is accepted as an alias for AudioSig's canonical
+`td_psola`.
 
 The user-friendly levels are `0=Off`, `1=Light`, `2=Normal`, and `3=Strong`. The
 advanced policies are `plain`, `approximate`, `warn`, and `error`. Explicit SSMD prosody
@@ -724,18 +722,13 @@ ttsforge config --show
 ttsforge sample "OpenVINO test" --provider openvino
 ```
 
-The legacy Boolean flags remain compatibility shortcuts: `--gpu` maps to `auto` and
-`--no-gpu` maps to `cpu`. NNAPI and XNNPACK are execution providers, not GPU modes.
-PyKokoro applies its documented `ONNX_PROVIDER` environment override after TTSForge
-resolves configuration.
+NNAPI and XNNPACK are execution providers, not GPU modes. PyKokoro applies its documented
+`ONNX_PROVIDER` environment override after TTSForge resolves configuration.
 
 ```bash
-ttsforge convert book.epub --gpu
 ttsforge convert book.epub --provider xnnpack
+ttsforge doctor
 ```
-
-If an installed command exposes only `--gpu`, verify that the console script and module
-entry point come from the same provider-capable installation:
 
 ```bash
 ttsforge --version
@@ -771,33 +764,19 @@ build; use another available provider if NNAPI is not exposed.
 
 ## Configuration Options
 
-| Option                      | Default        | Description                                      |
-| --------------------------- | -------------- | ------------------------------------------------ |
-| `default_voice`             | `None`         | PyKokoro metadata-selected profile voice         |
-| `default_language`          | `a`            | Default language code                            |
-| `default_speed`             | `1.0`          | Speech speed (0.5-2.0)                           |
-| `default_format`            | `m4b`          | Output format                                    |
-| `onnx_provider`             | `cpu`          | ONNX Runtime provider alias or full name         |
-| `use_gpu`                   | `false`        | Legacy compatibility shortcut (`true` => `auto`) |
-| `model_quality`             | `None`         | PyKokoro automatic quality or explicit quality   |
-| `model_source`              | `None`         | PyKokoro automatic source or explicit source     |
-| `model_variant`             | `None`         | PyKokoro automatic profile or explicit variant   |
-| `silence_between_chapters`  | `2.0`          | Chapter gap (seconds)                            |
-| `pause_clause`              | `0.5`          | Clause pause (seconds)                           |
-| `pause_sentence`            | `0.7`          | Sentence pause (seconds)                         |
-| `pause_paragraph`           | `0.9`          | Paragraph pause (seconds)                        |
-| `pause_variance`            | `0.05`         | Pause variance (seconds)                         |
-| `pause_mode`                | `auto`         | Pause mode (`tts`, `manual`, `auto`)             |
-| `enable_short_sentence`     | `None`         | Handle short sentences                           |
-| `announce_chapters`         | `true`         | Speak chapter titles                             |
-| `chapter_pause_after_title` | `2.0`          | Pause after chapter title                        |
-| `phonemization_lang`        | `None`         | Override phonemization language                  |
-| `output_filename_template`  | `{book_title}` | Output filename template                         |
-| `default_content_mode`      | `chapters`     | `read` mode (`chapters`/`pages`)                 |
-| `default_page_size`         | `2000`         | Page size for `read` pages mode                  |
-| `use_mixed_language`        | `false`        | Deprecated; `true` is rejected                   |
-| `mixed_language_*`          | deprecated     | Use explicit SSMD `lang` spans                   |
-
+| Option | Default | Description |
+| --- | --- | --- |
+| `tts.voice` | `None` | Metadata-selected voice |
+| `tts.language` | `auto` | Canonical BCP-47 language |
+| `tts.speed` | `1.0` | Speech speed (0.5-2.0) |
+| `audio.format` | `m4b` | Output format |
+| `runtime.provider` | `cpu` | ONNX Runtime provider |
+| `model.quality` | `None` | Automatic or explicit quality |
+| `model.source` | `None` | Automatic or explicit source |
+| `model.id` | `None` | Automatic or explicit model profile |
+| `audio.silence_between_chapters` | `2.0` | Chapter gap in seconds |
+| `text.short_sentence` | `None` | Short-sentence handling |
+| `output_filename_template` | `{book_title}` | Output filename template |
 ## Documentation
 
 Full documentation: https://ttsforge.readthedocs.io/

@@ -18,7 +18,6 @@ from types import FrameType
 from typing import Any, Literal, TypedDict, cast
 
 import typer
-from pykokoro.config_types import ModelQuality
 from rich.panel import Panel
 from rich.progress import (
     BarColumn,
@@ -51,6 +50,7 @@ from ..paragraph_output import ensure_owned_directory, paragraph_directory
 from ..prosody_support import (
     ProsodyPolicy,
 )
+from ..pykokoro_adapter import ModelQuality
 from ..render_units import validate_conversion_unit
 from ..resume_identity import IdentityDifference, JsonValue
 from ..short_sentence_config import (
@@ -98,23 +98,18 @@ def _resolve_emphasis_controls(
     configured_mode: object,
     explicit_level: int | None,
     explicit_mode: str | None,
-    legacy_enable: bool,
-) -> tuple[EmphasisMode, float, int | None]:
-    """Resolve all friendly and advanced emphasis controls in one place."""
+ ) -> tuple[EmphasisMode, float, int | None]:
+    """Resolve friendly emphasis controls."""
     controls = sum(
         value is not None for value in (explicit_level, explicit_mode)
-    ) + int(legacy_enable)
+    )
     if controls > 1:
         raise typer.BadParameter(
-            "Choose only one emphasis control. Use --emphasis-level for normal "
-            "strength control."
+            "Choose only one emphasis control. Use --emphasis-level for "
+            "normal strength control."
         )
-
     if explicit_level is not None:
         preset = resolve_emphasis_level(explicit_level)
-        return preset.mode, preset.gain_scale, preset.level
-    if legacy_enable:
-        preset = resolve_emphasis_level(2)
         return preset.mode, preset.gain_scale, preset.level
     if explicit_mode is not None:
         mode = cast(EmphasisMode, explicit_mode)
@@ -152,24 +147,6 @@ def _resolve_emphasis_controls(
     return mode, 1.0, None
 
 
-def _resolve_ssmd_emphasis_mode(
-    *,
-    configured: object,
-    explicit: str | None,
-    enable_approximation: bool,
-) -> str:
-    """Backward-compatible mode-only facade for existing API callers."""
-    if enable_approximation and explicit is not None:
-        raise typer.BadParameter(
-            "--enable-ssmd-emphasis cannot be combined with --ssmd-emphasis"
-        )
-    return _resolve_emphasis_controls(
-        configured_level=None,
-        configured_mode=configured,
-        explicit_level=None,
-        explicit_mode=explicit,
-        legacy_enable=enable_approximation,
-    )[0]
 
 
 def _resolve_prosody_policy(
@@ -389,7 +366,6 @@ def _resolve_ssmd_policy(
     ssmd_unknown_header: str | None,
     ssmd_missing_voice: str | None,
     ssmd_emphasis: str | None,
-    enable_ssmd_emphasis: bool,
     ssmd_profile_validation: bool | None,
     ssmd_fail_on_warning: bool | None,
     ssmd_voice: list[str] | None,
@@ -487,10 +463,8 @@ def _resolve_ssmd_policy(
         overrides["validate_profile"] = ssmd_profile_validation
     if ssmd_fail_on_warning is not None:
         overrides["fail_on_warning"] = ssmd_fail_on_warning
-    if (
-        saved_identity is None
-        or any(value is not None for value in (emphasis_level, ssmd_emphasis))
-        or enable_ssmd_emphasis
+    if saved_identity is None or any(
+        value is not None for value in (emphasis_level, ssmd_emphasis)
     ):
         resolved_mode, resolved_scale, _ = _resolve_emphasis_controls(
             configured_level=(
@@ -501,7 +475,6 @@ def _resolve_ssmd_policy(
             else config.get("ssmd_emphasis_mode", "plain"),
             explicit_level=emphasis_level,
             explicit_mode=ssmd_emphasis,
-            legacy_enable=enable_ssmd_emphasis,
         )
         overrides["emphasis_mode"] = resolved_mode
         overrides["emphasis_gain_scale"] = resolved_scale
@@ -590,13 +563,14 @@ def convert(
     output_format: str | None,
     voice: str | None,
     language: str | None,
-    lang: str | None,
     use_spacy: bool | None,
     spacy_model: str | None,
     spacy_model_size: str | None,
     speed: float | None,
-    use_gpu: bool | None,
     provider: str | None,
+    model_variant: str | None,
+    model_quality: str | None,
+    model_source: str | None,
     chapters: str | None,
     skip_chapters: str | None,
     silence: float | None,
@@ -628,10 +602,6 @@ def convert(
     keep_chapter_files: bool,
     voice_blend: str | None,
     voice_database: Path | None,
-    use_mixed_language: bool | None,
-    mixed_language_primary: str | None,
-    mixed_language_allowed: str | None,
-    mixed_language_confidence: float | None,
     phoneme_dictionary_path: str | None,
     phoneme_dict_case_sensitive: bool | None,
     subchapter_markers: tuple[str, ...],
@@ -639,7 +609,6 @@ def convert(
     ssmd_unknown_header: str | None = None,
     ssmd_missing_voice: str | None = None,
     ssmd_emphasis: str | None = None,
-    enable_ssmd_emphasis: bool = False,
     ssmd_profile_validation: bool | None = None,
     ssmd_fail_on_warning: bool | None = None,
     ssmd_voice: list[str] | None = None,
@@ -670,10 +639,11 @@ def convert(
                     "output_format": output_format,
                     "voice": voice,
                     "language": language,
-                    "lang": lang,
                     "speed": speed,
                     "provider": provider,
-                    "use_gpu": use_gpu,
+                    "model_variant": model_variant,
+                    "model_quality": model_quality,
+                    "model_source": model_source,
                     "chapters": chapters,
                     "skip_chapters": skip_chapters,
                     "pause_clause": pause_clause,
@@ -745,15 +715,21 @@ def convert(
         raise typer.Exit(code=2) from exc
     try:
         resolved_provider = resolve_onnx_provider(
-            config, provider_override=provider, use_gpu_override=use_gpu
+            config, provider_override=provider
         )
     except ValueError as exc:
         console.print(f"[red]{exc}[/red]")
         raise typer.Exit(code=2) from exc
     model_path = ctx.obj.get("model_path") if ctx.obj else None
     voices_path = ctx.obj.get("voices_path") if ctx.obj else None
-    model_source, model_variant = _resolve_model_source_and_variant(config)
-    model_quality = cast(ModelQuality | None, config.get("model_quality"))
+    configured_model_source, configured_model_variant = (
+        _resolve_model_source_and_variant(config)
+    )
+    model_source = model_source or configured_model_source
+    model_variant = model_variant or configured_model_variant
+    model_quality = cast(
+        ModelQuality | None, model_quality or config.get("model_quality")
+    )
     text_postprocess_options = resolve_text_postprocess_options(
         config,
         subchapter_markers=subchapter_markers,
@@ -765,9 +741,7 @@ def convert(
             "language": language,
             "speed": speed,
             "split_mode": split_mode,
-            "use_gpu": use_gpu,
             "onnx_provider": resolved_provider,
-            "lang": lang,
         },
     )
     effective_language = resolved_defaults["language"]
@@ -789,11 +763,6 @@ def convert(
     try:
         validate_generation_ranges(
             speed=resolved_defaults["speed"],
-            mixed_language_confidence=(
-                mixed_language_confidence
-                if mixed_language_confidence is not None
-                else config.get("mixed_language_confidence", 0.7)
-            ),
             silence_between_chapters=(
                 silence
                 if silence is not None
@@ -911,11 +880,11 @@ def convert(
             lang_desc = LANGUAGE_DESCRIPTIONS.get(language, language)
             console.print(f"[dim]Auto-detected language: {lang_desc}[/dim]")
         else:
-            language = config.get("default_language", "a")
+            language = config.get("default_language", "en-us")
 
     # Ensure language has a default
     if language is None:
-        language = "a"
+        language = "en-us"
 
     # The EPUB-derived document language is authoritative for the effective
     # settings so PyKokoro receives the language that was detected.
@@ -956,7 +925,6 @@ def convert(
         )
 
     saved_identity_payload: Mapping[str, JsonValue] | None = None
-    saved_mixed_language_allowed: list[str] | None = None
     if resume_candidate is not None and not fresh:
         candidate_state = resume_candidate.state
         if (
@@ -980,20 +948,17 @@ def convert(
 
         voice = cast(str | None, restore("voice", voice, explicit_voice))
         language = cast(str | None, restore("language", language, explicit_language))
-        effective_language = language or "a"
+        effective_language = language or "en-us"
         resolved_defaults["voice"] = voice or resolved_defaults["voice"]
         resolved_defaults["language"] = effective_language
         resolved_defaults["speed"] = restore("speed", resolved_defaults["speed"], speed)
         resolved_defaults["split_mode"] = restore(
             "split_mode", resolved_defaults["split_mode"], split_mode
         )
-        resolved_defaults["lang"] = restore("lang", resolved_defaults["lang"], lang)
         if provider is None:
             resolved_provider = cast(
                 str, _saved_identity_value(saved, "onnx_provider", resolved_provider)
             )
-        if use_gpu is None:
-            use_gpu = cast(bool, _saved_identity_value(saved, "use_gpu", use_gpu))
         model_quality = cast(
             ModelQuality,
             _saved_identity_value(saved, "model_quality", model_quality),
@@ -1027,9 +992,6 @@ def convert(
             ("short_sentence", short_sentence),
             ("announce_chapters", announce_chapters),
             ("chapter_pause_after_title", chapter_pause),
-            ("use_mixed_language", use_mixed_language),
-            ("mixed_language_primary", mixed_language_primary),
-            ("mixed_language_confidence", mixed_language_confidence),
             ("phoneme_dict_case_sensitive", phoneme_dict_case_sensitive),
         ):
             if explicit is None:
@@ -1056,17 +1018,8 @@ def convert(
                     announce_chapters = cast(bool | None, value)
                 elif name == "chapter_pause_after_title":
                     chapter_pause = cast(float | None, value)
-                elif name == "use_mixed_language":
-                    use_mixed_language = cast(bool | None, value)
-                elif name == "mixed_language_primary":
-                    mixed_language_primary = cast(str | None, value)
-                elif name == "mixed_language_confidence":
-                    mixed_language_confidence = cast(float | None, value)
                 elif name == "phoneme_dict_case_sensitive":
                     phoneme_dict_case_sensitive = cast(bool | None, value)
-        saved_allowed = saved.get("mixed_language_allowed")
-        if mixed_language_allowed is None and isinstance(saved_allowed, list):
-            saved_mixed_language_allowed = [str(item) for item in saved_allowed]
         saved_short_enable = enable_short_sentence
         effective_enable_short_sentence = saved_short_enable
         effective_short_sentence = short_sentence
@@ -1109,14 +1062,12 @@ def convert(
             resolved_defaults["voice"] = legacy_state.voice
         if explicit_language is None:
             language = legacy_state.language
-            effective_language = language or "a"
+            effective_language = language or "en-us"
             resolved_defaults["language"] = effective_language
         if speed is None:
             resolved_defaults["speed"] = legacy_state.speed
         if split_mode is None:
             resolved_defaults["split_mode"] = legacy_state.split_mode
-        if lang is None:
-            resolved_defaults["lang"] = legacy_state.lang
         if provider is None:
             resolved_provider = legacy_state.onnx_provider or resolved_provider
         if use_spacy is None:
@@ -1309,14 +1260,6 @@ def convert(
                 "default_format", "m4b"
             )
 
-    # Parse mixed_language_allowed from comma-separated string
-    parsed_mixed_language_allowed = None
-    if mixed_language_allowed is not None:
-        parsed_mixed_language_allowed = [
-            lang.strip() for lang in mixed_language_allowed.split(",")
-        ]
-    elif saved_mixed_language_allowed is not None:
-        parsed_mixed_language_allowed = saved_mixed_language_allowed
 
     ssmd_bindings = _parse_ssmd_voice_bindings(ssmd_voice)
     ssmd_policy = _resolve_ssmd_policy(
@@ -1327,7 +1270,6 @@ def convert(
         ssmd_missing_voice=ssmd_missing_voice,
         ssmd_emphasis=ssmd_emphasis,
         emphasis_level=emphasis_level,
-        enable_ssmd_emphasis=enable_ssmd_emphasis,
         ssmd_profile_validation=ssmd_profile_validation,
         ssmd_fail_on_warning=ssmd_fail_on_warning,
         ssmd_voice=ssmd_voice,
@@ -1341,11 +1283,6 @@ def convert(
         ssmd_audio_max_bytes=ssmd_audio_max_bytes,
         ssmd_audio_max_duration=ssmd_audio_max_duration,
     )
-    if enable_ssmd_emphasis:
-        typer.echo(
-            "Warning: --enable-ssmd-emphasis is deprecated; use --emphasis-level 2.",
-            err=True,
-        )
     if saved_identity_payload is not None:
         effective_prosody_policy = _resolve_prosody_policy(
             config,
@@ -1364,10 +1301,8 @@ def convert(
                 "output_format": output_format,
                 "voice": resolved_defaults["voice"],
                 "language": effective_language,
-                "lang": lang,
                 "speed": resolved_defaults["speed"],
                 "provider": resolved_provider,
-                "use_gpu": use_gpu,
                 "chapter_count": len(epub_chapters),
                 "selected_chapters": selected_indices
                 or list(range(len(epub_chapters))),
@@ -1398,7 +1333,7 @@ def convert(
     # Validate all effective settings before showing a summary or asking for
     # confirmation. Config-derived values do not pass through Typer's bounds.
     try:
-        options = ConversionOptions(
+        options = ConversionOptions.from_plan(execution_plan,
             voice=resolved_defaults["voice"],
             language=effective_language,
             speed=resolved_defaults["speed"],
@@ -1409,7 +1344,6 @@ def convert(
             ),
             conversion_plan_hash=execution_plan.generation_sha256,
             output_dir=output.parent,
-            use_gpu=use_gpu if use_gpu is not None else config.get("use_gpu", False),
             onnx_provider=resolved_provider,
             model_quality=model_quality,
             model_source=model_source,
@@ -1419,30 +1353,9 @@ def convert(
                 if silence is not None
                 else config.get("silence_between_chapters", 2.0)
             ),
-            lang=(lang if lang is not None else config.get("phonemization_lang")),
             use_spacy=effective_use_spacy,
             spacy_model=effective_spacy_model,
             spacy_model_size=effective_spacy_model_size,
-            use_mixed_language=(
-                use_mixed_language
-                if use_mixed_language is not None
-                else config.get("use_mixed_language", False)
-            ),
-            mixed_language_primary=(
-                mixed_language_primary
-                if mixed_language_primary is not None
-                else config.get("mixed_language_primary")
-            ),
-            mixed_language_allowed=(
-                parsed_mixed_language_allowed
-                if parsed_mixed_language_allowed is not None
-                else config.get("mixed_language_allowed")
-            ),
-            mixed_language_confidence=(
-                mixed_language_confidence
-                if mixed_language_confidence is not None
-                else config.get("mixed_language_confidence", 0.7)
-            ),
             phoneme_dictionary_path=(
                 phoneme_dictionary_path
                 if phoneme_dictionary_path is not None
@@ -1659,14 +1572,9 @@ def convert(
         ),
         title=effective_title,
         author=effective_author,
-        lang=options.lang,
         use_spacy=options.use_spacy,
         spacy_model=options.spacy_model,
         spacy_model_size=options.spacy_model_size,
-        use_mixed_language=options.use_mixed_language,
-        mixed_language_primary=options.mixed_language_primary,
-        mixed_language_allowed=options.mixed_language_allowed,
-        mixed_language_confidence=options.mixed_language_confidence,
         random_seed=random_seed,
         detect_emphasis=effective_detect_emphasis,
         epub_content_mode=effective_epub_content_mode,
@@ -2015,18 +1923,12 @@ def sample(
     output_format: str,
     voice: str | None,
     language: str | None,
-    lang: str | None,
     speed: float | None,
     random_seed: int | None,
-    use_gpu: bool | None,
     provider: str | None,
     split_mode: str | None,
     play_audio: bool,
     verbose: bool,
-    use_mixed_language: bool,
-    mixed_language_primary: str | None,
-    mixed_language_allowed: str | None,
-    mixed_language_confidence: float | None,
     phoneme_dictionary_path: str | None,
     phoneme_dict_case_sensitive: bool,
 ) -> None:
@@ -2075,7 +1977,7 @@ def sample(
     user_config = load_config()
     try:
         resolved_provider = resolve_onnx_provider(
-            user_config, provider_override=provider, use_gpu_override=use_gpu
+            user_config, provider_override=provider
         )
     except ValueError as exc:
         console.print(f"[red]{exc}[/red]")
@@ -2089,18 +1991,10 @@ def sample(
             "language": language,
             "speed": speed,
             "split_mode": split_mode,
-            "use_gpu": use_gpu,
             "onnx_provider": resolved_provider,
-            "lang": lang,
         },
     )
 
-    # Parse mixed_language_allowed from comma-separated string
-    parsed_mixed_language_allowed = None
-    if mixed_language_allowed:
-        parsed_mixed_language_allowed = [
-            lang_item.strip() for lang_item in mixed_language_allowed.split(",")
-        ]
 
     # Auto-detect if voice is a blend
     voice_value = resolved_defaults["voice"]
@@ -2116,27 +2010,11 @@ def sample(
         speed=resolved_defaults["speed"],
         random_seed=random_seed,
         output_format=output_format,
-        use_gpu=resolved_defaults["use_gpu"],
         onnx_provider=resolved_provider,
         split_mode=resolved_defaults["split_mode"],
-        lang=resolved_defaults["lang"],
         model_quality=model_quality,
         model_source=model_source,
         model_variant=model_variant,
-        use_mixed_language=(
-            use_mixed_language or user_config.get("use_mixed_language", False)
-        ),
-        mixed_language_primary=(
-            mixed_language_primary or user_config.get("mixed_language_primary")
-        ),
-        mixed_language_allowed=(
-            parsed_mixed_language_allowed or user_config.get("mixed_language_allowed")
-        ),
-        mixed_language_confidence=(
-            mixed_language_confidence
-            if mixed_language_confidence is not None
-            else user_config.get("mixed_language_confidence", 0.7)
-        ),
         phoneme_dictionary_path=(
             phoneme_dictionary_path or user_config.get("phoneme_dictionary_path")
         ),
@@ -2155,8 +2033,6 @@ def sample(
         console.print(f"[dim]Voice:[/dim] {options.voice}")
     lang_desc = LANGUAGE_DESCRIPTIONS.get(options.language, "Unknown")
     console.print(f"[dim]Language:[/dim] {options.language} ({lang_desc})")
-    if options.lang:
-        console.print(f"[dim]Phonemization Lang:[/dim] {options.lang} (override)")
     console.print(f"[dim]Speed:[/dim] {options.speed}")
     console.print(f"[dim]Format:[/dim] {options.output_format}")
     console.print(f"[dim]Split mode:[/dim] {options.split_mode}")
@@ -2269,14 +2145,9 @@ def _show_conversion_summary(
     author: str,
     conversion_unit: str = "chapter",
     paragraphs_dir: Path | None = None,
-    lang: str | None = None,
     use_spacy: bool | None = None,
     spacy_model: str | None = None,
     spacy_model_size: str | None = None,
-    use_mixed_language: bool = False,
-    mixed_language_primary: str | None = None,
-    mixed_language_allowed: list[str] | None = None,
-    mixed_language_confidence: float = 0.7,
     random_seed: int | None = None,
     detect_emphasis: bool = False,
     epub_content_mode: str = "markdown",
@@ -2311,8 +2182,6 @@ def _show_conversion_summary(
     table.add_row("Model Source", str(model_source))
     table.add_row("Model Variant", str(model_variant))
     table.add_row("Model Quality", str(model_quality))
-    if lang:
-        table.add_row("Phonemization Lang", f"{lang} (override)")
     if use_spacy is False:
         table.add_row("spaCy request", "Disabled")
     elif spacy_model:
@@ -2321,13 +2190,6 @@ def _show_conversion_summary(
         table.add_row("spaCy request", f"Exact {spacy_model_size} tier")
     else:
         table.add_row("spaCy request", "Automatic, highest installed")
-    if use_mixed_language:
-        table.add_row("Mixed-Language", "Enabled")
-        if mixed_language_primary:
-            table.add_row("  Primary Lang", mixed_language_primary)
-        if mixed_language_allowed:
-            table.add_row("  Allowed Langs", ", ".join(mixed_language_allowed))
-        table.add_row("  Confidence", f"{mixed_language_confidence:.2f}")
     table.add_row("Speed", f"{speed}x")
     is_markdown = epub_content_mode == "markdown"
     table.add_row(
@@ -2483,7 +2345,7 @@ def _format_short_sentence_hint(
     if enable_short_sentence is False:
         return None
     # phrase short-sentence handling currently only supports english.
-    if language_code not in {"a", "b"}:
+    if language_code not in {"en-us", "en-gb"}:
         return None
     resolved = resolve_short_sentence_config(
         short_sentence, language_code=language_code
@@ -2515,7 +2377,6 @@ def read(
     voice: str | None,
     language: str | None,
     speed: float | None,
-    use_gpu: bool | None,
     provider: str | None,
     content_mode: str | None,
     chapters: str | None,
@@ -2560,8 +2421,6 @@ def read(
     import signal
     import sys
 
-    from pykokoro.onnx_backend import LANG_CODE_TO_ONNX
-
     from ..audio_player import (
         PlaybackPosition,
         clear_playback_position,
@@ -2584,7 +2443,7 @@ def read(
         raise typer.Exit(code=2) from exc
     try:
         resolved_provider = resolve_onnx_provider(
-            config, provider_override=provider, use_gpu_override=use_gpu
+            config, provider_override=provider
         )
     except ValueError as exc:
         console.print(f"[red]{exc}[/red]")
@@ -2599,9 +2458,7 @@ def read(
             "language": language,
             "speed": speed,
             "split_mode": split_mode,
-            "use_gpu": use_gpu,
             "onnx_provider": resolved_provider,
-            "lang": None,
         },
     )
     effective_voice = resolved_defaults["voice"]
@@ -2653,7 +2510,9 @@ def read(
     )
 
     # Get language code for TTS
-    espeak_lang = LANG_CODE_TO_ONNX.get(effective_language, "en-us")
+    from ..kokoro_lang import get_pykokoro_language
+
+    espeak_lang = get_pykokoro_language(effective_language)
 
     # Validate conflicting options
     if effective_content_mode == "chapters" and (pages or start_page):
@@ -2912,7 +2771,6 @@ def read(
         KokoroRunOptions(
             voice=effective_voice,
             speed=effective_speed,
-            use_gpu=effective_onnx_provider != "cpu",
             pause_clause=effective_pause_clause,
             pause_sentence=effective_pause_sentence,
             pause_paragraph=effective_pause_paragraph,

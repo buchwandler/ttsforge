@@ -1,7 +1,7 @@
-"""Focused PyKokoro 0.9.1 resolution-contract tests.
+"""Focused PyKokoro resolution-contract tests.
 
 These tests pin TTSForge's metadata-only default resolution to the public
-``pykokoro.resolve_pipeline_config`` boundary added in 0.9.1.
+``pykokoro.resolve_pipeline_config`` boundary.
 """
 
 from __future__ import annotations
@@ -22,10 +22,7 @@ from ttsforge.kokoro_lang import get_onnx_lang_code, get_pykokoro_language
 
 def test_public_resolver_is_importable() -> None:
     """resolve_pipeline_config must be part of the public pykokoro API."""
-    import pykokoro
     from pykokoro import resolve_pipeline_config
-
-    assert pykokoro.__version__ == "0.9.1"
     assert callable(resolve_pipeline_config)
 
 

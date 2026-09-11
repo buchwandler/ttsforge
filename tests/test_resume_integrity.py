@@ -267,12 +267,12 @@ def test_paragraph_schema5_resume_is_rejected_explicitly(tmp_path: Path) -> None
     )
 
 
-def test_renderer_contract_uses_pykokoro_090_and_kokorog2p_092() -> None:
+def test_renderer_contract_uses_pykokoro_094_and_kokorog2p_095() -> None:
     contract = renderer_contract_payload()
-    assert contract["pykokoro"] == "0.9.0"
-    assert contract["kokorog2p"] == "0.9.2"
-    assert "pykokoro_runtime" in contract
-    assert "kokorog2p_runtime" in contract
+    assert contract["pykokoro"] == "0.9.4"
+    assert contract["kokorog2p"] == "0.9.5"
+    assert "pykokoro_runtime" not in contract
+    assert "kokorog2p_runtime" not in contract
     assert contract["schema"] == 4
 
 

@@ -1,4 +1,4 @@
-"""Regression tests for the legacy repeated config option grammar."""
+"""Regression tests for the schema-2 configuration CLI."""
 
 from __future__ import annotations
 
@@ -6,7 +6,6 @@ import json
 from pathlib import Path
 from unittest.mock import patch
 
-import pytest
 from typer.testing import CliRunner
 
 from ttsforge.cli import app
@@ -23,130 +22,39 @@ def test_spacy_config_preserves_auto_and_boolean_values() -> None:
     validate_config_value("use_spacy", True)
 
 
-def test_emphasis_level_config_accepts_none_and_levels() -> None:
-    assert DEFAULT_CONFIG["emphasis_level"] is None
-    assert parse_config_cli_value("emphasis_level", "none", None) is None
-    for level in range(4):
-        value = parse_config_cli_value("emphasis_level", str(level), None)
-        assert value == level
-        validate_config_value("emphasis_level", value)
-
-
-@pytest.mark.parametrize("raw", ["-1", "4", "1.5", "true", "text"])
-def test_emphasis_level_config_rejects_invalid_values(raw: str) -> None:
-    with pytest.raises(ValueError):
-        value = parse_config_cli_value("emphasis_level", raw, None)
-        validate_config_value("emphasis_level", value)
-
-
-def test_config_set_accepts_repeated_pairs_and_dash_prefixed_values(
-    tmp_path: Path,
-) -> None:
+def test_config_set_persists_nested_override(tmp_path: Path) -> None:
     config_path = tmp_path / "config.json"
     with patch("ttsforge.utils.get_user_config_path", return_value=config_path):
-        result = CliRunner().invoke(
-            app,
-            [
-                "config",
-                "--set",
-                "default_title",
-                "-draft",
-                "--set",
-                "default_language",
-                "b",
-            ],
-        )
+        result = CliRunner().invoke(app, ["config", "set", "tts.language", "de"])
 
     assert result.exit_code == 0, result.output
     saved = json.loads(config_path.read_text(encoding="utf-8"))
-    assert saved["default_title"] == "-draft"
-    assert saved["default_language"] == "b"
+    assert saved["schema_version"] == 2
+    assert saved["tts"]["language"] == "de"
 
 
-def test_config_set_rejects_negative_pause_variance(tmp_path: Path) -> None:
+def test_config_set_is_atomic_when_value_is_invalid(tmp_path: Path) -> None:
     config_path = tmp_path / "config.json"
-    with patch("ttsforge.utils.get_user_config_path", return_value=config_path):
-        result = CliRunner().invoke(
-            app,
-            ["config", "--set", "pause_variance", "-0.1"],
-        )
-
-    assert result.exit_code == 2
-    assert "pause_variance" in result.output
-    assert "must be non-negative" in result.output
-    assert not config_path.exists()
-
-
-def test_config_set_is_atomic_when_one_repeated_pair_is_invalid(tmp_path: Path) -> None:
-    config_path = tmp_path / "config.json"
-    original = {"default_language": "a"}
+    original = {"schema_version": 2, "tts": {"language": "en-us"}}
     config_path.write_text(json.dumps(original), encoding="utf-8")
-
     with patch("ttsforge.utils.get_user_config_path", return_value=config_path):
         result = CliRunner().invoke(
-            app,
-            [
-                "config",
-                "--set",
-                "default_language",
-                "b",
-                "--set",
-                "pause_variance",
-                "-0.1",
-            ],
+            app, ["config", "set", "runtime.provider", "potato"]
         )
 
-    assert result.exit_code == 2
+    assert result.exit_code == 1
     assert json.loads(config_path.read_text(encoding="utf-8")) == original
 
 
-def test_config_set_requires_exactly_two_values() -> None:
-    result = CliRunner().invoke(app, ["config", "--set", "pause_variance"])
-    assert result.exit_code != 0
-    assert "requires 2 arguments" in result.output
-
-
-def test_config_rejects_unknown_options() -> None:
-    result = CliRunner().invoke(app, ["config", "--not-an-option"])
-    assert result.exit_code != 0
-    assert "No such option" in result.output
-
-
-def test_config_options_cannot_be_combined_with_subcommand() -> None:
-    result = CliRunner().invoke(
-        app,
-        ["config", "--show", "short-sentence", "show"],
-    )
-
-    assert result.exit_code != 0
-    assert "cannot be combined" in result.output
-
-
-def test_config_set_provider_persists_alias_and_full_name(tmp_path: Path) -> None:
+def test_config_set_provider_persists_nested_value(tmp_path: Path) -> None:
     config_path = tmp_path / "config.json"
     with patch("ttsforge.utils.get_user_config_path", return_value=config_path):
         result = CliRunner().invoke(
-            app,
-            ["config", "--set", "onnx_provider", "NnapiExecutionProvider"],
+            app, ["config", "set", "runtime.provider", "NnapiExecutionProvider"]
         )
     assert result.exit_code == 0, result.output
-    assert json.loads(config_path.read_text(encoding="utf-8"))["onnx_provider"] == (
-        "NnapiExecutionProvider"
-    )
-
-
-def test_config_set_invalid_provider_is_atomic(tmp_path: Path) -> None:
-    config_path = tmp_path / "config.json"
-    original = {"onnx_provider": "cpu"}
-    config_path.write_text(json.dumps(original), encoding="utf-8")
-    with patch("ttsforge.utils.get_user_config_path", return_value=config_path):
-        result = CliRunner().invoke(
-            app,
-            ["config", "--set", "onnx_provider", "potato"],
-        )
-    assert result.exit_code == 2
-    assert "Invalid value for onnx_provider" in result.output
-    assert json.loads(config_path.read_text(encoding="utf-8")) == original
+    saved = json.loads(config_path.read_text(encoding="utf-8"))
+    assert saved["runtime"]["provider"] == "NnapiExecutionProvider"
 
 
 def test_config_reset_restores_provider_defaults(tmp_path: Path) -> None:
@@ -155,5 +63,16 @@ def test_config_reset_restores_provider_defaults(tmp_path: Path) -> None:
         result = CliRunner().invoke(app, ["config", "--reset"])
     assert result.exit_code == 0, result.output
     saved = json.loads(config_path.read_text(encoding="utf-8"))
-    assert saved["onnx_provider"] == "cpu"
-    assert saved["use_gpu"] is False
+    assert saved == {"schema_version": 2}
+
+
+def test_config_get_reads_dotted_value(tmp_path: Path) -> None:
+    config_path = tmp_path / "config.json"
+    config_path.write_text(
+        json.dumps({"schema_version": 2, "tts": {"language": "de"}}),
+        encoding="utf-8",
+    )
+    with patch("ttsforge.utils.get_user_config_path", return_value=config_path):
+        result = CliRunner().invoke(app, ["config", "get", "tts.language"])
+    assert result.exit_code == 0
+    assert result.output.strip() == '"de"'

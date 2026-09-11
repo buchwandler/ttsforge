@@ -8,62 +8,6 @@ SAMPLE_RATE = 24000
 # pykokoro's v1.0 voice catalogue is data, not backend functionality. Keeping
 # the catalogue here keeps CLI option construction and lightweight help
 # provider-independent.
-VOICES = [
-    "af",
-    "af_alloy",
-    "af_aoede",
-    "af_bella",
-    "af_heart",
-    "af_jessica",
-    "af_kore",
-    "af_nicole",
-    "af_nova",
-    "af_river",
-    "af_sarah",
-    "af_sky",
-    "am_adam",
-    "am_echo",
-    "am_eric",
-    "am_fenrir",
-    "am_liam",
-    "am_michael",
-    "am_onyx",
-    "am_puck",
-    "am_santa",
-    "bf_alice",
-    "bf_emma",
-    "bf_isabella",
-    "bf_lily",
-    "bm_daniel",
-    "bm_fable",
-    "bm_george",
-    "bm_lewis",
-    "ef_dora",
-    "em_alex",
-    "em_santa",
-    "ff_siwis",
-    "hf_alpha",
-    "hf_beta",
-    "hm_omega",
-    "hm_psi",
-    "if_sara",
-    "im_nicola",
-    "jf_alpha",
-    "jf_gongitsune",
-    "jf_nezumi",
-    "jf_tebukuro",
-    "jm_kumo",
-    "pf_dora",
-    "pm_alex",
-    "pm_santa",
-    "zf_xiaobei",
-    "zf_xiaoni",
-    "zf_xiaoxiao",
-    "zm_yunjian",
-    "zm_yunxi",
-    "zm_yunxia",
-    "zm_yunyang",
-]
 
 # Program Information
 PROGRAM_NAME = "ttsforge"
@@ -71,80 +15,22 @@ PROGRAM_DESCRIPTION = "Generate audiobooks from EPUB files using Kokoro ONNX TTS
 
 # Language code to description mapping
 LANGUAGE_DESCRIPTIONS = {
-    "a": "American English",
-    "b": "British English",
-    "d": "German",
-    "e": "Spanish",
-    "f": "French",
-    "h": "Hindi",
-    "i": "Italian",
-    "j": "Japanese",
-    "p": "Brazilian Portuguese",
-    "z": "Mandarin Chinese",
+    "en-us": "American English",
+    "en-gb": "British English",
+    "de": "German",
+    "es": "Spanish",
+    "fr-fr": "French",
+    "hi": "Hindi",
+    "it": "Italian",
+    "ja": "Japanese",
+    "pt-br": "Brazilian Portuguese",
+    "zh": "Mandarin Chinese",
 }
 
 # ISO language code to ttsforge language code mapping
-ISO_TO_LANG_CODE = {
-    "de": "d",
-    "de-de": "d",
-    "en": "a",  # Default to American English
-    "en-us": "a",
-    "en-gb": "b",
-    "en-au": "b",
-    "es": "e",
-    "es-es": "e",
-    "es-mx": "e",
-    "fr": "f",
-    "fr-fr": "f",
-    "fr-ca": "f",
-    "hi": "h",
-    "it": "i",
-    "ja": "j",
-    "pt": "p",
-    "pt-br": "p",
-    "pt-pt": "p",
-    "zh": "z",
-    "zh-cn": "z",
-    "zh-tw": "z",
-}
 
 # Voice prefix to language code mapping
-VOICE_PREFIX_TO_LANG = {
-    "af": "a",  # American Female
-    "am": "a",  # American Male
-    "bf": "b",  # British Female
-    "bm": "b",  # British Male
-    "df": "d",  # German Female
-    "dm": "d",  # German Male
-    "ef": "e",  # Spanish Female
-    "em": "e",  # Spanish Male
-    "ff": "f",  # French Female
-    "fm": "f",  # French Male
-    "hf": "h",  # Hindi Female
-    "hm": "h",  # Hindi Male
-    "if": "i",  # Italian Female
-    "im": "i",  # Italian Male
-    "jf": "j",  # Japanese Female
-    "jm": "j",  # Japanese Male
-    "pf": "p",  # Portuguese Female
-    "pm": "p",  # Portuguese Male
-    "zf": "z",  # Chinese Female
-    "zm": "z",  # Chinese Male
-}
 
-# Language code to default voice mapping
-DEFAULT_VOICE_FOR_LANG = {
-    "a": "af_heart",
-    "b": "bf_emma",
-    "d": "df_eva",
-    "e": "ef_dora",
-    "f": "ff_siwis",
-    "h": "hf_alpha",
-    "i": "if_sara",
-    "j": "jf_alpha",
-    "p": "pf_dora",
-    "z": "zf_xiaoxiao",
-}
 
 # Supported output audio formats
 SUPPORTED_OUTPUT_FORMATS = [
@@ -165,11 +51,10 @@ SOUNDFILE_FORMATS = ["wav", "mp3", "flac"]
 # None lets PyKokoro 0.9 resolve a language-aware voice profile.
 DEFAULT_CONFIG = {
     "default_voice": None,
-    "default_language": "a",
+    "default_language": "auto",
     "default_speed": 1.0,
     "default_format": "m4b",
     "onnx_provider": "cpu",
-    "use_gpu": False,  # Legacy compatibility key; use onnx_provider instead.
     # spaCy policy: unset model and tier select the highest installed compatible
     # local model through the released phrasplit/PyKokoro APIs.
     "use_spacy": None,
@@ -182,7 +67,6 @@ DEFAULT_CONFIG = {
     "silence_between_chapters": 2.0,
     "save_chapters_separately": False,
     "merge_at_end": True,
-    "auto_detect_language": True,
     "default_split_mode": "auto",
     "default_content_mode": "chapters",  # Content mode for read: chapters or pages
     "default_page_size": 2000,  # Synthetic page size in characters for pages mode
@@ -195,8 +79,6 @@ DEFAULT_CONFIG = {
     "subchapter_markers": [],
     "short_sentence": "mode=randomized,threshold=30,selection=auto,max-tries=5",
     # Language override for phonemization (e.g., 'de', 'fr', 'en-us')
-    # If None, language is determined from voice prefix
-    "phonemization_lang": None,
     # Chapter announcement settings
     "announce_chapters": True,  # Read chapter titles aloud before content
     "chapter_pause_after_title": 2.0,  # Pause after chapter title (seconds)
@@ -236,20 +118,3 @@ DEFAULT_CONFIG = {
     "embed_ssmd_pause_defaults": False,
 }
 
-# Audio settings
-# SAMPLE_RATE is imported from pykokoro at top of file
-AUDIO_CHANNELS = 1
-
-# Sample texts for voice preview (per language)
-SAMPLE_TEXTS = {
-    "a": "This is a sample of the selected voice.",
-    "b": "This is a sample of the selected voice.",
-    "d": "Dies ist ein Beispiel für die ausgewählte Stimme.",
-    "e": "Este es una muestra de la voz seleccionada.",
-    "f": "Ceci est un exemple de la voix sélectionnée.",
-    "h": "यह चयनित आवाज़ का एक नमूना है।",
-    "i": "Questo è un esempio della voce selezionata.",
-    "j": "これは選択した声のサンプルです。",
-    "p": "Este é um exemplo da voz selecionada.",
-    "z": "这是所选语音的示例。",
-}

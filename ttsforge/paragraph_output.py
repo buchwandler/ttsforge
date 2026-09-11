@@ -272,12 +272,14 @@ def rebuild_manifest_and_playlist(
             )
         )
     ]
+    sample_rates = {int(entry["sample_rate"]) for entry in entries}
+    manifest_sample_rate = next(iter(sample_rates)) if len(sample_rates) == 1 else None
     manifest: dict[str, object] = {
         **dict(ownership),
         "schema_version": PARAGRAPH_MANIFEST_SCHEMA,
         "output_schema": PARAGRAPH_OUTPUT_SCHEMA,
         "content_hash_schema": PARAGRAPH_CONTENT_HASH_SCHEMA,
-        "sample_rate": SAMPLE_RATE,
+        "sample_rate": manifest_sample_rate,
         "files": entries,
     }
     atomic_write_json(

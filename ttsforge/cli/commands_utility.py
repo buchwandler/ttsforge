@@ -10,19 +10,6 @@ from typing import Any, cast
 import numpy as np
 import typer
 from audiosig import generate_silence
-from pykokoro import GenerationConfig, KokoroPipeline
-from pykokoro.model_assets import get_model_asset_paths
-from pykokoro.onnx_backend import (
-    LANG_CODE_TO_ONNX,
-    ModelQuality,
-    VoiceBlend,
-    download_all_voices,
-    download_config,
-    download_model,
-    download_model_github,
-    download_voices_github,
-    is_config_downloaded,
-)
 from rich.progress import (
     BarColumn,
     Progress,
@@ -33,17 +20,27 @@ from rich.progress import (
 )
 
 from ..chapter_selection import parse_chapter_selection
-from ..constants import (
-    DEFAULT_CONFIG,
-    VOICE_PREFIX_TO_LANG,
-    VOICES,
-)
+from ..constants import DEFAULT_CONFIG
 from ..prosody_support import ProsodyPolicy, build_pykokoro_prosody_config
-from ..pykokoro_adapter import build_standard_pipeline
+from ..pykokoro_adapter import (
+    GenerationConfig,
+    KokoroPipeline,
+    ModelQuality,
+    VoiceBlend,
+    build_standard_pipeline,
+    download_all_voices,
+    download_config,
+    download_model,
+    download_model_github,
+    download_voices_github,
+    get_model_asset_paths,
+    is_config_downloaded,
+)
 from ..short_sentence_stats import ShortSentenceStats, format_short_sentence_stats
 from ..utils import format_size, load_config
 from .backend_config import resolve_model_source_and_variant as _resolve_model_metadata
 from .backend_config import resolve_onnx_provider
+from .backend_config import resolve_voice_languages as _discover_voice_languages
 from .backend_config import resolve_voice_names as _discover_voice_names
 from .helpers import DEMO_TEXT, VOICE_BLEND_PRESETS, console, parse_voice_parameter
 
@@ -83,7 +80,6 @@ def demo(
     language: str | None,
     voices_filter: str | None,
     speed: float,
-    use_gpu: bool | None,
     provider: str | None,
     silence: float,
     text: str | None,
@@ -122,7 +118,7 @@ def demo(
     config = load_config()
     try:
         resolved_provider = resolve_onnx_provider(
-            config, provider_override=provider, use_gpu_override=use_gpu
+            config, provider_override=provider
         )
     except ValueError as exc:
         console.print(f"[red]{exc}[/red]")
@@ -130,6 +126,9 @@ def demo(
     model_path = ctx.obj.get("model_path") if ctx.obj else None
     voices_path = ctx.obj.get("voices_path") if ctx.obj else None
     short_sentence_stats = ShortSentenceStats()
+    voice_languages = _discover_voice_languages(
+        *_resolve_model_metadata(config)
+    )
 
     # Playback is not compatible with --separate or --blend-presets (multiple files)
     if play_audio and separate:
@@ -235,9 +234,10 @@ def demo(
                         )
 
                     # Generate audio with blended voice
-                    blend_lang = VOICE_PREFIX_TO_LANG.get(voice_names[0][:2], "a")
-                    onnx_lang = LANG_CODE_TO_ONNX.get(blend_lang, "en-us")
-                    result = pipeline.run(demo_text, voice=voice_blend, lang=onnx_lang)
+                    blend_lang = voice_languages.get(voice_names[0], ("en-us",))[0]
+                    result = pipeline.run(
+                        demo_text, voice=voice_blend, lang=blend_lang
+                    )
                     short_sentence_stats.add_audio_result(result)
                     samples = result.audio
                     sr = result.sample_rate
@@ -301,20 +301,19 @@ def demo(
         # Specific voices requested
         for v in voices_filter.split(","):
             v = v.strip()
-            if v in VOICES:
+            available_voices = set(voice_languages)
+            if v in available_voices:
                 selected_voices.append(v)
             else:
                 console.print(f"[yellow]Warning:[/yellow] Unknown voice '{v}'")
     elif language:
-        # Filter by language
-        for v in VOICES:
-            prefix = v[:2]
-            lang_code = VOICE_PREFIX_TO_LANG.get(prefix, "?")
-            if lang_code == language:
-                selected_voices.append(v)
+        from ..kokoro_lang import canonicalize_language
+        requested_language = canonicalize_language(language)
+        for voice, languages in voice_languages.items():
+            if requested_language in languages:
+                selected_voices.append(voice)
     else:
-        # All voices
-        selected_voices = list(VOICES)
+        selected_voices = sorted(voice_languages)
 
     if not selected_voices:
         console.print("[red]Error:[/red] No voices selected.")
@@ -356,10 +355,8 @@ def demo(
 
     # Generate samples
     all_samples: list[np.ndarray] = []
-    sample_rate = 24000  # Kokoro sample rate
-
-    # Create silence array for gaps between samples
-    silence_samples = generate_silence(silence, sample_rate)
+    sample_rate: int | None = None
+    silence_samples: np.ndarray | None = None
 
     with Progress(
         SpinnerColumn(),
@@ -375,21 +372,30 @@ def demo(
 
         for voice in selected_voices:
             # Determine language and text for this voice
-            prefix = voice[:2]
-            lang_code = VOICE_PREFIX_TO_LANG.get(prefix, "a")
+            lang_code = voice_languages.get(voice, ("en-us",))[0]
 
             if text:
                 demo_text = text.format(voice=voice)
             else:
-                demo_text = DEMO_TEXT.get(lang_code, DEMO_TEXT["a"]).format(voice=voice)
+                demo_text = DEMO_TEXT.get(
+                    lang_code,
+                    "This is a sample of the selected voice.",
+                ).format(voice=voice)
 
             result = None
             try:
-                onnx_lang = LANG_CODE_TO_ONNX.get(lang_code, "en-us")
-                result = demo_pipeline.run(demo_text, voice=voice, lang=onnx_lang)
+                result = demo_pipeline.run(demo_text, voice=voice, lang=lang_code)
                 short_sentence_stats.add_audio_result(result)
                 samples = result.audio
-                sr = result.sample_rate
+                sr = int(result.sample_rate)
+                if sample_rate is None:
+                    sample_rate = sr
+                    silence_samples = generate_silence(silence, sample_rate)
+                elif sr != sample_rate:
+                    raise ValueError(
+                        "Combined demo audio must use one sample rate; "
+                        f"found {sample_rate} and {sr}"
+                    )
 
                 if separate and output is not None:
                     # Save individual file
@@ -401,6 +407,7 @@ def demo(
                 else:
                     all_samples.append(samples)
                     if voice != selected_voices[-1]:
+                        assert silence_samples is not None
                         all_samples.append(silence_samples)
 
             except (OSError, RuntimeError, ValueError) as e:

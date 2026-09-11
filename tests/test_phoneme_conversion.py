@@ -209,7 +209,6 @@ class TestPhonemeConversionOptions:
         assert options.voice == "af_heart"
         assert options.speed == 1.0
         assert options.output_format == "m4b"
-        assert options.use_gpu is False
         assert options.effective_onnx_provider() == "cpu"
         assert options.silence_between_chapters == 2.0
         assert options.resume is True

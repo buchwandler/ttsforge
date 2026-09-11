@@ -39,9 +39,11 @@ def test_public_command_tree_is_complete() -> None:
         "phonemes",
         "plan",
         "ssmd",
+        "doctor",
     } == visible_root_commands
-    assert root.commands["short-sentence-advanced-config"].hidden
-    assert {"short-sentence"} == set(root.commands["config"].commands)
+    assert {"short-sentence", "get", "set", "show", "unset", "path"} == set(
+        root.commands["config"].commands
+    )
     assert {"export", "convert", "preview", "info"} == set(
         root.commands["phonemes"].commands
     )
@@ -55,13 +57,12 @@ def test_compatibility_sensitive_options_are_declared() -> None:
     assert set_option.nargs == 2
 
     convert = root.commands["convert"]
-    assert {"--gpu", "--no-gpu"}.issubset(_option_names(_option(convert, "use_gpu")))
+    assert _option(convert, "model")
+    assert _option(convert, "quality")
+    assert _option(convert, "source")
     assert "--provider" in _option_names(_option(convert, "provider"))
     assert {"--resume", "--no-resume"}.issubset(
         _option_names(_option(convert, "resume"))
-    )
-    assert {"--disable-short-sentence"} == set(
-        _option_names(_option(convert, "disable_short_sentence"))
     )
     assert _option(convert, "speed").type.min == 0.5
     assert _option(convert, "speed").type.max == 2.0
@@ -84,10 +85,10 @@ def test_provider_exists_on_all_synthesis_commands() -> None:
         )
 
 
-def test_provider_and_gpu_conflict_exits_before_synthesis() -> None:
-    result = CliRunner().invoke(app, ["sample", "test", "--provider", "nnapi", "--gpu"])
+def test_removed_gpu_option_is_rejected() -> None:
+    result = CliRunner().invoke(app, ["sample", "test", "--gpu"])
     assert result.exit_code == 2
-    assert "--provider cannot be combined with --gpu or --no-gpu" in result.output
+    assert "No such option" in result.output
 
 
 def test_invalid_provider_exits_before_synthesis() -> None:

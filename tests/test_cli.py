@@ -54,7 +54,7 @@ class TestVoicesCommand:
 
     def test_voices_filter_by_language(self, runner):
         """Should filter voices by language."""
-        result = runner.invoke(app, ["voices", "--language", "a"])
+        result = runner.invoke(app, ["voices", "--language", "en-us"])
         assert result.exit_code == 0
         # American English voices should be shown
         assert "af_" in result.output or "am_" in result.output
@@ -270,11 +270,11 @@ class TestConvertCommand:
         note = _format_short_sentence_note(
             "mode=phrase,selection=auto,fallback-mode=none",
             None,
-            "d",
+            "de",
         )
 
         assert note is not None
-        assert "Missing phrases for language 'd'" in note
+        assert "Missing phrases for language 'de'" in note
         assert "fallback-mode=none" in note
 
     def test_short_sentence_summary_formats_resolved_advanced_json(self, tmp_path):
@@ -318,7 +318,7 @@ class TestConvertCommand:
 
     def test_short_sentence_hint_shows_for_english_only(self):
         """Hint should be limited to English short-sentence runs."""
-        hint = _format_short_sentence_hint("mode=phrase,threshold=40", None, "b")
+        hint = _format_short_sentence_hint("mode=phrase,threshold=40", None, "en-us")
 
         assert hint is not None
         assert "--short-sentence 'threshold=40,max-tries=10'" in hint

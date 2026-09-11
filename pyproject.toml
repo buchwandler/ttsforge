@@ -29,10 +29,11 @@ dependencies = [
     "charset-normalizer",
     "platformdirs>=3.0.0",
     # CPU is the supported default provider; backend modules remain lazy.
-    "pykokoro[cpu]>=0.9.1,<0.10",
-    "kokorog2p[espeak,en]>=0.9.2,<1.0",
+    # Provider-neutral core; install exactly one provider extra for rendering.
+    "pykokoro>=0.9.4,<0.10",
+    "kokorog2p[espeak,en]>=0.9.5,<1.0",
     "phrasplit>=0.3.7,<0.4",
-    "ssmd>=0.8.6,<0.9",
+    "ssmd>=0.8.7,<0.9",
     "typing_extensions>=4.0.0",
 ]
 classifiers=[
@@ -65,8 +66,20 @@ dev = [
 static_ffmpeg = [
     "static-ffmpeg>=3.0",
 ]
+cpu = [
+    "pykokoro[cpu]>=0.9.4,<0.10",
+]
 gpu = [
-    "onnxruntime-gpu>=1.16.0",
+    "pykokoro[gpu]>=0.9.4,<0.10",
+]
+openvino = [
+    "pykokoro[openvino]>=0.9.4,<0.10",
+]
+directml = [
+    "pykokoro[directml]>=0.9.4,<0.10",
+]
+coreml = [
+    "pykokoro[coreml]>=0.9.4,<0.10",
 ]
 
 [project.scripts]

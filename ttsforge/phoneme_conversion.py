@@ -17,20 +17,20 @@ from typing import Literal as _Literal
 import numpy as np
 import soundfile as sf
 from audiosig import generate_silence
-from pykokoro.config_types import (
+
+from .audio_merge import AudioMerger, MergeMeta
+from .chapter_selection import parse_chapter_selection
+from .constants import SAMPLE_RATE, SUPPORTED_OUTPUT_FORMATS
+from .conversion import _canonical_fingerprint, validate_generation_ranges
+from .kokoro_lang import canonicalize_language
+from .phonemes import PhonemeBook, PhonemeChapter, PhonemeSegment
+from .prosody_support import ProsodyPolicy, prosody_policy_payload
+from .pykokoro_adapter import (
     DEFAULT_MODEL_SOURCE,
     DEFAULT_MODEL_VARIANT,
     ModelSource,
     ModelVariant,
 )
-
-from .audio_merge import AudioMerger, MergeMeta
-from .chapter_selection import parse_chapter_selection
-from .constants import ISO_TO_LANG_CODE, SAMPLE_RATE, SUPPORTED_OUTPUT_FORMATS
-from .conversion import _canonical_fingerprint, validate_generation_ranges
-from .kokoro_lang import get_onnx_lang_code
-from .phonemes import PhonemeBook, PhonemeChapter, PhonemeSegment
-from .prosody_support import ProsodyPolicy, prosody_policy_payload
 from .short_sentence_config import resolve_short_sentence_config
 from .utils import (
     atomic_write_json,
@@ -127,7 +127,6 @@ class PhonemeConversionState:
     pause_mode: str = "auto"
     enable_short_sentence: bool | None = None
     short_sentence: str | None = None
-    lang: str | None = None  # Language override for phonemization
     chapters: list[PhonemeChapterState] = field(default_factory=list)
     started_at: str = ""
     last_updated: str = ""
@@ -149,6 +148,7 @@ class PhonemeConversionState:
             with open(state_file, encoding="utf-8") as f:
                 data = json.load(f)
 
+            data.pop("lang", None)
             # Reconstruct PhonemeChapterState objects
             chapters = [PhonemeChapterState(**ch) for ch in data.get("chapters", [])]
             data["chapters"] = chapters
@@ -193,8 +193,6 @@ class PhonemeConversionState:
                 data["enable_short_sentence"] = None
             if "short_sentence" not in data:
                 data["short_sentence"] = None
-            if "lang" not in data:
-                data["lang"] = None
             if "model_quality" not in data:
                 data["model_quality"] = DEFAULT_MODEL_QUALITY
             if "model_source" not in data:
@@ -231,7 +229,6 @@ class PhonemeConversionState:
             "pause_mode": self.pause_mode,
             "enable_short_sentence": self.enable_short_sentence,
             "short_sentence": self.short_sentence,
-            "lang": self.lang,
             "chapters": [
                 {
                     "index": ch.index,
@@ -261,12 +258,8 @@ class PhonemeConversionOptions:
     voice: str = "af_heart"
     speed: float = 1.0
     output_format: str = "m4b"
-    use_gpu: bool = False
     onnx_provider: str | None = None
     silence_between_chapters: float = 2.0
-    # Language override for phonemization (e.g., 'de', 'en-us', 'fr')
-    # If None, language from PhonemeSegments is used
-    lang: str | None = None
     # Pause settings (pykokoro built-in pause handling)
     pause_clause: float = 0.3  # For clause boundaries (commas)
     pause_sentence: float = 0.5  # For sentence boundaries
@@ -305,10 +298,8 @@ class PhonemeConversionOptions:
     prosody_policy: ProsodyPolicy = field(default_factory=ProsodyPolicy)
 
     def effective_onnx_provider(self) -> str:
-        """Return the provider requested by this option set."""
-        if self.onnx_provider is not None:
-            return self.onnx_provider
-        return "auto" if self.use_gpu else "cpu"
+        """Return the canonical provider requested by this option set."""
+        return self.onnx_provider or "cpu"
 
     def __post_init__(self) -> None:
         validate_generation_ranges(
@@ -510,59 +501,64 @@ class PhonemeConverter:
         total_segments = len(chapter.segments)
         assert self._runner is not None
         lang_code = (
-            get_onnx_lang_code(self.options.lang)
-            if self.options.lang
-            else (chapter.segments[0].lang if chapter.segments else "en-us")
+            chapter.segments[0].lang if chapter.segments else "en-us"
         )
 
         # Open WAV file for writing
+        title_result: Any | None = None
+        title_samples: Any | None = None
+        result: Any | None = None
+        if self.options.announce_chapters and chapter.title and chapter.segments:
+            title_result = self._runner.synthesize(
+                chapter.title,
+                lang_code=lang_code,
+                pause_mode="tts",
+                is_phonemes=False,
+            )
+            title_samples = getattr(title_result, "audio", title_result)
+        if not self._cancel_event.is_set() and chapter.segments:
+            # Single pipeline call for the entire chapter.
+            ssmd_text = self._phoneme_segments_to_ssmd(chapter.segments)
+            result = self._runner.synthesize(
+                ssmd_text,
+                lang_code=lang_code,
+                pause_mode=cast(
+                    Literal["tts", "manual", "auto"], self.options.pause_mode
+                ),
+                is_phonemes=True,
+            )
+        samples = getattr(result, "audio", result) if result is not None else None
+        rates = {
+            int(getattr(item, "sample_rate", SAMPLE_RATE) or SAMPLE_RATE)
+            for item in (title_result, result)
+            if item is not None
+        }
+        if len(rates) > 1:
+            raise ValueError(
+                "Chapter synthesis results must use one sample rate; "
+                f"found {sorted(rates)}"
+            )
+        sample_rate = next(iter(rates), SAMPLE_RATE)
         with sf.SoundFile(
             str(output_file),
             "w",
-            samplerate=SAMPLE_RATE,
+            samplerate=sample_rate,
             channels=1,
             format="wav",
         ) as out_file:
             duration = 0.0
-
-            # Announce chapter title if enabled
-            # Only announce if there are segments to follow
-            if self.options.announce_chapters and chapter.title and chapter.segments:
-                title_result = self._runner.synthesize(
-                    chapter.title,
-                    lang_code=lang_code,
-                    pause_mode="tts",
-                    is_phonemes=False,
-                )
-                title_samples = getattr(title_result, "audio", title_result)
+            if title_samples is not None:
                 out_file.write(title_samples)
-                duration += len(title_samples) / SAMPLE_RATE
-
-                # Add pause after chapter title
+                duration += len(title_samples) / sample_rate
                 pause_duration = self.options.chapter_pause_after_title
                 if pause_duration > 0:
-                    pause_audio = generate_silence(pause_duration, SAMPLE_RATE)
+                    pause_audio = generate_silence(pause_duration, sample_rate)
                     out_file.write(pause_audio)
                     duration += pause_duration
-
-            if not self._cancel_event.is_set() and chapter.segments:
-                # Single pipeline call for entire chapter
-                ssmd_text = self._phoneme_segments_to_ssmd(chapter.segments)
-                result = self._runner.synthesize(
-                    ssmd_text,
-                    lang_code=lang_code,
-                    pause_mode=cast(
-                        Literal["tts", "manual", "auto"], self.options.pause_mode
-                    ),
-                    is_phonemes=True,
-                )
-                samples = getattr(result, "audio", result)
-
+            if samples is not None and not self._cancel_event.is_set():
                 out_file.write(samples)
-                duration += len(samples) / SAMPLE_RATE
+                duration += len(samples) / sample_rate
                 segments_processed = total_segments
-
-                # Update progress once per chapter
                 if progress and self.progress_callback:
                     progress.current_segment = segments_processed
                     progress.segments_processed = segments_before + segments_processed
@@ -581,7 +577,6 @@ class PhonemeConverter:
                             progress.estimated_remaining = avg_time * remaining
                         progress.elapsed_time = elapsed
                     self.progress_callback(progress)
-
         return duration, segments_processed
 
     def _get_selected_chapters(self) -> list[PhonemeChapter]:
@@ -603,15 +598,12 @@ class PhonemeConverter:
 
     def _short_sentence_language_code(self) -> str | None:
         """Return the ttsforge language code for short-sentence phrase selection."""
-        if self.options.lang:
-            lang = self.options.lang.strip().lower()
-            return ISO_TO_LANG_CODE.get(lang, lang)
 
         for chapter in self.book.chapters:
             for segment in chapter.segments:
                 lang = segment.lang.strip().lower()
                 if lang:
-                    return ISO_TO_LANG_CODE.get(lang, lang)
+                    return canonicalize_language(lang)
         return None
 
     def _generation_fingerprint(self) -> str:
@@ -628,7 +620,6 @@ class PhonemeConverter:
                 else None,
                 "speed": options.speed,
                 "output_format": options.output_format,
-                "use_gpu": options.use_gpu,
                 "onnx_provider": options.effective_onnx_provider(),
                 "model_quality": str(options.model_quality),
                 "model_source": str(options.model_source),
@@ -849,7 +840,6 @@ class PhonemeConverter:
             opts = runner_options(
                 voice=self.options.voice,
                 speed=self.options.speed,
-                use_gpu=self.options.use_gpu,
                 onnx_provider=self.options.effective_onnx_provider(),
                 pause_clause=self.options.pause_clause,
                 pause_sentence=self.options.pause_sentence,
@@ -1070,7 +1060,6 @@ class PhonemeConverter:
             opts = runner_options(
                 voice=self.options.voice,
                 speed=self.options.speed,
-                use_gpu=self.options.use_gpu,
                 onnx_provider=self.options.effective_onnx_provider(),
                 pause_clause=self.options.pause_clause,
                 pause_sentence=self.options.pause_sentence,
@@ -1128,9 +1117,9 @@ class PhonemeConverter:
                 if not self._cancel_event.is_set() and chapter.segments:
                     assert self._runner is not None
                     lang_code = (
-                        get_onnx_lang_code(self.options.lang)
-                        if self.options.lang
-                        else (chapter.segments[0].lang if chapter.segments else "en-us")
+                        chapter.segments[0].lang
+                        if chapter.segments
+                        else "en-us"
                     )
                     ssmd_text = self._phoneme_segments_to_ssmd(chapter.segments)
                     result = self._runner.synthesize(

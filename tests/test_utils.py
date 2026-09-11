@@ -15,6 +15,7 @@ from ttsforge.utils import (
     ensure_ffmpeg,
     format_filename_template,
     load_config,
+    migrate_config,
     resolve_conversion_defaults,
     run_process,
     sanitize_filename,
@@ -26,13 +27,39 @@ def test_sanitize_filename() -> None:
     assert sanitize_filename("Hello: World/Testing?") == "Hello_WorldTesting"
 
 
+def test_migrate_config_to_schema_two() -> None:
+    result = migrate_config(
+        {
+            "default_language": "d",
+            "auto_detect_language": False,
+            "default_voice": "martin",
+            "default_speed": 1.2,
+            "default_format": "wav",
+            "use_gpu": True,
+            "model_variant": "v1.2-de-martin",
+            "model_quality": "q8",
+        }
+    )
+
+    assert result == {
+        "schema_version": 2,
+        "tts": {"language": "de", "voice": "martin", "speed": 1.2},
+        "runtime": {"provider": "auto"},
+        "model": {"id": "v1.2-de-martin", "quality": "q8"},
+        "audio": {"format": "wav"},
+    }
+
+
+def test_migrate_config_rejects_conflicting_language_override() -> None:
+    with pytest.raises(ValueError, match="phonemization_lang conflicts"):
+        migrate_config({"default_language": "de", "phonemization_lang": "fr"})
+
 @pytest.mark.parametrize(
     ("key", "value"),
     [
         ("voice", ""),
         ("language", ""),
         ("speed", 0.0),
-        ("use_gpu", False),
         ("split_mode", ""),
     ],
 )
@@ -44,8 +71,6 @@ def test_resolve_conversion_defaults_preserves_falsey_overrides(
         "default_language": "a",
         "default_speed": 1.0,
         "default_split_mode": "auto",
-        "use_gpu": True,
-        "phonemization_lang": "en-us",
     }
     assert resolve_conversion_defaults(config, {key: value})[key] == value
 
@@ -184,12 +209,12 @@ def test_load_config_ignores_invalid_pause_variance(
     with patch("ttsforge.utils.get_user_config_path", return_value=config_path):
         config = load_config()
 
-    captured = capsys.readouterr()
     assert config["pause_variance"] == 0.05
-    assert config["default_language"] == "b"
-    assert "ignoring invalid config value" in captured.err
-    assert "pause_variance" in captured.err
-    assert config_path.read_text(encoding="utf-8") == json.dumps(original)
+    assert config["default_language"] == "en-gb"
+    assert json.loads(config_path.read_text(encoding="utf-8")) == {
+        "schema_version": 2,
+        "tts": {"language": "en-gb"},
+    }
 
 
 @pytest.mark.parametrize(
@@ -209,7 +234,10 @@ def test_load_config_migrates_provider_in_memory(
     with patch("ttsforge.utils.get_user_config_path", return_value=config_path):
         config = load_config()
     assert config["onnx_provider"] == expected
-    assert json.loads(config_path.read_text(encoding="utf-8")) == raw
+    assert json.loads(config_path.read_text(encoding="utf-8")) == {
+        "schema_version": 2,
+        "runtime": {"provider": expected},
+    }
 
 
 @pytest.mark.parametrize(

@@ -321,8 +321,7 @@ ttsforge convert book.epub --emphasis-level 3
 
 The levels are `0=Off`, `1=Light`, `2=Normal`, and `3=Strong`. Persist the normal level
 with `ttsforge config --set emphasis_level 2`; subsequent conversions need no emphasis
-flag. The old `--enable-ssmd-emphasis` remains as a deprecated alias for level 2, while
-`--ssmd-emphasis` remains an advanced policy control. Explicit SSMD prosody remains
+flag. `--ssmd-emphasis` remains an advanced policy control. Explicit SSMD prosody remains
 supported independently, and a resume with omitted emphasis options restores the saved
 policy.
 
@@ -356,10 +355,8 @@ ttsforge config --show
 ```
 
 Provider aliases include `auto`, `cpu`, `openvino`, `nnapi`, and `xnnpack`; full
-`*ExecutionProvider` names are also accepted. The legacy `--gpu` and `--no-gpu` flags
-map to `auto` and `cpu` respectively. Availability depends on the installed ONNX Runtime
+map to the canonical provider names. Availability depends on the installed ONNX Runtime
 build, and PyKokoro may apply its documented `ONNX_PROVIDER` environment override.
-
 On a desktop build exposing OpenVINO, the equivalent persistent setup is:
 
 ```bash

@@ -15,7 +15,7 @@ def test_kokoro_run_options_accepts_short_sentence_override():
     opts = KokoroRunOptions(
         voice="af_heart",
         speed=1.0,
-        use_gpu=False,
+        onnx_provider="cpu",
         pause_clause=0.3,
         pause_sentence=0.5,
         pause_paragraph=0.9,
@@ -49,7 +49,7 @@ def test_kokoro_runner_passes_short_sentence_config_to_backend(monkeypatch):
     opts = KokoroRunOptions(
         voice="af_heart",
         speed=1.0,
-        use_gpu=False,
+        onnx_provider="cpu",
         pause_clause=0.3,
         pause_sentence=0.5,
         pause_paragraph=0.9,
@@ -208,7 +208,7 @@ def test_kokoro_runner_forwards_short_sentence_disable_override():
     opts = KokoroRunOptions(
         voice="af_heart",
         speed=1.0,
-        use_gpu=False,
+        onnx_provider="cpu",
         pause_clause=0.3,
         pause_sentence=0.5,
         pause_paragraph=0.9,
@@ -235,7 +235,7 @@ def test_kokoro_runner_forwards_random_seed():
     opts = KokoroRunOptions(
         voice="af_heart",
         speed=1.0,
-        use_gpu=False,
+        onnx_provider="cpu",
         pause_clause=0.3,
         pause_sentence=0.5,
         pause_paragraph=0.9,
@@ -283,7 +283,7 @@ def _runner_options(**kwargs):
     values = {
         "voice": "af_heart",
         "speed": 1.0,
-        "use_gpu": False,
+        "onnx_provider": "cpu",
         "pause_clause": 0.3,
         "pause_sentence": 0.5,
         "pause_paragraph": 0.9,
@@ -306,7 +306,6 @@ def test_standard_runner_forwards_language_provider_and_auto_models(monkeypatch)
     opts = KokoroRunOptions(
         voice=None,
         speed=1.0,
-        use_gpu=False,
         pause_clause=0.3,
         pause_sentence=0.5,
         pause_paragraph=0.9,

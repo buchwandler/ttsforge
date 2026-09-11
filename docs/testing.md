@@ -25,10 +25,10 @@ hash and verifies that a saved prefix is not rendered again.
 
 Release CI separately installs the exact lower-bound generation stack:
 
-- PyKokoro 0.9.1
-- kokorog2p 0.9.2
+- PyKokoro 0.9.4
+- kokorog2p 0.9.5
 - phrasplit 0.3.7
-- SSMD 0.8.6
+- SSMD 0.8.7
 
 The minimum-dependency job proves that the package's declared lower bounds install and
 that representative written-to-spoken source reaches the upstream preparation/G2P

@@ -12,7 +12,7 @@ import shutil
 import subprocess
 import sys
 import tempfile
-from collections.abc import Callable
+from collections.abc import Callable, Mapping
 from pathlib import Path
 from threading import Lock, Thread
 from typing import Any, Literal, overload
@@ -347,79 +347,291 @@ def get_user_cache_path(folder: str | None = None) -> Path:
     return cache_dir
 
 
+CONFIG_SCHEMA_VERSION = 2
+
+
+_CONFIG_KEY_PATHS: dict[str, tuple[str, ...]] = {
+    "default_voice": ("tts", "voice"),
+    "default_language": ("tts", "language"),
+    "default_speed": ("tts", "speed"),
+    "onnx_provider": ("runtime", "provider"),
+    "model_variant": ("model", "id"),
+    "model_source": ("model", "source"),
+    "model_quality": ("model", "quality"),
+    "use_spacy": ("text", "spacy", "enabled"),
+    "spacy_model": ("text", "spacy", "model"),
+    "spacy_model_size": ("text", "spacy", "size"),
+    "default_format": ("audio", "format"),
+    "silence_between_chapters": ("audio", "silence_between_chapters"),
+    "ssmd_parse_header": ("ssmd", "parse_header"),
+    "ssmd_unknown_header": ("ssmd", "unknown_header"),
+    "ssmd_missing_voice": ("ssmd", "missing_voice"),
+    "ssmd_validate_profile": ("ssmd", "validate_profile"),
+    "ssmd_emphasis_mode": ("ssmd", "emphasis_mode"),
+    "emphasis_level": ("ssmd", "emphasis_level"),
+    "detect_emphasis": ("ssmd", "detect_emphasis"),
+    "ssmd_fail_on_warning": ("ssmd", "fail_on_warning"),
+    "ssmd_voice_bindings": ("ssmd", "voice_bindings"),
+    "ssmd_audio_allow_remote": ("ssmd", "audio_allow_remote"),
+    "ssmd_audio_max_bytes": ("ssmd", "audio_max_bytes"),
+    "ssmd_audio_max_duration_s": ("ssmd", "audio_max_duration_s"),
+    "ssmd_audio_root": ("ssmd", "audio_root"),
+    "embed_ssmd_voice_bindings": ("ssmd", "embed_voice_bindings"),
+    "embed_ssmd_pause_defaults": ("ssmd", "embed_pause_defaults"),
+    "prosody_method": ("prosody", "method"),
+    "prosody_fallback_methods": ("prosody", "fallback_methods"),
+    "prosody_strict": ("prosody", "strict"),
+    "prosody_clip": ("prosody", "clip"),
+    "prosody_n_fft": ("prosody", "n_fft"),
+    "prosody_hop_length": ("prosody", "hop_length"),
+    "prosody_filter_width": ("prosody", "filter_width"),
+    "prosody_rolloff": ("prosody", "rolloff"),
+    "prosody_boundary_blend_ms": ("prosody", "boundary_blend_ms"),
+    "default_split_mode": ("conversion", "split_mode"),
+    "default_content_mode": ("conversion", "content_mode"),
+    "default_page_size": ("conversion", "page_size"),
+    "save_chapters_separately": ("conversion", "save_chapters_separately"),
+    "merge_at_end": ("conversion", "merge_at_end"),
+    "announce_chapters": ("conversion", "announce_chapters"),
+    "chapter_pause_after_title": ("conversion", "chapter_pause_after_title"),
+    "short_sentence": ("conversion", "short_sentence"),
+    "enable_short_sentence": ("conversion", "enable_short_sentence"),
+    "subchapter_markers": ("conversion", "subchapter_markers"),
+    "output_filename_template": ("output", "filename_template"),
+    "chapter_filename_template": ("output", "chapter_filename_template"),
+    "phoneme_export_template": ("output", "phoneme_export_template"),
+    "default_title": ("output", "default_title"),
+}
+_PATH_TO_CONFIG_KEY = {path: key for key, path in _CONFIG_KEY_PATHS.items()}
+
+
+def _set_nested(document: dict[str, Any], path: tuple[str, ...], value: Any) -> None:
+    target = document
+    for part in path[:-1]:
+        target = target.setdefault(part, {})
+    target[path[-1]] = value
+
+
+def _flatten_config(document: Mapping[str, Any]) -> dict[str, Any]:
+    flat: dict[str, Any] = {}
+    for path, key in ((path, key) for key, path in _CONFIG_KEY_PATHS.items()):
+        value: Any = document
+        for part in path:
+            if not isinstance(value, Mapping) or part not in value:
+                break
+            value = value[part]
+        else:
+            flat[key] = value
+    return flat
+
+
+def _config_document_from_flat(
+    config: Mapping[str, Any], *, include_defaults: bool = False
+ ) -> dict[str, Any]:
+    document: dict[str, Any] = {"schema_version": CONFIG_SCHEMA_VERSION}
+    for key, path in _CONFIG_KEY_PATHS.items():
+        if key in config and (
+            include_defaults or config[key] != DEFAULT_CONFIG.get(key)
+        ):
+            _set_nested(document, path, config[key])
+    return document
+
+
+def load_user_config() -> dict[str, Any]:
+    """Return the persisted schema-2 user override document."""
+    path = get_user_config_path()
+    if not path.exists():
+        return {"schema_version": CONFIG_SCHEMA_VERSION}
+    with open(path, encoding="utf-8") as handle:
+        raw = json.load(handle)
+    if raw.get("schema_version") == CONFIG_SCHEMA_VERSION:
+        return raw
+    return migrate_config(raw)
+
+
+def effective_config_document() -> dict[str, Any]:
+    """Return the schema-2 document with effective defaults applied."""
+    document = load_user_config()
+    flat = {**DEFAULT_CONFIG, **_flatten_config(document)}
+    return _config_document_from_flat(flat, include_defaults=True)
+
+def migrate_config(config: Mapping[str, Any]) -> dict[str, Any]:
+    """Migrate legacy flat configuration to the schema-2 override format."""
+    if not isinstance(config, Mapping):
+        raise TypeError("configuration must be a mapping")
+    if config.get("schema_version") == CONFIG_SCHEMA_VERSION:
+        return json.loads(json.dumps(config))
+    source = dict(config)
+    migrated: dict[str, Any] = {"schema_version": CONFIG_SCHEMA_VERSION}
+    sections: dict[str, dict[str, Any]] = {
+        "tts": {},
+        "runtime": {},
+        "model": {},
+        "text": {"spacy": {}},
+        "audio": {},
+        "ssmd": {},
+        "prosody": {},
+    }
+
+    def put(section: str, key: str, value: Any) -> None:
+        if value is not None:
+            sections[section][key] = value
+
+    language = source.get("default_language")
+    if source.get("auto_detect_language") is True:
+        language = "auto"
+    if language is not None:
+        from .kokoro_lang import canonicalize_language
+        put("tts", "language", canonicalize_language(str(language)))
+    put("tts", "voice", source.get("default_voice"))
+    put("tts", "speed", source.get("default_speed"))
+
+    provider = source.get("onnx_provider")
+    if provider is None:
+        legacy_gpu = source.get("use_gpu", source.get("default_use_gpu"))
+        if legacy_gpu is not None:
+            provider = "auto" if bool(legacy_gpu) else "cpu"
+    put("runtime", "provider", provider)
+    put("model", "id", source.get("model_variant"))
+    put("model", "source", source.get("model_source"))
+    put("model", "quality", source.get("model_quality"))
+
+    for old, new in (
+        ("use_spacy", "enabled"),
+        ("spacy_model", "model"),
+        ("spacy_model_size", "size"),
+    ):
+        if source.get(old) is not None:
+            sections["text"]["spacy"][new] = source[old]
+
+    put("audio", "format", source.get("default_format"))
+    put("audio", "silence_between_chapters", source.get("silence_between_chapters"))
+
+    legacy_language = source.get("phonemization_lang")
+    if legacy_language is not None and language is not None:
+        from .kokoro_lang import canonicalize_language
+        if (
+            canonicalize_language(str(legacy_language))
+            != canonicalize_language(str(language))
+        ):
+            raise ValueError(
+                "phonemization_lang conflicts with the document language; "
+                "remove the override and use language"
+            )
+
+    for key in (
+        "ssmd_parse_header",
+        "ssmd_unknown_header",
+        "ssmd_missing_voice",
+        "ssmd_emphasis_mode",
+        "detect_emphasis",
+        "ssmd_voice_bindings",
+        "embed_ssmd_voice_bindings",
+        "embed_ssmd_pause_defaults",
+    ):
+        put("ssmd", key.removeprefix("ssmd_"), source.get(key))
+    for key in (
+        "prosody_method",
+        "prosody_fallback_methods",
+        "prosody_strict",
+        "prosody_clip",
+        "prosody_n_fft",
+        "prosody_hop_length",
+        "prosody_filter_width",
+        "prosody_rolloff",
+        "prosody_boundary_blend_ms",
+    ):
+        put("prosody", key.removeprefix("prosody_"), source.get(key))
+
+    handled = {
+        "default_voice", "default_language", "default_speed", "onnx_provider",
+        "use_gpu", "model_variant", "model_source", "model_quality",
+        "use_spacy", "spacy_model", "spacy_model_size", "default_format",
+        "silence_between_chapters", "phonemization_lang",
+        "ssmd_parse_header", "ssmd_unknown_header", "ssmd_missing_voice",
+        "ssmd_emphasis_mode", "detect_emphasis", "ssmd_voice_bindings",
+        "embed_ssmd_voice_bindings", "embed_ssmd_pause_defaults",
+        "prosody_method", "prosody_fallback_methods", "prosody_strict",
+        "prosody_clip", "prosody_n_fft", "prosody_hop_length",
+        "prosody_filter_width", "prosody_rolloff",
+        "prosody_boundary_blend_ms",
+    }
+    for key, path in _CONFIG_KEY_PATHS.items():
+        if key in source and key not in handled:
+            _set_nested(sections, path, source[key])
+    obsolete = (
+        "use_mixed_language",
+        "mixed_language_primary",
+        "mixed_language_allowed",
+        "mixed_language_confidence",
+    )
+    if any(source.get(key) not in (None, False, 0.7) for key in obsolete):
+        raise ValueError(
+            "mixed-language compatibility settings are removed; "
+            "use explicit SSMD lang spans"
+        )
+
+    for name, section in sections.items():
+        if name == "text":
+            if section["spacy"]:
+                migrated[name] = section
+        elif section:
+            migrated[name] = section
+    return migrated
 def load_config() -> dict[str, Any]:
-    """Load configuration from file, returning defaults if not found."""
-    global _LEGACY_GPU_KEY_WARNED
+    """Load effective configuration from the schema-2 user document."""
     config_path = get_user_config_path()
     try:
-        if config_path.exists():
-            with open(config_path, encoding="utf-8") as f:
-                user_config = json.load(f)
-            if (
-                isinstance(user_config, dict)
-                and "default_use_gpu" in user_config
-                and "use_gpu" not in user_config
-            ):
-                user_config["use_gpu"] = user_config["default_use_gpu"]
-                if not _LEGACY_GPU_KEY_WARNED:
-                    _LEGACY_GPU_KEY_WARNED = True
-                    print(
-                        "Warning: config key 'default_use_gpu' is deprecated; "
-                        "use 'use_gpu' instead.",
-                        file=sys.stderr,
-                    )
-            if (
-                isinstance(user_config, dict)
-                and "onnx_provider" not in user_config
-                and "use_gpu" in user_config
-            ):
-                user_config["onnx_provider"] = (
-                    "auto" if bool(user_config["use_gpu"]) else "cpu"
+        if not config_path.exists():
+            return DEFAULT_CONFIG.copy()
+        with open(config_path, encoding="utf-8") as handle:
+            raw = json.load(handle)
+        is_schema_two = (
+            isinstance(raw, dict)
+            and raw.get("schema_version") == CONFIG_SCHEMA_VERSION
+        )
+        document = raw if is_schema_two else migrate_config(raw)
+        if not is_schema_two:
+            backup_path = config_path.with_name(config_path.name + ".v1")
+            if not backup_path.exists():
+                atomic_write_json(backup_path, raw, indent=2, ensure_ascii=True)
+            atomic_write_json(config_path, document, indent=2, ensure_ascii=True)
+        sanitized = {**DEFAULT_CONFIG, **_flatten_config(document)}
+        for key, value in tuple(sanitized.items()):
+            try:
+                validate_config_value(key, value)
+            except ValueError as exc:
+                sanitized[key] = DEFAULT_CONFIG.get(key)
+                _LOGGER.warning(
+                    "Ignoring invalid config value %s=%r: %s",
+                    key,
+                    value,
+                    exc,
                 )
-            if isinstance(user_config, dict):
-                sanitized = dict(user_config)
-                for key, value in tuple(sanitized.items()):
-                    try:
-                        validate_config_value(key, value)
-                    except ValueError as exc:
-                        sanitized.pop(key, None)
-                        default = DEFAULT_CONFIG.get(key)
-                        print(
-                            "Warning: ignoring invalid config value "
-                            f"{key}={value!r}: {exc}; using default {default!r}.",
-                            file=sys.stderr,
-                        )
-                configured_n_fft = sanitized.get(
-                    "prosody_n_fft", DEFAULT_CONFIG["prosody_n_fft"]
-                )
-                configured_hop = sanitized.get("prosody_hop_length")
-                if (
-                    isinstance(configured_n_fft, int)
-                    and not isinstance(configured_n_fft, bool)
-                    and isinstance(configured_hop, int)
-                    and not isinstance(configured_hop, bool)
-                    and configured_hop > configured_n_fft
-                ):
-                    sanitized.pop("prosody_hop_length", None)
-                    print(
-                        "Warning: ignoring invalid config value "
-                        f"prosody_hop_length={configured_hop!r}: must be "
-                        f"less than or equal to prosody_n_fft={configured_n_fft}; "
-                        "using default None.",
-                        file=sys.stderr,
-                    )
-                # Merge with defaults to ensure all keys exist.
-                return {**DEFAULT_CONFIG, **sanitized}
-    except (OSError, json.JSONDecodeError, ValueError) as exc:
+        configured_n_fft = sanitized.get(
+            "prosody_n_fft", DEFAULT_CONFIG["prosody_n_fft"]
+        )
+        configured_hop = sanitized.get("prosody_hop_length")
+        if (
+            isinstance(configured_n_fft, int)
+            and not isinstance(configured_n_fft, bool)
+            and isinstance(configured_hop, int)
+            and not isinstance(configured_hop, bool)
+            and configured_hop > configured_n_fft
+        ):
+            sanitized["prosody_hop_length"] = DEFAULT_CONFIG["prosody_hop_length"]
+        return sanitized
+    except (OSError, json.JSONDecodeError, TypeError, ValueError) as exc:
         _LOGGER.warning("Failed to load config from %s: %s", config_path, exc)
-    return DEFAULT_CONFIG.copy()
+        return DEFAULT_CONFIG.copy()
 
 
 def resolve_conversion_defaults(
     config: dict[str, Any], overrides: dict[str, Any]
 ) -> dict[str, Any]:
     """Resolve conversion defaults with CLI > config > DEFAULT_CONFIG."""
-
+    if config.get("schema_version") == CONFIG_SCHEMA_VERSION:
+        config = {**DEFAULT_CONFIG, **_flatten_config(config)}
     def resolve(name: str, config_key: str, default_key: str) -> Any:
         value = overrides.get(name)
         if value is not None:
@@ -431,9 +643,7 @@ def resolve_conversion_defaults(
         "language": resolve("language", "default_language", "default_language"),
         "speed": resolve("speed", "default_speed", "default_speed"),
         "split_mode": resolve("split_mode", "default_split_mode", "default_split_mode"),
-        "use_gpu": resolve("use_gpu", "use_gpu", "use_gpu"),
         "onnx_provider": resolve("onnx_provider", "onnx_provider", "onnx_provider"),
-        "lang": resolve("lang", "phonemization_lang", "phonemization_lang"),
         "use_spacy": resolve("use_spacy", "use_spacy", "use_spacy"),
         "spacy_model": resolve("spacy_model", "spacy_model", "spacy_model"),
         "spacy_model_size": resolve(
@@ -541,10 +751,15 @@ def atomic_write_json(
 
 
 def save_config(config: dict[str, Any]) -> bool:
-    """Save configuration to file. Returns True on success."""
+    """Persist user overrides in the schema-2 document."""
     config_path = get_user_config_path()
     try:
-        atomic_write_json(config_path, config, indent=2, ensure_ascii=True)
+        document = (
+            config
+            if config.get("schema_version") == CONFIG_SCHEMA_VERSION
+            else _config_document_from_flat(config)
+        )
+        atomic_write_json(config_path, document, indent=2, ensure_ascii=True)
         return True
     except (OSError, TypeError, ValueError) as exc:
         _LOGGER.warning("Failed to save config to %s: %s", config_path, exc)
@@ -552,9 +767,10 @@ def save_config(config: dict[str, Any]) -> bool:
 
 
 def reset_config() -> dict[str, Any]:
-    """Reset configuration to defaults and save."""
-    save_config(DEFAULT_CONFIG)
-    return DEFAULT_CONFIG.copy()
+    """Reset configuration to an empty schema-2 override document."""
+    document = {"schema_version": CONFIG_SCHEMA_VERSION}
+    save_config(document)
+    return {**DEFAULT_CONFIG, **_flatten_config(document)}
 
 
 def detect_encoding(file_path: str | Path) -> str:
@@ -617,18 +833,9 @@ def get_gpu_info(enabled: bool = True) -> tuple[str, bool]:
         return f"Error checking GPU: {e}", False
 
 
-def get_device(use_gpu: bool = True) -> str:
-    """
-    Get the appropriate execution provider for ONNX Runtime.
-
-    Args:
-        use_gpu: Whether to attempt GPU usage
-
-    Returns:
-        Execution provider name: 'CUDAExecutionProvider',
-        'CoreMLExecutionProvider', or 'CPUExecutionProvider'
-    """
-    if not use_gpu:
+def get_device(provider: str = "auto") -> str:
+    """Return the best available execution provider for a request."""
+    if provider.lower() == "cpu":
         return "CPUExecutionProvider"
 
     try:
@@ -891,8 +1098,8 @@ def load_tts_pipeline() -> tuple[Any, Any]:
         Tuple of (numpy module, KokoroPipeline class)
     """
     import numpy as np
-    from pykokoro import KokoroPipeline
 
+    from .pykokoro_adapter import KokoroPipeline
     return np, KokoroPipeline
 
 

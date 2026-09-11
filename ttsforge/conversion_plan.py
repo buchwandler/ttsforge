@@ -10,7 +10,7 @@ from __future__ import annotations
 import hashlib
 import json
 from collections.abc import Mapping
-from dataclasses import asdict, dataclass
+from dataclasses import asdict, dataclass, field
 from importlib.metadata import PackageNotFoundError
 from importlib.metadata import version as package_version
 from pathlib import Path
@@ -27,6 +27,23 @@ from .input_reader import InputReader
 from .utils import load_config, resolve_conversion_defaults
 
 PLAN_SCHEMA = "ttsforge.conversion-plan.v1"
+
+
+@dataclass(frozen=True, slots=True)
+class ConversionRequest:
+    """Raw user intent passed to the canonical conversion planner."""
+
+    source_path: Path
+    values: Mapping[str, Any] = field(default_factory=dict)
+
+    @classmethod
+    def from_mapping(
+        cls, source_path: Path, values: Mapping[str, Any] | None = None
+    ) -> ConversionRequest:
+        return cls(source_path=source_path, values=dict(values or {}))
+
+    def as_mapping(self) -> dict[str, Any]:
+        return dict(self.values)
 
 
 @dataclass(frozen=True, slots=True)
@@ -185,14 +202,18 @@ def _decision(
         locator=None if explicit else config_key,
     )
 
-
 def resolve_conversion_plan(
-    source_path: Path,
+    source_path: Path | ConversionRequest,
     *,
     request: Mapping[str, Any] | None = None,
     config: Mapping[str, Any] | None = None,
 ) -> ConversionPlan:
     """Resolve a conversion request without constructing a TTS pipeline."""
+    if isinstance(source_path, ConversionRequest):
+        if request is not None:
+            raise ValueError("request cannot be supplied with ConversionRequest")
+        request = source_path.as_mapping()
+        source_path = source_path.source_path
     request = dict(request or {})
     config = dict(load_config() if config is None else config)
     source_path = source_path.expanduser().resolve(strict=False)
@@ -243,7 +264,7 @@ def resolve_conversion_plan(
     language = str(
         raw_language
         if raw_language is not None
-        else config.get("default_language", "a")
+        else config.get("default_language", "en-us")
     )
     defaults = resolve_conversion_defaults(
         config,
@@ -252,15 +273,12 @@ def resolve_conversion_plan(
             "language": language,
             "speed": request.get("speed"),
             "split_mode": request.get("split_mode"),
-            "use_gpu": request.get("use_gpu"),
             "onnx_provider": request.get("provider"),
-            "lang": request.get("lang"),
         },
     )
     provider = resolve_onnx_provider(
         config,
         provider_override=request.get("provider"),
-        use_gpu_override=request.get("use_gpu"),
     )
     raw_source = request.get("model_source")
     if raw_source is None:
@@ -304,7 +322,7 @@ def resolve_conversion_plan(
         value = request.get(name)
         return float(value if value is not None else config.get(name, default))
 
-    language_value = str(defaults["language"])
+    language_value = str(resolved.language)
     decisions = (
         _decision(
             "language", language_value, raw_language is not None, "default_language"
@@ -314,6 +332,24 @@ def resolve_conversion_plan(
         ),
         _decision(
             "provider", provider, request.get("provider") is not None, "onnx_provider"
+        ),
+        _decision(
+            "model_source",
+            resolved.model_source,
+            request.get("model_source") is not None,
+            "model.source",
+        ),
+        _decision(
+            "model_variant",
+            resolved.model_variant,
+            request.get("model_variant") is not None,
+            "model.id",
+        ),
+        _decision(
+            "model_quality",
+            resolved.model_quality,
+            request.get("model_quality") is not None,
+            "model.quality",
         ),
         _decision(
             "output", str(output), output_value is not None, "output_filename_template"

@@ -27,11 +27,10 @@ PARAGRAPH_UNIT_IDENTITY_SCHEMA = 2
 PARAGRAPH_CONTENT_HASH_SCHEMA = "ttsforge-prepared-text-sha256-v1"
 UNIT_FILENAME_SCHEMA = 1
 PARAGRAPH_PAUSE_OWNERSHIP = "following-boundary-owned-by-previous-v1"
-# The paragraph render contract baseline introduced by PyKokoro 0.9.0.
-# PyKokoro 0.9.1 added metadata-only resolution but did not change the
-# contract; completed 0.9.0 paragraph workspaces remain compatible.
-PYKOKORO_RENDERER_CONTRACT_BASELINE = "0.9.0"
-KOKOROG2P_TEXT_PREPARATION_VERSION = "0.9.2"
+# The semantic renderer contract for the PyKokoro 0.9.4 integration.
+# Runtime package patch versions are diagnostics and are not resume identity.
+PYKOKORO_RENDERER_CONTRACT_BASELINE = "0.9.4"
+KOKOROG2P_TEXT_PREPARATION_VERSION = "0.9.5"
 
 
 def _runtime_package_version(distribution: str) -> str:
@@ -48,14 +47,20 @@ def renderer_contract_payload() -> dict[str, object]:
         "schema": 4,
         "ssmd": "0.8",
         "pykokoro": PYKOKORO_RENDERER_CONTRACT_BASELINE,
-        "pykokoro_runtime": _runtime_package_version("pykokoro"),
         "kokorog2p": KOKOROG2P_TEXT_PREPARATION_VERSION,
-        "kokorog2p_runtime": _runtime_package_version("kokorog2p"),
         "paragraph_unit": 1,
         "pause_ownership": PARAGRAPH_PAUSE_OWNERSHIP,
         "unit_filename_schema": UNIT_FILENAME_SCHEMA,
         "paragraph_manifest_schema": PARAGRAPH_MANIFEST_SCHEMA,
     }
+def renderer_environment_diagnostics() -> dict[str, str]:
+    """Return installed package versions for diagnostics, not identity."""
+    return {
+        "pykokoro": _runtime_package_version("pykokoro"),
+        "kokorog2p": _runtime_package_version("kokorog2p"),
+    }
+
+
 
 
 def validate_conversion_unit(value: str) -> ConversionUnit:
@@ -148,6 +153,7 @@ class RenderUnitState:
     render_fingerprint: str
     char_count: int
     source_paragraph_index: int | None = None
+    prepared_text_hash: str = ""
     chapter_unit_index: int | None = None
     completed: bool = False
     audio_file: str | None = None
@@ -179,6 +185,7 @@ class RenderUnitState:
             self.kind,
             self.content_hash,
             self.render_fingerprint,
+            self.prepared_text_hash,
             self.char_count,
         )
 
@@ -194,6 +201,7 @@ class RenderUnitState:
             "kind": self.kind,
             "content_hash": self.content_hash,
             "render_fingerprint": self.render_fingerprint,
+            "prepared_text_hash": self.prepared_text_hash,
             "char_count": self.char_count,
             "completed": self.completed,
             "audio_file": self.audio_file,
@@ -220,6 +228,7 @@ class RenderUnitState:
                 "kind",
                 "content_hash",
                 "render_fingerprint",
+                "prepared_text_hash",
                 "char_count",
                 "completed",
                 "audio_file",
@@ -251,6 +260,7 @@ class RenderUnitState:
             kind=cast(RenderUnitKind, str(allowed["kind"])),
             content_hash=str(allowed["content_hash"]),
             render_fingerprint=str(allowed["render_fingerprint"]),
+            prepared_text_hash=str(allowed.get("prepared_text_hash", "")),
             char_count=int(allowed["char_count"]),
             completed=bool(allowed.get("completed", False)),
             audio_file=(
@@ -537,6 +547,7 @@ def map_descriptors(
                 chapter_unit_index=chapter_unit_index,
                 kind=kind,
                 content_hash=descriptor.content_hash,
+                prepared_text_hash=descriptor.provider_text_hash,
                 render_fingerprint=unit_render_fingerprint(
                     descriptor,
                     chapter_fingerprint=chapter_fingerprint,

@@ -3,7 +3,11 @@ from __future__ import annotations
 import json
 from pathlib import Path
 
-from ttsforge.conversion_plan import plan_json, resolve_conversion_plan
+from ttsforge.conversion_plan import (
+    ConversionRequest,
+    plan_json,
+    resolve_conversion_plan,
+    )
 
 
 def test_plan_is_deterministic_and_contains_input_selection(tmp_path: Path):
@@ -47,3 +51,19 @@ def test_explicit_invalid_provider_fails_before_tts(tmp_path: Path):
         assert "provider" in str(exc).lower()
     else:
         raise AssertionError("invalid provider unexpectedly produced a plan")
+
+def test_request_and_runtime_options_share_resolved_plan(tmp_path: Path):
+    source = tmp_path / "book.txt"
+    source.write_text("Text.", encoding="utf-8")
+    request = ConversionRequest.from_mapping(
+        source, {"language": "en-us", "provider": "cpu", "output_format": "wav"}
+    )
+    plan = resolve_conversion_plan(request, config={})
+    from ttsforge.conversion import RuntimeOptions
+    options = RuntimeOptions.from_plan(plan)
+
+    assert plan.pipeline.language == "en-us"
+    assert options.language == plan.pipeline.language
+    assert options.onnx_provider == plan.pipeline.provider
+    assert options.model_variant == plan.pipeline.model_variant
+    assert options.conversion_plan_hash == plan.generation_sha256

@@ -305,8 +305,7 @@ def build_pykokoro_ssmd_config(
 ) -> Any:
     """Translate a ttsforge policy at the pykokoro boundary."""
 
-    from pykokoro import SSMDPauseOverrides, SSMDRenderConfig
-
+    from .pykokoro_adapter import SSMDPauseOverrides, SSMDRenderConfig
     pause = policy.pause_overrides
     pause_defaults = (
         SSMDPauseOverrides(
@@ -388,7 +387,7 @@ def inspect_ssmd_document(
         )
 
     try:
-        from pykokoro.ssmd_parser import parse_ssmd_document
+        from .pykokoro_adapter import parse_ssmd_document
 
         parsed = parse_ssmd_document(
             text,
@@ -420,6 +419,8 @@ def inspect_ssmd_document(
                 )
             )
 
+    if effective_policy.unknown_header == "ignore":
+        issues = [issue for issue in issues if issue.code != "header.unknown_key"]
     return SSMDDocumentInfo(
         source=text,
         body=body,

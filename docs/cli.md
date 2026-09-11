@@ -51,8 +51,6 @@ default, language is determined from the voice.
 
 `-s, --speed FLOAT` : Speech speed multiplier (0.5 to 2.0). Default: `1.0`.
 
-`--gpu / --no-gpu` : Compatibility shortcut: `--gpu` maps to provider `auto` and
-`--no-gpu` maps to provider `cpu`.
 
 `--provider PROVIDER` : ONNX Runtime execution provider or alias (`auto`, `cpu`,
 `openvino`, `nnapi`, `xnnpack`, or a full `*ExecutionProvider` name). Available on
@@ -102,15 +100,12 @@ block.
 `--ssmd-missing-voice POLICY` : `error` or `use-default` for unresolved logical roles.
 
 `--emphasis-level INTEGER` : User-friendly audible strength: `0=Off`, `1=Light`,
-`2=Normal`, or `3=Strong`. Level 2 is the backward-compatible equivalent of
-`--enable-ssmd-emphasis`; omit the option to preserve saved resume settings.
+`2=Normal`, or `3=Strong`. Level 2 is the normal emphasis approximation.
 
 `--ssmd-emphasis MODE` : Advanced policy: `plain`, `approximate`, `warn`, or `error`.
 For normal audible strength use `--emphasis-level`. Approximation is gain-only; it does
 not change speech rate.
 
-`--enable-ssmd-emphasis` : Deprecated compatibility flag equivalent to
-`--emphasis-level 2`. It applies the current deterministic gain-only approximation to
 existing SSMD emphasis. Use `--detect-emphasis` separately when EPUB italic/bold styling
 should first be extracted into SSMD annotations. Choose only one emphasis control.
 
@@ -353,7 +348,6 @@ ttsforge sample [TEXT] [OPTIONS]
 
 `-s, --speed FLOAT` : Speech speed. Default: `1.0`.
 
-`--gpu / --no-gpu` : Compatibility shortcut mapping to `auto` or `cpu`.
 
 `--provider PROVIDER` : ONNX Runtime execution provider or alias (`auto`, `cpu`,
 `openvino`, `nnapi`, `xnnpack`, or a full `*ExecutionProvider` name).
@@ -411,7 +405,6 @@ stdin.
 
 `-s, --speed FLOAT` : Speech speed. Default: `1.0`.
 
-`--gpu / --no-gpu` : Compatibility shortcut mapping to `auto` or `cpu`.
 
 `--provider PROVIDER` : ONNX Runtime execution provider or alias (`auto`, `cpu`,
 `openvino`, `nnapi`, `xnnpack`, or a full `*ExecutionProvider` name).
@@ -511,8 +504,6 @@ ttsforge demo [OPTIONS]
 
 `-s, --speed FLOAT` : Speech speed. Default: `1.0`.
 
-`--gpu / --no-gpu` : Compatibility shortcut: `--gpu` maps to provider `auto` and
-`--no-gpu` maps to provider `cpu`.
 
 `--provider PROVIDER` : ONNX Runtime execution provider or alias (`auto`, `cpu`,
 `openvino`, `nnapi`, `xnnpack`, or a full `*ExecutionProvider` name).
@@ -646,8 +637,6 @@ ttsforge config short-sentence show
 ttsforge config short-sentence reset
 ```
 
-The former `short-sentence-advanced-config` root command remains available as a
-deprecated compatibility alias.
 
 ## phonemes
 
@@ -720,7 +709,6 @@ ttsforge phonemes convert PHONEME_FILE [OPTIONS]
 
 `-s, --speed FLOAT` : Speech speed. Default: `1.0`.
 
-`--gpu / --no-gpu` : Compatibility shortcut mapping to `auto` or `cpu`.
 
 `--provider PROVIDER` : ONNX Runtime execution provider or alias (`auto`, `cpu`,
 `openvino`, `nnapi`, `xnnpack`, or a full `*ExecutionProvider` name).

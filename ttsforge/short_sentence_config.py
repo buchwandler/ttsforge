@@ -6,15 +6,10 @@ import csv
 import json
 from collections.abc import Callable
 from pathlib import Path
-from typing import Any, Literal, cast
+from typing import TYPE_CHECKING, Any, Literal, cast
 
-from pykokoro.short_sentence_handler import (
-    PhraseResolveMode,
-    RandomizedPhraseResolveMode,
-    ShortSentenceConfig,
-    WrapResolveMode,
-)
-
+if TYPE_CHECKING:
+    from .pykokoro_adapter import ShortSentenceConfig
 from .utils import atomic_write_json, get_user_config_path
 
 DEFAULT_SHORT_SENTENCE = "mode=randomized,threshold=30,selection=auto,max-tries=5"
@@ -70,16 +65,21 @@ def get_advanced_short_sentence_config_path() -> Path:
 
 def default_advanced_short_sentence_data() -> dict[str, Any]:
     """Build a complete advanced short-sentence JSON config with defaults."""
+    from .pykokoro_adapter import (
+        PhraseResolveMode,
+        RandomizedPhraseResolveMode,
+        WrapResolveMode,
+    )
     phrase = PhraseResolveMode()
     randomized = RandomizedPhraseResolveMode()
     wrap = WrapResolveMode()
     default_lang_phrases = {
-        "a": list(randomized.neutral_phrases),
-        "b": list(randomized.neutral_phrases),
+        "en-us": list(randomized.neutral_phrases),
+        "en-gb": list(randomized.neutral_phrases),
     }
     default_lang_end_phrases = {
-        "a": list(randomized.end_phrases),
-        "b": list(randomized.end_phrases),
+        "en-us": list(randomized.end_phrases),
+        "en-gb": list(randomized.end_phrases),
     }
     return {
         "mode": "randomized",
@@ -89,12 +89,12 @@ def default_advanced_short_sentence_data() -> dict[str, Any]:
         "fallback-mode": "wrap",
         "pretext": wrap.phoneme_pretext,
         "natural-phrase": {
-            "a": phrase.neutral_phrase,
-            "b": phrase.neutral_phrase,
+            "en-us": phrase.neutral_phrase,
+            "en-gb": phrase.neutral_phrase,
         },
         "end-phrase": {
-            "a": phrase.end_phrase,
-            "b": phrase.end_phrase,
+            "en-us": phrase.end_phrase,
+            "en-gb": phrase.end_phrase,
         },
         "natural-phrases": default_lang_phrases,
         "end-phrases": default_lang_end_phrases,
@@ -312,6 +312,12 @@ def _build_short_sentence_config(
     language_code: str | None = None,
     warn: Callable[[str], None] | None = None,
 ) -> ShortSentenceConfig | None:
+    from .pykokoro_adapter import (
+        PhraseResolveMode,
+        RandomizedPhraseResolveMode,
+        ShortSentenceConfig,
+        WrapResolveMode,
+    )
     for key in data:
         if _normalize_key(key) not in _KNOWN_OPTIONS:
             _warn(warn, f"Unrecognized short-sentence option '{key}'")
@@ -457,7 +463,8 @@ def _has_option(data: dict[str, Any], key: str) -> bool:
 
 
 def _normalize_language_code(language_code: str | None) -> str:
-    return (language_code or "a").strip().lower()
+    from .kokoro_lang import canonicalize_language
+    return canonicalize_language(language_code or "en-us")
 
 
 def _language_string(

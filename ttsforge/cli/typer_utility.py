@@ -46,7 +46,7 @@ def _action_callback(value: str | None) -> str | None:
     return normalized
 
 
-LanguageCode = Literal["a", "b", "d", "e", "f", "h", "i", "j", "p", "z"]
+LanguageCode = str
 ModelQuality = Literal[
     "fp32", "fp16", "q8", "q8f16", "q4", "q4f16", "uint8", "uint8f16"
 ]
@@ -104,13 +104,6 @@ def demo_command(
     speed: Annotated[
         float, typer.Option("-s", "--speed", help="Speech speed (default: 1.0).")
     ] = 1.0,
-    use_gpu: Annotated[
-        bool | None,
-        typer.Option(
-            "--gpu/--no-gpu",
-            help="Compatibility shortcut: --gpu maps to provider=auto and --no-gpu maps to provider=cpu.",
-        ),
-    ] = None,
     provider: Annotated[
         str | None,
         typer.Option(
@@ -168,7 +161,6 @@ def demo_command(
         language=language,
         voices_filter=voices_filter,
         speed=speed,
-        use_gpu=use_gpu,
         provider=provider,
         silence=silence,
         text=text,
@@ -250,19 +242,6 @@ def short_sentence_config_command(
     short_sentence_advanced_config(ctx=ctx, action=action)
 
 
-def legacy_short_sentence_advanced_config_command(
-    ctx: typer.Context,
-    action: Annotated[
-        str | None,
-        typer.Argument(metavar="ACTION", callback=_action_callback),
-    ] = None,
-) -> None:
-    """Compatibility alias for ``config short-sentence``."""
-    typer.echo(
-        "Deprecated: use 'ttsforge config short-sentence ACTION'.",
-        err=True,
-    )
-    short_sentence_config_command(ctx=ctx, action=action)
 
 
 def extract_names_command(
@@ -424,6 +403,8 @@ def register(app: typer.Typer) -> None:
     app.command(name="voices")(voices_command)
     app.command(name="demo")(demo_command)
     app.command(name="download")(download_command)
+    from .utility_light import doctor_command
+    app.command(name="doctor")(doctor_command)
     config_app = typer.Typer(
         cls=RepeatedPairGroup,
         add_completion=False,
@@ -432,6 +413,18 @@ def register(app: typer.Typer) -> None:
         help="Manage ttsforge configuration.",
         rich_markup_mode="rich",
     )
+    from .utility_light import (
+        config_get_command,
+        config_path_command,
+        config_set_command,
+        config_show_command,
+        config_unset_command,
+    )
+    config_app.command(name="show")(config_show_command)
+    config_app.command(name="get")(config_get_command)
+    config_app.command(name="set")(config_set_command)
+    config_app.command(name="unset")(config_unset_command)
+    config_app.command(name="path")(config_path_command)
     config_app.callback()(config_command)
     config_app.command(
         name="short-sentence",
@@ -439,10 +432,5 @@ def register(app: typer.Typer) -> None:
     )(short_sentence_config_command)
     app.add_typer(config_app, name="config")
 
-    app.command(
-        name="short-sentence-advanced-config",
-        cls=ShortSentenceConfigCommand,
-        hidden=True,
-    )(legacy_short_sentence_advanced_config_command)
     app.command(name="extract-names")(extract_names_command)
     app.command(name="list-names")(list_names_command)

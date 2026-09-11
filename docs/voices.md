@@ -1,6 +1,6 @@
 # Voices
 
-TTSForge queries PyKokoro 0.9.1 model metadata for available voices. The inventory may
+TTSForge queries PyKokoro 0.9.4 model metadata for available voices. The inventory may
 vary by selected model source and variant, so this document's examples are not a
 TTSForge-owned global whitelist. Use `ttsforge voices` for the active metadata
 inventory.

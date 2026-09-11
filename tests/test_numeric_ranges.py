@@ -43,4 +43,4 @@ def test_cli_rejects_out_of_range_speed_and_confidence(tmp_path: Path) -> None:
     assert speed_result.exit_code != 0
     assert "Invalid value" in speed_result.output
     assert confidence_result.exit_code != 0
-    assert "Invalid value" in confidence_result.output
+    assert "No such option" in confidence_result.output

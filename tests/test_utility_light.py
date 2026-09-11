@@ -208,7 +208,6 @@ def test_demo_combined_gap_uses_exact_generated_silence(monkeypatch, tmp_path) -
         language=None,
         voices_filter="af_heart,af_bella",
         speed=1.0,
-        use_gpu=None,
         provider=None,
         silence=0.125,
         text="Demo {voice}",
@@ -333,7 +332,7 @@ def test_voices_filter_by_language_uses_metadata(monkeypatch, capsys) -> None:
             ("github", "v1.2-de-martin", ("de",), ("martin",)),
         ),
     )
-    utility_light.voices("d")
+    utility_light.voices("de")
     output = capsys.readouterr().out
     assert "martin" in output
     assert "af_heart" not in output
@@ -420,7 +419,7 @@ def test_voices_marks_automatic_default_for_language(monkeypatch, capsys) -> Non
             ("github", "v1.2-de-martin", ("de",), ("martin",)),
         ),
     )
-    utility_light.voices("d")
+    utility_light.voices("de")
     output = capsys.readouterr().out
     assert "martin" in output
     assert "Yes" in output

@@ -115,8 +115,7 @@ def build_pykokoro_prosody_config(policy: ProsodyPolicy) -> object:
     """Translate a TTSForge policy at the PyKokoro integration boundary."""
     if not isinstance(policy, ProsodyPolicy):
         raise TypeError("policy must be a ProsodyPolicy")
-    from pykokoro import ProsodyConfig
-
+    from .pykokoro_adapter import ProsodyConfig
     return ProsodyConfig(
         method=canonical_prosody_method(policy.method),
         fallback_methods=tuple(policy.fallback_methods),

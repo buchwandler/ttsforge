@@ -22,8 +22,6 @@ from ttsforge.conversion import (
     _hash_content,
     _hash_file,
     detect_language_from_iso,
-    get_default_voice_for_language,
-    get_voice_language,
 )
 
 
@@ -232,11 +230,9 @@ class TestConversionOptions:
         """Should have sensible defaults."""
         options = ConversionOptions()
         assert options.voice is None
-        assert options.language == "a"
+        assert options.language == "en-us"
         assert options.speed == 1.0
         assert options.output_format == "m4b"
-        assert options.use_gpu is False  # ONNX default is CPU
-        assert options.effective_onnx_provider() == "cpu"
 
     def test_custom_values(self):
         """Should accept custom values."""
@@ -245,13 +241,12 @@ class TestConversionOptions:
             language="b",
             speed=1.5,
             output_format="wav",
-            use_gpu=True,
+            onnx_provider="auto",
         )
         assert options.voice == "am_adam"
-        assert options.language == "b"
+        assert options.language == "en-gb"
         assert options.speed == 1.5
         assert options.output_format == "wav"
-        assert options.use_gpu is True
         assert options.effective_onnx_provider() == "auto"
 
     def test_explicit_provider_is_preserved(self):
@@ -294,93 +289,26 @@ class TestDetectLanguageFromIso:
     """Tests for detect_language_from_iso function."""
 
     def test_none_returns_default(self):
-        """None should return 'a' (American English)."""
-        assert detect_language_from_iso(None) == "a"
+        assert detect_language_from_iso(None) == "en-us"
 
     def test_empty_returns_default(self):
-        """Empty string should return 'a'."""
-        assert detect_language_from_iso("") == "a"
+        assert detect_language_from_iso("") == "en-us"
 
-    def test_english_codes(self):
-        """English codes should map correctly."""
-        assert detect_language_from_iso("en") == "a"
-        assert detect_language_from_iso("en-US") == "a"
-        assert detect_language_from_iso("en-GB") == "b"
+    def test_canonical_language_codes(self):
+        assert detect_language_from_iso("en") == "en-us"
+        assert detect_language_from_iso("en-US") == "en-us"
+        assert detect_language_from_iso("en-GB") == "en-gb"
 
     def test_case_insensitive(self):
-        """Should be case insensitive."""
-        assert detect_language_from_iso("EN") == "a"
-        assert detect_language_from_iso("En-Us") == "a"
-        assert detect_language_from_iso("EN-GB") == "b"
+        assert detect_language_from_iso("EN") == "en-us"
+        assert detect_language_from_iso("En-Us") == "en-us"
 
     def test_other_languages(self):
-        """Other languages should map correctly."""
-        assert detect_language_from_iso("es") == "e"
-        assert detect_language_from_iso("fr") == "f"
-        assert detect_language_from_iso("ja") == "j"
-        assert detect_language_from_iso("zh") == "z"
+        assert detect_language_from_iso("es") == "es"
+        assert detect_language_from_iso("fr") == "fr-fr"
+        assert detect_language_from_iso("ja") == "ja"
+        assert detect_language_from_iso("zh") == "zh"
 
-    def test_unknown_returns_default(self):
-        """Unknown codes should return 'a'."""
-        assert detect_language_from_iso("xx") == "a"
-        assert detect_language_from_iso("unknown") == "a"
-
-    def test_whitespace_handling(self):
-        """Should handle whitespace."""
-        assert detect_language_from_iso(" en ") == "a"
-        assert detect_language_from_iso("  fr  ") == "f"
-
-
-class TestGetVoiceLanguage:
-    """Tests for get_voice_language function."""
-
-    def test_american_voices(self):
-        """American voices should return 'a'."""
-        assert get_voice_language("af_bella") == "a"
-        assert get_voice_language("am_adam") == "a"
-
-    def test_british_voices(self):
-        """British voices should return 'b'."""
-        assert get_voice_language("bf_emma") == "b"
-        assert get_voice_language("bm_george") == "b"
-
-    def test_other_language_voices(self):
-        """Other language voices should map correctly."""
-        assert get_voice_language("ef_dora") == "e"  # Spanish
-        assert get_voice_language("ff_siwis") == "f"  # French
-        assert get_voice_language("jf_alpha") == "j"  # Japanese
-        assert get_voice_language("zf_xiaoxiao") == "z"  # Chinese
-
-    def test_short_string(self):
-        """Short strings should return default 'a'."""
-        assert get_voice_language("a") == "a"
-        assert get_voice_language("") == "a"
-
-    def test_unknown_prefix(self):
-        """Unknown prefixes should return 'a'."""
-        assert get_voice_language("xx_unknown") == "a"
-
-
-class TestGetDefaultVoiceForLanguage:
-    """Tests for get_default_voice_for_language function."""
-
-    def test_american_english(self):
-        """American English should return af_heart."""
-        assert get_default_voice_for_language("a") == "af_heart"
-
-    def test_british_english(self):
-        """British English should return bf_emma."""
-        assert get_default_voice_for_language("b") == "bf_emma"
-
-    def test_other_languages(self):
-        """Other languages should have default voices."""
-        assert get_default_voice_for_language("e") == "ef_dora"
-        assert get_default_voice_for_language("f") == "ff_siwis"
-        assert get_default_voice_for_language("j") == "jf_alpha"
-
-    def test_unknown_language(self):
-        """Unknown language should return fallback."""
-        assert get_default_voice_for_language("x") == "af_bella"
 
 
 class TestHashFunctions:

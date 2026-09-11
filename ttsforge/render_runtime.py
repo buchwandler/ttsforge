@@ -64,7 +64,8 @@ class PlaybackSink:
         factory = self._player_factory
         if factory is None:
             try:
-                from pykokoro.playback import SoundDevicePlayer
+                from .pykokoro_adapter import get_sound_device_player
+                SoundDevicePlayer = get_sound_device_player()
             except ImportError as exc:
                 raise RuntimeError(
                     "Audio playback requires the optional dependency "

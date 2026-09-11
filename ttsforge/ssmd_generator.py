@@ -257,33 +257,13 @@ def chapter_to_ssmd(
     chapter_text: str,
     phoneme_dict: dict[str, str] | None = None,
     phoneme_dict_case_sensitive: bool = False,
-    mixed_language_config: dict | None = None,
     *,
     chapter_markdown: str | None = None,
     source_format: Literal["plain", "markdown"] = "plain",
     include_title: bool = True,
     document_header: Mapping[str, Any] | None = None,
-) -> str:
-    """Convert a chapter to SSMD format.
-
-    Args:
-        chapter_title: Title of the chapter
-        chapter_text: Plain text content of the chapter
-        phoneme_dict: Optional dictionary mapping words to IPA phonemes
-        phoneme_dict_case_sensitive: Whether phoneme matching is case-sensitive
-        mixed_language_config: Optional config for mixed-language mode
-        chapter_markdown: epub2text-generated Markdown body without a title
-        source_format: Source representation used for this chapter
-        include_title: Whether to include chapter title in SSMD
-        document_header: Optional explicit header values.  Missing generated
-            fields are filled without replacing explicit document values.
-
-    Returns:
-        SSMD formatted text
-
-    Raises:
-        SSMDGenerationError: If generation fails
-    """
+ ) -> str:
+    """Convert a chapter to SSMD format."""
     try:
         if source_format == "markdown":
             if chapter_markdown is None:
@@ -306,12 +286,6 @@ def chapter_to_ssmd(
                 result, phoneme_dict, phoneme_dict_case_sensitive
             )
 
-        # PyKokoro 0.9 requires mixed-language changes to be explicit SSMD.
-        if mixed_language_config and mixed_language_config.get("use_mixed_language"):
-            raise ValueError(
-                "Automatic mixed-language detection is no longer supported. "
-                'Use explicit SSMD spans such as [Welt]{lang="de"}.'
-            )
         # Add exactly one synthetic chapter title when requested.
         if include_title and chapter_title:
             # Clean title and add as heading with double newline separation

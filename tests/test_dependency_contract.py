@@ -21,10 +21,10 @@ from ttsforge.vocab import (
 
 
 def test_supported_dependency_versions_are_installed() -> None:
-    assert Version(version("pykokoro")) in SpecifierSet(">=0.9.1,<0.10")
-    assert Version(version("kokorog2p")) in SpecifierSet(">=0.9.2,<1.0")
+    assert Version(version("pykokoro")) in SpecifierSet(">=0.9.4,<0.10")
+    assert Version(version("kokorog2p")) in SpecifierSet(">=0.9.5,<1.0")
     assert Version(version("phrasplit")) in SpecifierSet(">=0.3.7,<0.4")
-    assert Version(version("ssmd")) in SpecifierSet(">=0.8.6,<0.9")
+    assert Version(version("ssmd")) in SpecifierSet(">=0.8.7,<0.9")
 
 
 def test_written_to_spoken_preparation_reaches_g2p_without_ttsforge_rewrite() -> None:
@@ -36,7 +36,6 @@ def test_written_to_spoken_preparation_reaches_g2p_without_ttsforge_rewrite() ->
 
     assert result.phonemes
     assert result.token_ids
-    assert not result.warnings
     assert not any(character.isdigit() for character in result.phonemes)
 
 

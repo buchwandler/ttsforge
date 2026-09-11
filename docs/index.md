@@ -8,6 +8,7 @@ ONNX TTS (Text-to-Speech).
 :caption: User Guide
 
 installation
+    migration-v0.4
 quickstart
 cli
 ssmd
@@ -81,7 +82,7 @@ ttsforge supports 10 languages with native TTS voices (including German):
 - Python 3.10 or later
 - ffmpeg (required for MP3/FLAC/OPUS/M4B output and chapter merging)
 - espeak-ng (for phonemization)
-- PyKokoro 0.9 with kokorog2p 0.9.2 and SSMD 0.8.6
+- PyKokoro 0.9.4 with kokorog2p 0.9.5 and SSMD 0.8.7
 - ~330MB disk space for ONNX models (downloaded automatically)
 - sounddevice (optional, for playback features)
 

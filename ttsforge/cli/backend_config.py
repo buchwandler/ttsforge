@@ -32,23 +32,19 @@ def resolve_onnx_provider(
     config: Mapping[str, Any],
     *,
     provider_override: str | None,
-    use_gpu_override: bool | None,
 ) -> str:
-    """Resolve CLI and config provider inputs without importing ONNX Runtime."""
-    if provider_override is not None and use_gpu_override is not None:
-        raise ValueError("--provider cannot be combined with --gpu or --no-gpu")
-
+    """Resolve one canonical provider without importing ONNX Runtime."""
     if provider_override is not None:
         return _normalize_onnx_provider(provider_override)
 
-    if use_gpu_override is not None:
-        return "auto" if use_gpu_override else "cpu"
-
-    configured = config.get("onnx_provider")
+    runtime = config.get("runtime") if config.get("schema_version") == 2 else config
+    configured = runtime.get("provider") if isinstance(runtime, Mapping) else None
+    if configured is None and isinstance(runtime, Mapping):
+        configured = runtime.get("onnx_provider")
     if configured is not None and str(configured).strip():
         return _normalize_onnx_provider(configured)
 
-    return "auto" if bool(config.get("use_gpu", False)) else "cpu"
+    return "cpu"
 
 
 @dataclass(frozen=True)
@@ -81,23 +77,17 @@ def resolve_pykokoro_pipeline_defaults(
     pipeline, so preflight, status, and dry-run paths can share the exact
     default policy used by the runtime (``pykokoro.resolve_pipeline_config``).
     """
-    from pykokoro import (
-        GenerationConfig,
-        PipelineConfig,
-        resolve_pipeline_config,
-    )
-
     from ..kokoro_lang import get_pykokoro_language
+    from ..pykokoro_adapter import resolve_pipeline_config
 
-    requested = PipelineConfig(
-        generation=GenerationConfig(lang=get_pykokoro_language(ttsforge_language)),
+    resolved = resolve_pipeline_config(
+        language=get_pykokoro_language(ttsforge_language),
         voice=voice,
         model_source=model_source,
         model_variant=model_variant,
         model_quality=model_quality,
         provider=provider,
     )
-    resolved = resolve_pipeline_config(requested)
     return ResolvedPipelineDefaults(
         language=resolved.generation.lang,
         model_source=resolved.model_source,
@@ -117,8 +107,13 @@ def resolve_model_source_and_variant(
     are validated through the public resolver instead of private upstream
     model-profile modules.
     """
-    raw_source = config.get("model_source")
-    raw_variant = config.get("model_variant")
+    if config.get("schema_version") == 2:
+        model = config.get("model", {})
+        raw_source = model.get("source") if isinstance(model, Mapping) else None
+        raw_variant = model.get("id") if isinstance(model, Mapping) else None
+    else:
+        raw_source = config.get("model_source")
+        raw_variant = config.get("model_variant")
     if raw_source is None and raw_variant is None:
         return None, None
     source = str(raw_source) if raw_source is not None else "github"
@@ -148,11 +143,19 @@ def resolve_model_source_variant_quality(
     defaults the runtime uses.
     """
     raw_source, raw_variant = resolve_model_source_and_variant(config)
-    raw_quality = config.get("model_quality")
+    if config.get("schema_version") == 2:
+        model = config.get("model", {})
+        raw_quality = model.get("quality") if isinstance(model, Mapping) else None
+    else:
+        raw_quality = config.get("model_quality")
     needs_automatic = raw_source is None or raw_variant is None or raw_quality is None
     if needs_automatic:
         resolved = resolve_pykokoro_pipeline_defaults(
-            ttsforge_language=config.get("default_language", "a"),
+            ttsforge_language=(
+                config.get("tts", {}).get("language", "auto")
+                if config.get("schema_version") == 2
+                else config.get("default_language", "auto")
+            ),
             model_source=raw_source,
             model_variant=raw_variant,
             model_quality=str(raw_quality) if raw_quality is not None else None,
@@ -174,7 +177,7 @@ def resolve_voice_names(
     model_source: str | None = None, model_variant: str | None = None
 ) -> list[str]:
     """Return voices from PyKokoro's metadata-only model discovery."""
-    from pykokoro import discover_models
+    from ..pykokoro_adapter import discover_models
 
     inventory = discover_models()
     voices: list[str] = []
@@ -185,3 +188,25 @@ def resolve_voice_names(
             continue
         voices.extend(model.voices)
     return list(dict.fromkeys(voices))
+
+
+def resolve_voice_languages(
+    model_source: str | None = None, model_variant: str | None = None
+ ) -> dict[str, tuple[str, ...]]:
+    """Return discovery-backed BCP-47 languages for each discovered voice."""
+    from ..kokoro_lang import canonicalize_language
+    from ..pykokoro_adapter import discover_models
+
+    result: dict[str, set[str]] = {}
+    for model in discover_models().models:
+        if model_source is not None and model.source != model_source:
+            continue
+        if model_variant is not None and model.model_id != model_variant:
+            continue
+        languages = tuple(
+            canonicalize_language(str(value))
+            for value in (model.languages or ())
+        )
+        for voice in model.voices:
+            result.setdefault(voice, set()).update(languages)
+    return {voice: tuple(sorted(languages)) for voice, languages in result.items()}

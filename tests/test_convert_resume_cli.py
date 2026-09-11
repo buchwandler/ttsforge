@@ -949,7 +949,7 @@ class TestConvertLanguagePropagation:
         assert result.exit_code == 0, result.output
         options = captured["options"]
         assert options is not None
-        assert options.language == "d"
+        assert options.language == "de"
         assert get_onnx_lang_code(options.language) == "de"
         assert "Auto-detected language: German" in result.output
 
@@ -958,13 +958,17 @@ class TestConvertLanguagePropagation:
     ) -> None:
         """Explicit --language must win over EPUB metadata."""
         captured, result = self._run_convert(
-            runner, tmp_path, monkeypatch, epub_language="de", args=["--language", "b"]
+            runner,
+            tmp_path,
+            monkeypatch,
+            epub_language="de",
+            args=["--language", "en-gb"],
         )
 
         assert result.exit_code == 0, result.output
         options = captured["options"]
         assert options is not None
-        assert options.language == "b"
+        assert options.language == "en-gb"
 
     def test_resume_saved_language_wins_without_explicit_override(
         self, runner, tmp_path, monkeypatch
@@ -975,18 +979,18 @@ class TestConvertLanguagePropagation:
             tmp_path,
             monkeypatch,
             epub_language="de",
-            saved_language="z",
+            saved_language="zh",
         )
 
         assert result.exit_code == 0, result.output
         options = captured["options"]
         assert options is not None
-        assert options.language == "z"
+        assert options.language == "zh"
 
-    def test_fresh_conversion_keeps_voice_none_for_automatic_selection(
+    def test_fresh_conversion_uses_metadata_voice_for_automatic_selection(
         self, runner, tmp_path, monkeypatch
     ) -> None:
-        """Without explicit/configured voice, voice must stay None."""
+        """Without an explicit voice, metadata discovery selects the default voice."""
         captured, result = self._run_convert(
             runner, tmp_path, monkeypatch, epub_language="de"
         )
@@ -994,4 +998,4 @@ class TestConvertLanguagePropagation:
         assert result.exit_code == 0, result.output
         options = captured["options"]
         assert options is not None
-        assert options.voice is None
+        assert options.voice == "martin"

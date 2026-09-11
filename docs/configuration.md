@@ -3,8 +3,8 @@
 ttsforge stores its configuration in a JSON file and provides a CLI interface for
 managing settings.
 
-The active generation stack is PyKokoro 0.9 with kokorog2p 0.9.2, phrasplit 0.3.7, and
-SSMD 0.8.6. Omitted model and voice settings remain `None` so PyKokoro can select
+The active generation stack targets PyKokoro 0.9.4 with kokorog2p 0.9.5, phrasplit 0.3.7, and
+SSMD 0.8.7. Omitted model and voice settings remain `None` so PyKokoro can select
 language-aware metadata defaults.
 
 ## Configuration File Location
@@ -49,8 +49,6 @@ ttsforge config short-sentence show
 ttsforge config short-sentence reset
 ```
 
-The former `short-sentence-advanced-config` root command remains available as a
-deprecated compatibility alias.
 
 ## Configuration Options
 
@@ -183,85 +181,63 @@ local/HTTPS audio annotation resolution. Remote audio is opt-in.
 
 ### Voice and Language Settings
 
-`default_voice` : Optional default TTS voice. When `None`, PyKokoro selects the profile
+`tts.voice` : Optional default TTS voice. When `None`, PyKokoro selects the profile
 default for the document language from metadata.
 
 - Type: string or null
 - Default: `None`
-- Example: `ttsforge config --set default_voice am_adam` `default_language` : Default
-  language code.
+- Example: `ttsforge config set tts.voice am_adam`
+
+`tts.language` : Canonical BCP-47 document language, or `auto`.
 
 - Type: string
-- Default: `a` (American English)
-- Choices: `a`, `b`, `e`, `f`, `h`, `i`, `j`, `p`, `z`
-- Example: `ttsforge config --set default_language b`
+- Default: `auto`
+- Examples: `de`, `en-us`, `fr-fr`
 
-`phonemization_lang` : Override language for phonemization (e.g., `de`, `fr`, `en-us`).
-
-- Type: string or null
-- Default: `None`
-- Example: `ttsforge config --set phonemization_lang de`
-
-`default_speed` : Default speech speed multiplier.
+`tts.speed` : Default speech speed multiplier.
 
 - Type: float
 - Default: `1.0`
 - Range: `0.5` to `2.0`
-- Example: `ttsforge config --set default_speed 1.1`
 
 ### Output Settings
 
-`default_format` : Default output audio format.
+`audio.format` : Default output audio format.
 
 - Type: string
 - Default: `m4b`
 - Choices: `wav`, `mp3`, `flac`, `opus`, `m4b`
-- Example: `ttsforge config --set default_format mp3`
 
 ### Processing Settings
 
-`onnx_provider` : ONNX Runtime execution provider used for synthesis. Use `auto`, `cpu`,
-`cuda`, `openvino`, `directml`/`dml`, `coreml`, `nnapi`, `xnnpack`, or a full
-`*ExecutionProvider` name. TTSForge validates the syntax and PyKokoro validates runtime
-availability.
+`runtime.provider` : ONNX Runtime execution provider used for synthesis. Use `auto`,
+`cpu`, `cuda`, `openvino`, `directml`/`dml`, `coreml`, `nnapi`, `xnnpack`, or a full
+`*ExecutionProvider` name.
 
 - Type: string
 - Default: `cpu`
-- Examples: `ttsforge config --set onnx_provider nnapi` and
-  `ttsforge config --set onnx_provider NnapiExecutionProvider`
+- Example: `ttsforge config set runtime.provider nnapi`
 
-`use_gpu` : Legacy compatibility setting. `true` maps to `onnx_provider=auto` and
-`false` maps to `onnx_provider=cpu` when no provider is configured.
-
-- Type: boolean
-- Default: `false`
-- Example: `ttsforge config --set use_gpu true`
-
-`model_quality` : Optional ONNX model quality/quantization. When `None`, PyKokoro
+`model.quality` : Optional ONNX model quality/quantization. When `None`, PyKokoro
 resolves the profile-supported default quality.
 
 - Type: string or null
 - Default: `None`
 - Choices: `fp32`, `fp16`, `q8`, `q8f16`, `q4`, `q4f16`, `uint8`, `uint8f16`
-- Example: `ttsforge config --set model_quality fp16`
+- Example: `ttsforge config set model.quality fp16`
 
-`model_source` : Optional model source. Omit it for PyKokoro metadata-driven selection.
+`model.source` : Optional model source. Omit it for PyKokoro metadata-driven selection.
 
 - Type: string or null
 - Default: `None`
 - Choices: `github`, `huggingface`
 
-`model_variant` : Optional model profile variant. Omit it for automatic selection.
+`model.id` : Optional model profile variant. Omit it for automatic selection.
 
 - Type: string or null
 - Default: `None`
-- Explicit examples: `v1.0` and German `v1.2-de-martin` (voice `martin`)
+- Examples: `v1.0` and `v1.2-de-martin` (voice `martin`)
 
-`auto_detect_language` : Automatically detect language from EPUB metadata.
-
-- Type: boolean
-- Default: `true`
-- Example: `ttsforge config --set auto_detect_language false`
 
 `default_split_mode` : Default text splitting mode for processing.
 
@@ -411,33 +387,29 @@ details.
   - string
   - `af_heart`
   - Default TTS voice
-* - `default_language`
+* - `tts.language`
   - string
-  - `a`
-  - Default language code
-* - `default_speed`
+  - `auto`
+  - Canonical BCP-47 document language
+* - `tts.speed`
   - float
   - `1.0`
   - Speech speed multiplier
-* - `default_format`
+* - `audio.format`
   - string
   - `m4b`
   - Output audio format
-* - `use_gpu`
-  - boolean
-  - `false`
-  - Legacy provider compatibility shortcut
-* - `onnx_provider`
+* - `runtime.provider`
   - string
   - `cpu`
   - ONNX Runtime provider alias or full name
-* - `model_quality`
-  - string
-  - `fp32`
+* - `model.quality`
+  - string or null
+  - automatic
   - Model quality/quantization
-* - `model_variant`
-  - string
-  - `v1.0`
+* - `model.id`
+  - string or null
+  - automatic
   - Model variant
 * - `silence_between_chapters`
   - float
@@ -479,14 +451,6 @@ details.
   - boolean
   - `true`
   - Merge chapters into final file
-* - `auto_detect_language`
-  - boolean
-  - `true`
-  - Auto-detect language from EPUB
-* - `phonemization_lang`
-  - string/null
-  - `None`
-  - Override phonemization language
 * - `default_split_mode`
   - string
   - `auto`
@@ -590,9 +554,9 @@ ttsforge convert book.epub -v bf_emma -f mp3
 ttsforge sample "Provider test" --provider xnnpack
 ```
 
-Provider precedence is explicit `--provider`, then `--gpu`/`--no-gpu`, then
-`onnx_provider`, then legacy `use_gpu`, then CPU. PyKokoro may apply its documented
-`ONNX_PROVIDER` environment override during runtime provider resolution.
+Provider resolution uses explicit `--provider`, then `runtime.provider`, then the
+CPU default. PyKokoro may apply its documented `ONNX_PROVIDER` environment override during
+runtime provider resolution.
 
 ## Environment Variables
 
@@ -607,13 +571,13 @@ state saves, final merging, and converter cleanup. RSS may remain elevated becau
 native allocators retain high-water pages; that alone is not evidence of a provider
 leak.
 
-TTSForge requires PyKokoro `>=0.9.1,<0.10`, uses compact segment results, and releases
+TTSForge requires PyKokoro `>=0.9.4,<0.10`, uses compact segment results, and releases
 completed chapter audio before the next chapter synthesis. Whole-chapter synthesis
 remains buffered and streaming is future work.
 
 ## Model source status
 
-Set `model_source` to `github` when using the GitHub asset set. `ttsforge config --show`
+Set `model.source` to `github` when using the GitHub asset set. `ttsforge config show`
 uses PyKokoro's source/variant/quality-aware asset paths and reports missing assets. If
 the configured set is incomplete but the alternate supported source is complete, the
 command reports that alternate and gives an activation command without silently

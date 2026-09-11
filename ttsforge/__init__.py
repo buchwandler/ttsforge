@@ -4,12 +4,8 @@ ttsforge - Generate audiobooks from EPUB files with TTS.
 A CLI tool for converting EPUB books to audiobooks using Kokoro ONNX TTS.
 """
 
-from .constants import (
-    DEFAULT_CONFIG,
-    LANGUAGE_DESCRIPTIONS,
-    SUPPORTED_OUTPUT_FORMATS,
-    VOICES,
-)
+from .constants import DEFAULT_CONFIG, SUPPORTED_OUTPUT_FORMATS
+from .conversion_plan import ConversionPlan, ConversionRequest
 from .utils import (
     load_config,
     save_config,
@@ -22,22 +18,9 @@ from typing import Any
 
 
 _LAZY_EXPORTS = {
-    "GenerationConfig": ("pykokoro", "GenerationConfig"),
-    "KokoroPipeline": ("pykokoro", "KokoroPipeline"),
-    "PipelineConfig": ("pykokoro", "PipelineConfig"),
-    "VoiceBlend": ("pykokoro.onnx_backend", "VoiceBlend"),
-    "are_models_downloaded": ("pykokoro.onnx_backend", "are_models_downloaded"),
-    "download_all_models": ("pykokoro.onnx_backend", "download_all_models"),
-    "download_model": ("pykokoro.onnx_backend", "download_model"),
-    "get_model_dir": ("pykokoro.onnx_backend", "get_model_dir"),
-    "EspeakConfig": ("pykokoro.tokenizer", "EspeakConfig"),
-    "MAX_PHONEME_LENGTH": ("pykokoro.tokenizer", "MAX_PHONEME_LENGTH"),
-    "Tokenizer": ("pykokoro.tokenizer", "Tokenizer"),
-    "SUPPORTED_LANGUAGES": ("pykokoro.constants", "SUPPORTED_LANGUAGES"),
-    "VOICE_NAMES_BY_VARIANT": ("pykokoro.onnx_backend", "VOICE_NAMES_BY_VARIANT"),
-    "SAMPLE_RATE": ("ttsforge.constants", "SAMPLE_RATE"),
     "Chapter": ("ttsforge.conversion", "Chapter"),
     "ConversionOptions": ("ttsforge.conversion", "ConversionOptions"),
+    "RuntimeOptions": ("ttsforge.conversion", "RuntimeOptions"),
     "ConversionProgress": ("ttsforge.conversion", "ConversionProgress"),
     "ConversionResult": ("ttsforge.conversion", "ConversionResult"),
     "TTSConverter": ("ttsforge.conversion", "TTSConverter"),
@@ -54,7 +37,7 @@ _LAZY_EXPORTS = {
 
 
 def __getattr__(name: str) -> Any:
-    """Load backend-dependent compatibility exports only when requested."""
+    """Load TTSForge-owned lazy exports on demand."""
     target = _LAZY_EXPORTS.get(name)
     if target is None:
         raise AttributeError(f"module {__name__!r} has no attribute {name!r}")
@@ -65,42 +48,23 @@ def __getattr__(name: str) -> Any:
 
 
 __all__ = [
-    # Constants
     "DEFAULT_CONFIG",
     "DEFAULT_SAMPLE_TEXT",
-    # Phonemes
     "FORMAT_VERSION",
-    "LANGUAGE_DESCRIPTIONS",
-    "MAX_PHONEME_LENGTH",
-    "SAMPLE_RATE",
-    "SUPPORTED_LANGUAGES",
     "SUPPORTED_OUTPUT_FORMATS",
-    "VOICES",
-    "VOICE_NAMES_BY_VARIANT",
-    # Conversion
     "Chapter",
     "ConversionOptions",
+    "ConversionPlan",
     "ConversionProgress",
+    "ConversionRequest",
     "ConversionResult",
-    # Tokenizer (from pykokoro)
-    "EspeakConfig",
-    # Pipeline (from pykokoro)
-    "GenerationConfig",
-    "KokoroPipeline",
     "PhonemeBook",
     "PhonemeChapter",
     "PhonemeSegment",
-    "PipelineConfig",
-    # Utils
     "ProsodyPolicy",
+    "RuntimeOptions",
     "TTSConverter",
-    "Tokenizer",
-    "VoiceBlend",
-    "are_models_downloaded",
     "create_phoneme_book_from_chapters",
-    "download_all_models",
-    "download_model",
-    "get_model_dir",
     "load_config",
     "phonemize_text_list",
     "save_config",

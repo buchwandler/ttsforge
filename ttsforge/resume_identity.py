@@ -231,11 +231,9 @@ def _common_generation_payload(
             _attribute(options, "voice_database"), required=True
         ),
         "language": _attribute(options, "language"),
-        "lang": _attribute(options, "lang"),
         "speed": _attribute(options, "speed"),
         "output_format": _attribute(options, "output_format"),
         "conversion_plan_hash": getattr(options, "conversion_plan_hash", None),
-        "use_gpu": _attribute(options, "use_gpu"),
         "onnx_provider": _attribute(options, "effective_onnx_provider")(),
         "model_quality": str(_attribute(options, "model_quality")),
         "model_source": str(_attribute(options, "model_source")),
@@ -251,10 +249,6 @@ def _common_generation_payload(
         "pause_mode": _attribute(options, "pause_mode"),
         "enable_short_sentence": _attribute(options, "enable_short_sentence"),
         "short_sentence": _attribute(options, "short_sentence"),
-        "use_mixed_language": _attribute(options, "use_mixed_language"),
-        "mixed_language_primary": _attribute(options, "mixed_language_primary"),
-        "mixed_language_allowed": _attribute(options, "mixed_language_allowed"),
-        "mixed_language_confidence": _attribute(options, "mixed_language_confidence"),
         "phoneme_dictionary": file_value(
             _attribute(options, "phoneme_dictionary_path"), required=True
         ),

@@ -6,42 +6,43 @@ from dataclasses import dataclass, field
 from typing import Any, Literal, Protocol, cast
 
 import numpy as np
-from pykokoro import GenerationConfig, KokoroPipeline, PipelineConfig
-from pykokoro.onnx_backend import (
-    DEFAULT_MODEL_QUALITY,
-    DEFAULT_MODEL_SOURCE,
-    DEFAULT_MODEL_VARIANT,
-    Kokoro,
-    ModelQuality,
-    ModelSource,
-    ModelVariant,
-    VoiceBlend,
-    are_models_downloaded,
-    download_all_models,
-    download_all_models_github,
-)
-from pykokoro.pipeline import build_pipeline
-from pykokoro.short_sentence_handler import ShortSentenceConfig
-from pykokoro.stages.audio_generation.onnx import OnnxAudioGenerationAdapter
-from pykokoro.stages.audio_postprocessing.onnx import OnnxAudioPostprocessingAdapter
-from pykokoro.stages.phoneme_processing.onnx import OnnxPhonemeProcessorAdapter
 from typing_extensions import Self
 
 from .memory_diagnostics import log_snapshot
 from .prosody_support import ProsodyPolicy, build_pykokoro_prosody_config
+from .pykokoro_adapter import (
+    DEFAULT_MODEL_QUALITY,
+    DEFAULT_MODEL_SOURCE,
+    DEFAULT_MODEL_VARIANT,
+    GenerationConfig,
+    Kokoro,
+    KokoroPipeline,
+    ModelQuality,
+    ModelSource,
+    ModelVariant,
+    OnnxAudioGenerationAdapter,
+    OnnxAudioPostprocessingAdapter,
+    OnnxPhonemeProcessorAdapter,
+    PipelineConfig,
+    ShortSentenceConfig,
+    VoiceBlend,
+    are_models_downloaded,
+    build_pipeline,
+    download_all_models,
+    download_all_models_github,
+)
 from .render_units import PreparedUnitDescriptor, descriptor_from_public
 from .short_sentence_stats import ShortSentenceStats
 from .spacy_policy import SPACY_POLICY_VERSION
 from .ssmd_support import SSMDPolicy, build_pykokoro_ssmd_config
 
-SUPPORTED_PYKOKORO = ">=0.9.1,<0.10"
+SUPPORTED_PYKOKORO = ">=0.9.4,<0.10"
 
 
 @dataclass(slots=True)
 class KokoroRunOptions:
     voice: str | None
     speed: float
-    use_gpu: bool
     pause_clause: float
     pause_sentence: float
     pause_paragraph: float
@@ -69,10 +70,8 @@ class KokoroRunOptions:
     prosody_policy: ProsodyPolicy = field(default_factory=ProsodyPolicy)
 
     def effective_onnx_provider(self) -> str:
-        """Return the provider requested by this runner option set."""
-        if self.onnx_provider is not None:
-            return self.onnx_provider
-        return "auto" if self.use_gpu else "cpu"
+        """Return the canonical provider requested by this runner option set."""
+        return self.onnx_provider or "cpu"
 
 class PreparedUnits:
     """TTSForge's dependency-light facade over PyKokoro prepared units."""

@@ -34,23 +34,21 @@ def test_pykokoro_dependency_floor_is_released_handoff() -> None:
         (Path(__file__).parents[1] / "pyproject.toml").read_text(encoding="utf-8")
     )
     dependencies = project["project"]["dependencies"]
-    assert "pykokoro[cpu]>=0.9.1,<0.10" in dependencies
-    assert "kokorog2p[espeak,en]>=0.9.2,<1.0" in dependencies
+    assert "pykokoro>=0.9.4,<0.10" in dependencies
+    assert "kokorog2p[espeak,en]>=0.9.5,<1.0" in dependencies
     assert "phrasplit>=0.3.7,<0.4" in dependencies
-    assert "ssmd>=0.8.6,<0.9" in dependencies
-    assert not any("pykokoro[cpu]>=0.8" in dependency for dependency in dependencies)
-    assert not any("pykokoro[cpu]>=0.8.4" in dependency for dependency in dependencies)
-    assert not any("pykokoro[cpu]>=0.8.1" in dependency for dependency in dependencies)
-    assert not any("pykokoro[cpu]>=0.7.3" in dependency for dependency in dependencies)
-    assert not any("pykokoro[cpu]>=0.6.6" in dependency for dependency in dependencies)
-
-
-def test_ssmd_dependency_is_direct_and_bounded() -> None:
-    tomllib = pytest.importorskip("tomllib")
-    project = tomllib.loads(
-        (Path(__file__).parents[1] / "pyproject.toml").read_text(encoding="utf-8")
+    assert "ssmd>=0.8.7,<0.9" in dependencies
+    extras = project["project"]["optional-dependencies"]
+    assert not any(
+        dependency.startswith("onnxruntime")
+        for dependency in dependencies
     )
-    assert "ssmd>=0.8.6,<0.9" in project["project"]["dependencies"]
+    for provider in ("cpu", "gpu", "openvino", "directml", "coreml"):
+        provider_dependencies = extras[provider]
+        assert len(provider_dependencies) == 1
+        assert provider_dependencies[0] == (
+            f"pykokoro[{provider}]>=0.9.4,<0.10"
+        )
 
 
 def test_audiosig_dependency_floor_supports_waveform_primitives() -> None:
@@ -78,7 +76,7 @@ def test_pykokoro_ssmd_090_contract_is_importable() -> None:
         from pykokoro.ssmd_parser import parse_ssmd_document
     except ImportError as exc:  # pragma: no cover - dependency compatibility path
         pytest.fail(
-            "pykokoro>=0.9.1 is required for the PyKokoro 0.9 integration; "
+            "pykokoro>=0.9.4 is required for the PyKokoro 0.9 integration; "
             f"missing public symbol: {exc}"
         )
 

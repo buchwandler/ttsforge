@@ -22,8 +22,8 @@ AudioSig does not replace TTSForge's file, FFmpeg, or audiobook orchestration la
 
 ### PyKokoro, kokorog2p, and spaCy model policy
 
-The package requires PyKokoro `>=0.9.1,<0.10`, kokorog2p `>=0.9.2,<1.0`, SSMD
-`>=0.8.6,<0.9`, and phrasplit `>=0.3.7,<0.4`. TTSForge forwards document language and
+The package requires PyKokoro `>=0.9.4,<0.10`, kokorog2p `>=0.9.5,<1.0`, SSMD
+`>=0.8.7,<0.9`, and phrasplit `>=0.3.7,<0.4`. TTSForge forwards document language and
 ONNX provider through the PyKokoro 0.9 pipeline. Omitted model and voice values use
 PyKokoro metadata discovery; explicit profiles, custom model paths, and voice databases
 remain supported.
@@ -138,11 +138,22 @@ python -m spacy download en_core_web_md
 pip install ttsforge
 ```
 
-The base installation includes the CPU ONNX Runtime provider. Provider-dependent modules
-are loaded only when audio rendering starts, so `import ttsforge`, `ttsforge --help`,
-and configuration/inspection commands work without model initialization.
+The base installation is provider-neutral. Install exactly one provider extra in the environment
+used for rendering. Provider-dependent modules are loaded only when audio rendering starts, so
+`import ttsforge`, `ttsforge --help`, and configuration/inspection commands work without model
+initialization.
 
-Optional extras:
+Provider extras (do not combine them in one environment):
+
+```bash
+pip install "ttsforge[cpu]"       # ONNX Runtime CPU
+pip install "ttsforge[gpu]"       # ONNX Runtime CUDA
+pip install "ttsforge[openvino]"  # ONNX Runtime OpenVINO
+pip install "ttsforge[directml]"  # ONNX Runtime DirectML
+pip install "ttsforge[coreml]"    # ONNX Runtime CoreML (macOS)
+```
+
+Optional non-provider extras:
 
 ```bash
 # Audio playback (required for --play and read)
@@ -150,9 +161,6 @@ pip install "ttsforge[audio]"
 
 # Bundled ffmpeg binaries
 pip install "ttsforge[static_ffmpeg]"
-
-# CUDA provider support
-pip install "ttsforge[gpu]"
 ```
 
 ### From Source
@@ -175,29 +183,29 @@ pip install -e ".[dev]"
 
 ## ONNX Runtime Providers
 
-Select a provider with an alias or full runtime provider name. The legacy Boolean
-interface remains available for compatibility, but NNAPI and XNNPACK are execution
-providers rather than GPU modes:
+Select a provider with an alias or full runtime provider name. Install the matching provider extra
+in a fresh environment, and do not install multiple provider extras together. NNAPI and XNNPACK
+are runtime providers exposed by platform-specific builds rather than TTSForge installation extras:
 
 ```bash
-ttsforge config --set onnx_provider cpu
-ttsforge sample "Provider test" --provider xnnpack
+pip install "ttsforge[cpu]"
+ttsforge config set runtime.provider cpu
+ttsforge sample "Provider test" --provider cpu
 ```
 
 For a desktop build exposing OpenVINO:
 
 ```bash
-ttsforge config --set onnx_provider openvino
-ttsforge config --show
+pip install "ttsforge[openvino]"
+ttsforge config set runtime.provider openvino
 ttsforge sample "OpenVINO provider test" --provider openvino
 ```
 
-For the CUDA provider, install the GPU extra in a fresh environment so CPU and CUDA ONNX
-Runtime distributions are not installed together:
+For CUDA:
 
 ```bash
 pip install "ttsforge[gpu]"
-ttsforge config --set onnx_provider cuda
+ttsforge config set runtime.provider cuda
 ```
 
 For Termux/Android, use the declared PyKokoro release with an ONNX Runtime build
@@ -214,12 +222,11 @@ ttsforge download
 ttsforge sample "Termux provider test" --provider nnapi
 ```
 
-Use `--gpu` as a compatibility shortcut for `--provider auto` or `--no-gpu` for
-`--provider cpu`. Provider availability and the documented `ONNX_PROVIDER` environment
-override are handled by PyKokoro. With the required patched PyKokoro release, GitHub
-`v1.0` uses the embedded standard vocabulary and does not download Hugging Face
-`config.json`. NNAPI is not guaranteed; use a provider exposed by the installed Android
-ONNX Runtime build.
+Provider availability and the documented `ONNX_PROVIDER` environment override are
+handled by PyKokoro. With the required patched PyKokoro release, GitHub `v1.0` uses
+the embedded standard vocabulary and does not download Hugging Face `config.json`.
+NNAPI is not guaranteed; use a provider exposed by the installed Android ONNX Runtime
+build. Run `ttsforge doctor` to inspect the environment.
 
 ## Memory diagnostics
 

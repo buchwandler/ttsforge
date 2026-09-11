@@ -14,7 +14,11 @@ from ..constants import (
     LANGUAGE_DESCRIPTIONS,
 )
 from ..utils import (
+    _CONFIG_KEY_PATHS,
+    _PATH_TO_CONFIG_KEY,
+    effective_config_document,
     load_config,
+    load_user_config,
     parse_config_cli_value,
     reset_config,
     save_config,
@@ -26,7 +30,7 @@ from .helpers import console
 def voices(language: str | None) -> None:
     """List available TTS voices from PyKokoro metadata."""
     try:
-        from pykokoro import discover_models
+        from ..pykokoro_adapter import discover_models
     except ImportError:
         console.print(
             "[red]PyKokoro metadata unavailable:[/red] install pykokoro to list voices."
@@ -116,7 +120,7 @@ def voices(language: str | None) -> None:
 def _show_model_status(config: dict[str, Any]) -> None:
     """Render source-aware model status using PyKokoro's asset API."""
     try:
-        from pykokoro.model_assets import get_model_asset_paths
+        from ..pykokoro_adapter import get_model_asset_paths
     except ImportError:
         console.print(
             "\n[bold]ONNX Models:[/bold] [yellow]Status unavailable "
@@ -179,15 +183,15 @@ def _show_model_status(config: dict[str, Any]) -> None:
 def _show_provider_status(config: dict[str, Any]) -> None:
     """Render provider availability without making it a model-status gate."""
     try:
-        from pykokoro.onnx_session import (
+        from ..cli.backend_config import resolve_onnx_provider
+        from ..pykokoro_adapter import (
             get_available_execution_providers,
             resolve_execution_provider,
         )
 
-        from ..cli.backend_config import resolve_onnx_provider
 
         configured = resolve_onnx_provider(
-            config, provider_override=None, use_gpu_override=None
+            config, provider_override=None
         )
         with warnings.catch_warnings(record=True) as caught:
             warnings.simplefilter("always")
@@ -205,6 +209,30 @@ def _show_provider_status(config: dict[str, Any]) -> None:
         )
 
 
+def doctor_command() -> None:
+    """Report installed runtime, provider, asset, and path diagnostics."""
+    from importlib.metadata import PackageNotFoundError, version
+
+    from ..utils import get_ffmpeg_path, get_user_cache_path, get_user_config_path
+
+    console.print("[bold]TTSForge doctor[/bold]")
+    for distribution in ("ttsforge", "pykokoro", "kokorog2p", "ssmd"):
+        try:
+            value = version(distribution)
+        except PackageNotFoundError:
+            value = "not installed"
+        console.print(f"  {distribution}: {value}")
+    config = load_config()
+    _show_provider_status(config)
+    _show_model_status(config)
+    try:
+        console.print(f"[bold]ffmpeg:[/bold] {get_ffmpeg_path()}")
+    except (OSError, RuntimeError) as exc:
+        console.print(f"[bold]ffmpeg:[/bold] unavailable ({exc})")
+    console.print(f"[bold]Config:[/bold] {get_user_config_path()}")
+    console.print(f"[bold]Cache:[/bold] {get_user_cache_path()}")
+
+
 def config(
     show: bool,
     reset: bool,
@@ -213,7 +241,7 @@ def config(
     """Manage ttsforge configuration."""
     if reset:
         reset_config()
-        console.print("[green]Configuration reset to defaults.[/green]")
+        console.print("[green]Configuration reset.[/green]")
         return
 
     if set_option:
@@ -262,8 +290,85 @@ def config(
         value = current.get(key, default)
         table.add_row(key, str(value), "" if value == default else str(default))
     console.print(table)
-    _show_model_status(current)
-    _show_provider_status(current)
+
+
+def _config_key(path: str) -> str:
+    parts = tuple(part for part in path.split(".") if part)
+    if len(parts) == 1 and parts[0] in DEFAULT_CONFIG:
+        return parts[0]
+    try:
+        return _PATH_TO_CONFIG_KEY[parts]
+    except KeyError as exc:
+        raise ValueError(f"Unknown configuration path: {path}") from exc
+
+
+def config_show_command(
+    effective: bool = False,
+    user: bool = False,
+    as_json: bool = False,
+ ) -> None:
+    """Show persisted overrides or effective schema-2 configuration."""
+    if effective and user:
+        raise typer.BadParameter("--effective and --user cannot be combined")
+    document = effective_config_document() if not user else load_user_config()
+    if as_json:
+        console.print_json(json.dumps(document, ensure_ascii=False))
+        return
+    console.print_json(json.dumps(document, ensure_ascii=False, indent=2))
+
+
+def config_get_command(path: str) -> None:
+    """Get one effective configuration value using a dotted path."""
+    key = _config_key(path)
+    value = load_config()[key]
+    typer.echo(json.dumps(value, ensure_ascii=False))
+
+
+def config_set_command(path: str, value: str) -> None:
+    """Set one user configuration override using a dotted path."""
+    key = _config_key(path)
+    current = load_config()
+    typed = parse_config_cli_value(key, value, DEFAULT_CONFIG[key])
+    validate_config_value(key, typed)
+    current[key] = typed
+    if not save_config(current):
+        raise typer.Exit(code=1)
+    typer.echo(f"Set {path} = {typed}")
+
+
+def config_unset_command(path: str) -> None:
+    """Remove one persisted configuration override."""
+    key = _config_key(path)
+    document = load_user_config()
+    parts = _CONFIG_KEY_PATHS[key]
+    target: Any = document
+    for part in parts[:-1]:
+        if not isinstance(target, dict) or part not in target:
+            return
+        target = target[part]
+    if isinstance(target, dict):
+        target.pop(parts[-1], None)
+    for index in range(len(parts) - 1, 0, -1):
+        parent: Any = document
+        for part in parts[:index - 1]:
+            if not isinstance(parent, dict):
+                break
+            parent = parent.get(part)
+        if (
+            isinstance(parent, dict)
+            and isinstance(parent.get(parts[index - 1]), dict)
+            and not parent[parts[index - 1]]
+        ):
+            parent.pop(parts[index - 1], None)
+    if not save_config(document):
+        raise typer.Exit(code=1)
+    typer.echo(f"Unset {path}")
+
+
+def config_path_command() -> None:
+    """Print the user configuration path."""
+    from ..utils import get_user_config_path
+    typer.echo(get_user_config_path())
 
 
 def short_sentence_advanced_config(

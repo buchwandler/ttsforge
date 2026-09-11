@@ -12,7 +12,6 @@ from pathlib import Path
 from typing import Any, cast
 
 import typer
-from pykokoro.config_types import ModelQuality
 from rich.progress import (
     BarColumn,
     Progress,
@@ -28,6 +27,7 @@ from rich.table import Table
 
 from ..chapter_selection import parse_chapter_selection
 from ..constants import DEFAULT_CONFIG, LANGUAGE_DESCRIPTIONS
+from ..pykokoro_adapter import ModelQuality, Tokenizer
 from ..spacy_policy import (
     SPACY_POLICY_VERSION,
     SpacyModelRequest,
@@ -118,7 +118,6 @@ def phonemes_export(
 
         ttsforge phonemes export book.epub --split-mode clause
     """
-    from pykokoro.tokenizer import Tokenizer
 
     from ..input_reader import InputReader
     from ..phonemes import PhonemeBook
@@ -196,10 +195,9 @@ def phonemes_export(
         suffix = ".readable.txt" if readable else ".phonemes.json"
         output = epub_file.parent / f"{output_filename}{suffix}"
 
-    # Get language code for espeak
-    from pykokoro.onnx_backend import LANG_CODE_TO_ONNX
+    from ..kokoro_lang import get_pykokoro_language
 
-    espeak_lang = LANG_CODE_TO_ONNX.get(language, "en-us")
+    espeak_lang = get_pykokoro_language(language or "en-us")
 
     spacy_request = SpacyModelRequest(
         use_spacy=effective_use_spacy,
@@ -323,7 +321,6 @@ def phonemes_convert(
     output_format: str | None,
     voice: str | None,
     speed: float,
-    use_gpu: bool | None,
     provider: str | None,
     silence: float,
     pause_clause: float | None,
@@ -384,7 +381,7 @@ def phonemes_convert(
     config = load_config()
     try:
         resolved_provider = resolve_onnx_provider(
-            config, provider_override=provider, use_gpu_override=use_gpu
+            config, provider_override=provider
         )
     except ValueError as exc:
         console.print(f"[red]{exc}[/red]")
@@ -464,7 +461,6 @@ def phonemes_convert(
             voice=voice or config.get("default_voice", "af_heart"),
             speed=speed,
             output_format=fmt,
-            use_gpu=use_gpu if use_gpu is not None else config.get("use_gpu", False),
             onnx_provider=resolved_provider,
             model_quality=model_quality,
             model_source=model_source,
@@ -659,15 +655,9 @@ def phonemes_preview(
 
         ttsforge phonemes preview "Hello" --play --voice "af_nicole:50,am_michael:50"
     """
-    from pykokoro.onnx_backend import LANG_CODE_TO_ONNX
-    from pykokoro.tokenizer import Tokenizer
+    from ..kokoro_lang import get_pykokoro_language
 
-    # Map language code - support both short codes and ISO codes
-    if language in LANG_CODE_TO_ONNX:
-        espeak_lang = LANG_CODE_TO_ONNX[language]
-    else:
-        # Assume it's already an ISO code like 'de', 'en-us', etc.
-        espeak_lang = language
+    espeak_lang = get_pykokoro_language(language or "en-us")
 
     try:
         tokenizer = Tokenizer(vocab_version=vocab_version)

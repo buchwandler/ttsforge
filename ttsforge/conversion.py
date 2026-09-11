@@ -17,24 +17,14 @@ from typing import TYPE_CHECKING, Any, Literal, cast
 
 import numpy as np
 import soundfile as sf
-from pykokoro.config_types import (
-    DEFAULT_MODEL_SOURCE,
-    DEFAULT_MODEL_VARIANT,
-    ModelQuality,
-    ModelSource,
-    ModelVariant,
-)
 from typing_extensions import Self
 
 from .audio_merge import AudioMerger, ChapterBoundary, MergeMeta, OrderedAudioInput
 from .constants import (
-    DEFAULT_VOICE_FOR_LANG,
-    ISO_TO_LANG_CODE,
     SAMPLE_RATE,
     SUPPORTED_OUTPUT_FORMATS,
-    VOICE_PREFIX_TO_LANG,
 )
-from .kokoro_lang import get_onnx_lang_code
+from .kokoro_lang import get_onnx_lang_code, get_pykokoro_language
 from .memory_diagnostics import log_snapshot
 from .paragraph_output import (
     canonical_filename,
@@ -46,6 +36,14 @@ from .paragraph_output import (
     validate_wav,
 )
 from .prosody_support import ProsodyPolicy
+from .pykokoro_adapter import (
+    DEFAULT_MODEL_SOURCE,
+    DEFAULT_MODEL_VARIANT,
+    ModelQuality,
+    ModelSource,
+    ModelVariant,
+    TokenizerConfig,
+)
 from .render_units import (
     PARAGRAPH_MANIFEST_SCHEMA,
     PARAGRAPH_UNIT_IDENTITY_SCHEMA,
@@ -260,7 +258,6 @@ class ConversionState:
     pause_mode: str = "auto"  # "tts", "manual", or "auto
     enable_short_sentence: bool | None = None
     short_sentence: str | None = None
-    lang: str | None = None  # Language override for phonemization
     use_spacy: bool | None = None
     spacy_model: str | None = None
     spacy_model_size: str | None = None
@@ -309,6 +306,7 @@ class ConversionState:
                 chapters.append(ChapterState(**chapter_values))
             data["chapters"] = chapters
             data.setdefault("source_selection", [])
+            data.pop("lang", None)
             # Version-6 records have only an opaque digest.  A missing schema
             # marker is retained as 0 so the migration path can distinguish
             # them from a corrupt schema-7 identity.
@@ -359,8 +357,6 @@ class ConversionState:
                 data["enable_short_sentence"] = None
             if "short_sentence" not in data:
                 data["short_sentence"] = None
-            if "lang" not in data:
-                data["lang"] = None
             if "use_spacy" not in data:
                 data["use_spacy"] = None
             if "spacy_model" not in data:
@@ -428,7 +424,6 @@ class ConversionState:
             "pause_mode": self.pause_mode,
             "enable_short_sentence": self.enable_short_sentence,
             "short_sentence": self.short_sentence,
-            "lang": self.lang,
             "use_spacy": self.use_spacy,
             "spacy_model": self.spacy_model,
             "spacy_model_size": self.spacy_model_size,
@@ -821,7 +816,6 @@ SPLIT_MODES = ["auto", "line", "paragraph", "sentence", "clause"]
 def validate_generation_ranges(
     *,
     speed: float,
-    mixed_language_confidence: float | None = None,
     silence_between_chapters: float | None = None,
     pause_clause: float | None = None,
     pause_sentence: float | None = None,
@@ -832,11 +826,6 @@ def validate_generation_ranges(
     """Validate numeric generation settings shared by CLI and library APIs."""
     if not 0.5 <= speed <= 2.0:
         raise ValueError("speed must be between 0.5 and 2.0")
-    if (
-        mixed_language_confidence is not None
-        and not 0.0 <= mixed_language_confidence <= 1.0
-    ):
-        raise ValueError("mixed_language_confidence must be between 0.0 and 1.0")
     for name, value in (
         ("silence_between_chapters", silence_between_chapters),
         ("pause_clause", pause_clause),
@@ -849,57 +838,22 @@ def validate_generation_ranges(
             raise ValueError(f"{name} must be non-negative")
 
 
-def validate_legacy_mixed_language(options: Any) -> None:
-    """Reject the removed PyKokoro tokenizer language-detection settings."""
-    if getattr(options, "use_mixed_language", False):
-        raise ValueError(
-            "Automatic mixed-language detection is no longer provided by the "
-            "PyKokoro 0.9 tokenizer. TTSForge requires an explicit document "
-            'language and SSMD language spans such as [Welt]{lang="de"}. '
-            "Disable use_mixed_language and annotate language changes explicitly."
-        )
-    if (
-        any(
-            getattr(options, name, None) is not None
-            for name in (
-                "mixed_language_primary",
-                "mixed_language_allowed",
-            )
-        )
-        or getattr(options, "mixed_language_confidence", 0.7) != 0.7
-    ):
-        raise ValueError(
-            "The mixed_language_primary, mixed_language_allowed, and "
-            "mixed_language_confidence settings are obsolete with PyKokoro 0.9. "
-            "Use an explicit document language and SSMD lang spans instead."
-        )
-
-
 @dataclass
 class ConversionOptions:
     """Options for TTS conversion."""
 
     voice: str | None = None
-    language: str = "a"
+    language: str = "en-us"
     speed: float = 1.0
     output_format: str = "m4b"
     conversion_plan_hash: str | None = None
     output_dir: Path | None = None
-    use_gpu: bool = False  # Legacy compatibility; use onnx_provider instead.
     onnx_provider: str | None = None
     silence_between_chapters: float = 2.0
-    # Language override for phonemization (e.g., 'de', 'en-us', 'fr')
-    # If None, language is determined from voice prefix
-    lang: str | None = None
     # spaCy model policy. None means highest installed compatible model.
     use_spacy: bool | None = None
     spacy_model: str | None = None
     spacy_model_size: str | None = None
-    # Mixed-language support (auto-detect and handle multiple languages)
-    use_mixed_language: bool = False
-    mixed_language_primary: str | None = None
-    mixed_language_allowed: list[str] | None = None
-    mixed_language_confidence: float = 0.7
     # Custom phoneme dictionary for pronunciation overrides
     phoneme_dictionary_path: str | None = None
     phoneme_dict_case_sensitive: bool = False
@@ -953,14 +907,77 @@ class ConversionOptions:
     ssmd_policy: SSMDPolicy = field(default_factory=SSMDPolicy)
     prosody_policy: ProsodyPolicy = field(default_factory=ProsodyPolicy)
 
+    @classmethod
+    def from_plan(
+        cls, plan: Any, **overrides: Any
+    ) -> ConversionOptions:
+        """Create runtime options from one fully resolved conversion plan."""
+        pipeline = plan.pipeline
+        output = Path(plan.output.path)
+        values: dict[str, Any] = {
+            "voice": pipeline.voice,
+            "language": pipeline.language,
+            "speed": pipeline.speed,
+            "output_format": plan.output.format,
+            "conversion_plan_hash": plan.generation_sha256,
+            "output_dir": output.parent,
+            "onnx_provider": pipeline.provider,
+            "model_quality": pipeline.model_quality,
+            "model_source": pipeline.model_source,
+            "model_variant": pipeline.model_variant,
+            "pause_clause": pipeline.pause_clause,
+            "pause_sentence": pipeline.pause_sentence,
+            "pause_paragraph": pipeline.pause_paragraph,
+            "pause_variance": pipeline.pause_variance,
+            "pause_mode": pipeline.pause_mode,
+            "enable_short_sentence": pipeline.enable_short_sentence,
+            "short_sentence": pipeline.short_sentence,
+            "conversion_unit": pipeline.conversion_unit,
+        }
+        values.update(overrides)
+        for key in (
+            "voice",
+            "language",
+            "speed",
+            "output_format",
+            "onnx_provider",
+            "model_quality",
+            "model_source",
+            "model_variant",
+            "pause_clause",
+            "pause_sentence",
+            "pause_paragraph",
+            "pause_variance",
+            "pause_mode",
+            "enable_short_sentence",
+            "short_sentence",
+            "conversion_unit",
+        ):
+            values[key] = {
+                "voice": pipeline.voice,
+                "language": pipeline.language,
+                "speed": pipeline.speed,
+                "output_format": plan.output.format,
+                "onnx_provider": pipeline.provider,
+                "model_quality": pipeline.model_quality,
+                "model_source": pipeline.model_source,
+                "model_variant": pipeline.model_variant,
+                "pause_clause": pipeline.pause_clause,
+                "pause_sentence": pipeline.pause_sentence,
+                "pause_paragraph": pipeline.pause_paragraph,
+                "pause_variance": pipeline.pause_variance,
+                "pause_mode": pipeline.pause_mode,
+                "enable_short_sentence": pipeline.enable_short_sentence,
+                "short_sentence": pipeline.short_sentence,
+                "conversion_unit": pipeline.conversion_unit,
+            }[key]
+        return cls(**values)
     def effective_onnx_provider(self) -> str:
-        """Return the provider requested by this option set."""
-        if self.onnx_provider is not None:
-            return self.onnx_provider
-        return "auto" if self.use_gpu else "cpu"
+        """Return the canonical provider requested by this option set."""
+        return self.onnx_provider or "cpu"
 
     def __post_init__(self) -> None:
-        validate_legacy_mixed_language(self)
+        self.language = get_pykokoro_language(self.language)
         from .spacy_policy import normalize_spacy_model, normalize_spacy_model_size
 
         self.spacy_model = normalize_spacy_model(self.spacy_model)
@@ -971,7 +988,6 @@ class ConversionOptions:
         self.conversion_unit = validate_conversion_unit(self.conversion_unit)
         validate_generation_ranges(
             speed=self.speed,
-            mixed_language_confidence=self.mixed_language_confidence,
             silence_between_chapters=self.silence_between_chapters,
             pause_clause=self.pause_clause,
             pause_sentence=self.pause_sentence,
@@ -983,6 +999,15 @@ class ConversionOptions:
             raise TypeError("ssmd_policy must be an SSMDPolicy")
         if not isinstance(self.prosody_policy, ProsodyPolicy):
             raise TypeError("prosody_policy must be a ProsodyPolicy")
+
+
+class RuntimeOptions:
+    """Factory namespace for the canonical runtime option construction."""
+
+    @staticmethod
+    def from_plan(plan: Any, **overrides: Any) -> ConversionOptions:
+        return ConversionOptions.from_plan(plan, **overrides)
+
 
 
 # Pattern to detect chapter markers in text
@@ -1000,22 +1025,10 @@ CHAPTER_PATTERN = re.compile(
 
 
 def detect_language_from_iso(iso_code: str | None) -> str:
-    """Convert ISO language code to ttsforge language code."""
-    if not iso_code:
-        return "a"  # Default to American English
-    iso_lower = iso_code.lower().strip()
-    return ISO_TO_LANG_CODE.get(iso_lower, ISO_TO_LANG_CODE.get(iso_lower[:2], "a"))
+    """Convert an optional ISO language code to canonical BCP-47."""
+    return get_pykokoro_language(iso_code or "en-us")
 
 
-def get_voice_language(voice: str) -> str:
-    """Get the language code from a voice name."""
-    prefix = voice[:2] if len(voice) >= 2 else ""
-    return VOICE_PREFIX_TO_LANG.get(prefix, "a")
-
-
-def get_default_voice_for_language(lang_code: str) -> str:
-    """Get the default voice for a language."""
-    return DEFAULT_VOICE_FOR_LANG.get(lang_code, "af_bella")
 
 
 class TTSConverter:
@@ -1084,8 +1097,6 @@ class TTSConverter:
 
         self.log("Initializing ONNX TTS pipeline...")
 
-        # Create TokenizerConfig from ConversionOptions (for mixed-language support)
-        from pykokoro.tokenizer import TokenizerConfig
 
         tokenizer_config = TokenizerConfig(
             use_spacy=self.options.use_spacy,
@@ -1099,7 +1110,6 @@ class TTSConverter:
             voice=self.options.voice,
             speed=self.options.speed,
             language=get_onnx_lang_code(self.options.language),
-            use_gpu=self.options.use_gpu,
             onnx_provider=self.options.effective_onnx_provider(),
             pause_clause=self.options.pause_clause,
             pause_sentence=self.options.pause_sentence,
@@ -1134,11 +1144,7 @@ class TTSConverter:
 
     def _effective_spacy_languages(self) -> tuple[str, ...]:
         """Return deterministic known languages for conversion preflight."""
-        values: list[str | None] = [self.options.lang or self.options.language]
-        if self.options.use_mixed_language:
-            values.extend(self.options.mixed_language_allowed or ())
-            values.append(self.options.mixed_language_primary)
-        return tuple(sorted({normalize_language(value) for value in values if value}))
+        return (normalize_language(self.options.language),)
 
     def _preflight_spacy_models(self) -> None:
         """Resolve and freeze sentence/G2P models before generation begins."""
@@ -1189,7 +1195,6 @@ class TTSConverter:
         self,
         chapter: Chapter,
         phoneme_dict: dict[str, str] | None,
-        mixed_language_config: dict[str, Any] | None,
     ) -> str:
         """Generate validated SSMD content for a chapter."""
         try:
@@ -1198,7 +1203,6 @@ class TTSConverter:
                 chapter_text=chapter.text,
                 phoneme_dict=phoneme_dict,
                 phoneme_dict_case_sensitive=self.options.phoneme_dict_case_sensitive,
-                mixed_language_config=mixed_language_config,
                 chapter_markdown=(
                     chapter.markdown_body
                     if chapter.source_format == "markdown"
@@ -1218,7 +1222,6 @@ class TTSConverter:
         chapter: Chapter,
         ssmd_file: Path,
         phoneme_dict: dict[str, str] | None,
-        mixed_language_config: dict[str, Any] | None,
     ) -> tuple[str, str, SSMDDocumentInfo]:
         """Load SSMD from disk or generate and save it."""
         ssmd_content: str | None = None
@@ -1271,7 +1274,6 @@ class TTSConverter:
             ssmd_content = self._build_ssmd_content(
                 chapter,
                 phoneme_dict=phoneme_dict,
-                mixed_language_config=mixed_language_config,
             )
             ssmd_hash = save_ssmd_file(
                 ssmd_content, ssmd_file, policy=self.options.ssmd_policy
@@ -1294,9 +1296,7 @@ class TTSConverter:
         ssmd_file: Path,
     ) -> RenderedChapter:
         """Render SSMD content to a chapter WAV file."""
-        effective_lang = (
-            self.options.lang if self.options.lang else self.options.language
-        )
+        effective_lang = self.options.language
         lang_code = get_onnx_lang_code(effective_lang)
 
         temp_path: Path | None = None
@@ -1693,11 +1693,20 @@ class TTSConverter:
             meta=meta,
         )
         aggregate_markers = self._paragraph_marker_records(state, paragraph_dir)
+        sample_rates = {
+            unit.sample_rate
+            for chapter in state.chapters
+            for unit in chapter.units
+            if unit.completed
+        }
+        manifest_sample_rate = (
+            next(iter(sample_rates)) if len(sample_rates) == 1 else None
+        )
         atomic_write_json(
             output_path.with_suffix(output_path.suffix + ".markers.json"),
             {
                 "schema_version": 1,
-                "sample_rate": SAMPLE_RATE,
+                "sample_rate": manifest_sample_rate,
                 "markers": aggregate_markers,
             },
             indent=2,
@@ -1724,7 +1733,6 @@ class TTSConverter:
         state_file: Path,
         state: ConversionState,
         phoneme_dict: dict[str, str] | None,
-        mixed_language_config: dict[str, Any] | None,
         resume_cursor: ParagraphResumeCursor | None = None,
         strict_resume: bool = False,
     ) -> ConversionResult:
@@ -1756,9 +1764,7 @@ class TTSConverter:
 
         self._init_runner()
         assert self._runner is not None
-        effective_lang = (
-            self.options.lang if self.options.lang else self.options.language
-        )
+        effective_lang = self.options.language
         lang_code = get_onnx_lang_code(effective_lang)
         resolver_root = work_dir
         resolver = LocalSSMDAudioResolver(
@@ -1821,7 +1827,6 @@ class TTSConverter:
                 chapter,
                 ssmd_file,
                 phoneme_dict=phoneme_dict,
-                mixed_language_config=mixed_language_config,
             )
             if strict_resume and saved_ssmd_hash and ssmd_hash != saved_ssmd_hash:
                 return ConversionResult(
@@ -2402,7 +2407,11 @@ class TTSConverter:
             if differences or state.generation_fingerprint != current_fingerprint:
                 renderer_contract_changed = any(
                     difference.path.startswith("ssmd_policy.renderer_contract")
-                    and difference.saved is not None
+                    and difference.path
+                    not in {
+                        "ssmd_policy.renderer_contract.pykokoro_runtime",
+                        "ssmd_policy.renderer_contract.kokorog2p_runtime",
+                    }
                     for difference in differences
                 )
                 if renderer_contract_changed:
@@ -2422,7 +2431,7 @@ class TTSConverter:
                         "ssmd_policy.renderer_contract.pykokoro_runtime",
                         "ssmd_policy.renderer_contract.kokorog2p_runtime",
                     }
-                    and difference.saved is None
+                    and difference.current is None
                     for difference in differences
                 )
                 if legacy_runtime_only:
@@ -2718,7 +2727,7 @@ class TTSConverter:
                 state = ConversionState(
                     source_file=str(source_file) if source_file else "",
                     source_hash=source_hash,
-                    version=8,
+                    version=9,
                     output_file=str(output_path.resolve()),
                     work_dir=str(work_dir),
                     voice=self.options.voice,
@@ -2740,7 +2749,6 @@ class TTSConverter:
                     pause_mode=self.options.pause_mode,
                     enable_short_sentence=self.options.enable_short_sentence,
                     short_sentence=self.options.short_sentence,
-                    lang=self.options.lang,
                     use_spacy=self.options.use_spacy,
                     spacy_model=self.options.spacy_model,
                     spacy_model_size=self.options.spacy_model_size,
@@ -2812,14 +2820,6 @@ class TTSConverter:
                         case_sensitive=self.options.phoneme_dict_case_sensitive,
                         log_callback=lambda message: self.log(message, "warning"),
                     )
-                mixed_language_config = None
-                if self.options.use_mixed_language:
-                    mixed_language_config = {
-                        "use_mixed_language": True,
-                        "primary": self.options.mixed_language_primary,
-                        "allowed": self.options.mixed_language_allowed,
-                        "confidence": self.options.mixed_language_confidence,
-                    }
                 return self._convert_paragraph_chapters(
                     chapters=chapters,
                     output_path=output_path,
@@ -2827,7 +2827,6 @@ class TTSConverter:
                     state_file=state_file,
                     state=state,
                     phoneme_dict=phoneme_dict,
-                    mixed_language_config=mixed_language_config,
                     resume_cursor=resume_cursor,
                     strict_resume=strict_resume,
                 )
@@ -2839,18 +2838,8 @@ class TTSConverter:
                     case_sensitive=self.options.phoneme_dict_case_sensitive,
                     log_callback=lambda message: self.log(message, "warning"),
                 )
-
-            mixed_language_config = None
-            if self.options.use_mixed_language:
-                mixed_language_config = {
-                    "use_mixed_language": True,
-                    "primary": self.options.mixed_language_primary,
-                    "allowed": self.options.mixed_language_allowed,
-                    "confidence": self.options.mixed_language_confidence,
-                }
-
-            total_chars = sum(ch.char_count for ch in chapters)
             # Account for already completed chapters
+            total_chars = sum(chapter.char_count for chapter in chapters)
             chars_already_done = sum(
                 state.chapters[i].char_count
                 for i in range(len(state.chapters))
@@ -3027,7 +3016,6 @@ class TTSConverter:
                     chapter,
                     ssmd_file,
                     phoneme_dict=phoneme_dict,
-                    mixed_language_config=mixed_language_config,
                 )
 
                 # If generate_ssmd_only mode, just generate SSMD and skip audio
@@ -3235,7 +3223,7 @@ class TTSConverter:
                 aggregate_marker_path,
                 {
                     "schema_version": 1,
-                    "sample_rate": SAMPLE_RATE,
+                    "sample_rate": int(sf.info(str(output_path)).samplerate),
                     "markers": aggregate_markers,
                 },
                 indent=2,

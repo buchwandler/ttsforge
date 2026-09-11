@@ -48,62 +48,34 @@ def test_policy_rejects_invalid_emphasis_gain_scale(value: object) -> None:
         SSMDPolicy(emphasis_gain_scale=value)  # type: ignore[arg-type]
 
 
-def test_emphasis_resolver_precedence_and_legacy_equivalence() -> None:
+def test_emphasis_resolver_precedence() -> None:
     assert commands_conversion._resolve_emphasis_controls(
         configured_level=None,
         configured_mode="plain",
         explicit_level=2,
         explicit_mode=None,
-        legacy_enable=False,
     ) == ("approximate", 1.0, 2)
-    assert commands_conversion._resolve_emphasis_controls(
-        configured_level=None,
-        configured_mode="plain",
-        explicit_level=None,
-        explicit_mode=None,
-        legacy_enable=True,
-    ) == ("approximate", 1.0, 2)
-    assert commands_conversion._resolve_emphasis_controls(
-        configured_level=3,
-        configured_mode="plain",
-        explicit_level=None,
-        explicit_mode=None,
-        legacy_enable=False,
-    ) == ("approximate", 1.5, 3)
     assert commands_conversion._resolve_emphasis_controls(
         configured_level=None,
         configured_mode="warn",
         explicit_level=None,
         explicit_mode=None,
-        legacy_enable=False,
     ) == ("warn", 1.0, None)
+    assert commands_conversion._resolve_emphasis_controls(
+        configured_level=3,
+        configured_mode="plain",
+        explicit_level=None,
+        explicit_mode=None,
+    ) == ("approximate", 1.5, 3)
 
 
-@pytest.mark.parametrize(
-    ("explicit_level", "explicit_mode", "legacy_enable"),
-    [(2, None, True), (2, "approximate", False), (None, "approximate", True)],
-)
-def test_emphasis_controls_reject_ambiguous_combinations(
-    explicit_level: int | None, explicit_mode: str | None, legacy_enable: bool
-) -> None:
+def test_emphasis_controls_reject_ambiguous_combinations() -> None:
     with pytest.raises(typer.BadParameter, match="Choose only one emphasis control"):
         commands_conversion._resolve_emphasis_controls(
             configured_level=None,
             configured_mode="plain",
-            explicit_level=explicit_level,
-            explicit_mode=explicit_mode,
-            legacy_enable=legacy_enable,
-        )
-
-
-def test_configured_strict_policy_conflicts_with_level() -> None:
-    with pytest.raises(ValueError, match="cannot be combined"):
-        commands_conversion._resolve_emphasis_controls(
-            configured_level=2,
-            configured_mode="warn",
-            explicit_level=None,
-            explicit_mode=None,
-            legacy_enable=False,
+            explicit_level=2,
+            explicit_mode="approximate",
         )
 
 

@@ -163,6 +163,8 @@ class AudioMerger:
         meta: MergeMeta,
     ) -> None:
         self._validate_inputs(chapter_files, chapter_durations, chapter_titles)
+        sample_rate = self._validated_sample_rate(chapter_files)
+
         if meta.fmt == "wav":
             with tempfile.TemporaryDirectory(
                 dir=output_path.parent, prefix=f".{output_path.stem}.ttsforge-"
@@ -184,7 +186,9 @@ class AudioMerger:
             temp_output = temp_dir / output_path.name
 
             if meta.silence_between_chapters > 0 and len(chapter_files) > 1:
-                self._write_silence_wav(silence_file, meta.silence_between_chapters)
+                self._write_silence_wav(
+                    silence_file, meta.silence_between_chapters, sample_rate=sample_rate
+                )
 
             with concat_file.open("w", encoding="utf-8") as f:
                 for i, ch in enumerate(chapter_files):
@@ -265,6 +269,7 @@ class AudioMerger:
             if item.duration < 0 or item.content_duration < 0:
                 raise ValueError("Ordered audio durations cannot be negative")
 
+        self._validated_sample_rate([item.path for item in ordered])
         effective_meta = meta or MergeMeta(fmt="wav", silence_between_chapters=0.0)
         output_path.parent.mkdir(parents=True, exist_ok=True)
         if effective_meta.fmt == "wav":
@@ -349,6 +354,20 @@ class AudioMerger:
                 effective_meta.cover_image,
             )
 
+    @staticmethod
+    def _validated_sample_rate(chapter_files: list[Path]) -> int:
+        try:
+            rates = {int(sf.info(str(path)).samplerate) for path in chapter_files}
+        except (OSError, RuntimeError):
+            return SAMPLE_RATE
+        if len(rates) != 1:
+            raise ValueError(
+                "Audio inputs must use one sample rate; "
+                f"found {sorted(rates)}"
+            )
+        return next(iter(rates))
+
+
     def _merge_wavs(
         self,
         chapter_files: list[Path],
@@ -356,23 +375,24 @@ class AudioMerger:
         silence_between_chapters: float,
     ) -> None:
         """Merge WAV chapters without requiring an external encoder."""
-        silence_samples = int(silence_between_chapters * SAMPLE_RATE)
+        sample_rate = self._validated_sample_rate(chapter_files)
+        silence_samples = int(silence_between_chapters * sample_rate)
         silence = np.zeros(min(silence_samples, 65536), dtype="float32")
 
         with sf.SoundFile(
             str(output_path),
             "w",
-            samplerate=SAMPLE_RATE,
+            samplerate=sample_rate,
             channels=1,
             format="WAV",
             subtype="PCM_16",
         ) as output:
             for chapter_index, chapter_file in enumerate(chapter_files):
                 with sf.SoundFile(str(chapter_file), "r") as chapter:
-                    if chapter.samplerate != SAMPLE_RATE or chapter.channels != 1:
+                    if chapter.samplerate != sample_rate or chapter.channels != 1:
                         raise ValueError(
-                            "WAV chapters must be mono files at "
-                            f"{SAMPLE_RATE} Hz: {chapter_file}"
+                            "WAV chapters must be mono at "
+                            f"{sample_rate} Hz: {chapter_file}"
                         )
 
                     while True:
@@ -388,11 +408,13 @@ class AudioMerger:
                         output.write(silence[:chunk_size])
                         remaining -= chunk_size
 
-    def _write_silence_wav(self, path: Path, duration: float) -> None:
-        samples = int(duration * SAMPLE_RATE)
+    def _write_silence_wav(
+        self, path: Path, duration: float, *, sample_rate: int = SAMPLE_RATE
+    ) -> None:
+        samples = int(duration * sample_rate)
         silence = np.zeros(min(samples, 65536), dtype="float32")
         with sf.SoundFile(
-            str(path), "w", samplerate=SAMPLE_RATE, channels=1, format="wav"
+            str(path), "w", samplerate=sample_rate, channels=1, format="wav"
         ) as f:
             remaining = samples
             while remaining > 0:

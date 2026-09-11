@@ -4,7 +4,6 @@ import pytest
 from pykokoro import tokenizer as tokenizer_module
 from pykokoro.constants import SAMPLE_RATE
 
-from ttsforge.conversion import ConversionOptions
 from ttsforge.vocab import DEFAULT_VERSION, get_vocab_info, list_versions, load_vocab
 
 MAX_PHONEME_LENGTH = tokenizer_module.MAX_PHONEME_LENGTH
@@ -38,19 +37,19 @@ class TestTokenizerConfig:
     def test_default_values(self):
         """Test default config values."""
         config = TokenizerConfig()
-        assert config.use_espeak_fallback is True
-        # pykokoro 0.8.4 uses None for automatic local-model selection.
+        assert config.fallback == "espeak"
+        # pykokoro uses None for automatic local-model selection.
         assert config.use_spacy is None
         assert config.use_dictionary is True
 
     def test_custom_values(self):
-        """Test config with custom values."""
+        """Test custom config values."""
         config = TokenizerConfig(
-            use_espeak_fallback=False,
+            fallback="none",
             use_spacy=False,
             use_dictionary=False,
         )
-        assert config.use_espeak_fallback is False
+        assert config.fallback == "none"
         assert config.use_spacy is False
         assert config.use_dictionary is False
 
@@ -161,10 +160,10 @@ class TestTokenizer:
 
     def test_init_with_config(self):
         """Test initialization with TokenizerConfig."""
-        config = TokenizerConfig(use_spacy=False, use_espeak_fallback=True)
+        config = TokenizerConfig(use_spacy=False, fallback="espeak")
         tokenizer = Tokenizer(config=config)
         assert tokenizer.config.use_spacy is False
-        assert tokenizer.config.use_espeak_fallback is True
+        assert tokenizer.config.fallback == "espeak"
 
     def test_normalize_text(self, tokenizer):
         """Test text normalization."""
@@ -354,13 +353,13 @@ class TestCreateTokenizer:
     def test_create_default(self):
         """Test creating tokenizer with defaults."""
         tokenizer = create_tokenizer()
-        assert tokenizer.config.use_espeak_fallback is True
+        assert tokenizer.config.fallback == "espeak"
         assert tokenizer.config.use_spacy is None
 
     def test_create_custom(self):
-        """Test creating tokenizer with custom settings."""
-        tokenizer = create_tokenizer(use_espeak_fallback=False, use_spacy=False)
-        assert tokenizer.config.use_espeak_fallback is False
+        """Test creating a tokenizer with custom settings."""
+        tokenizer = create_tokenizer(fallback="none", use_spacy=False)
+        assert tokenizer.config.fallback == "none"
         assert tokenizer.config.use_spacy is False
 
 
@@ -438,10 +437,3 @@ class TestMixedLanguageMigration:
         assert not hasattr(config, "use_mixed_language")
         assert not hasattr(config, "mixed_language_allowed")
 
-    def test_legacy_enabled_setting_fails_with_ssmd_guidance(self):
-        with pytest.raises(ValueError, match="SSMD language spans"):
-            ConversionOptions(use_mixed_language=True)
-
-    def test_legacy_disabled_setting_is_transitional(self):
-        options = ConversionOptions(use_mixed_language=False)
-        assert options.use_mixed_language is False

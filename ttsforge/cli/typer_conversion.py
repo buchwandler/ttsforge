@@ -11,7 +11,7 @@ from typing import Annotated, Literal
 
 import typer
 
-LanguageCode = Literal["a", "b", "d", "e", "f", "h", "i", "j", "p", "z"]
+LanguageCode = str
 AudioFormat = Literal["wav", "mp3", "flac", "opus", "m4b"]
 ConversionSplitMode = Literal["auto", "line", "paragraph", "sentence", "clause"]
 ReadSplitMode = Literal["sentence", "paragraph"]
@@ -48,63 +48,7 @@ def convert_command(
         AudioFormat | None, typer.Option("-f", "--format", help="Output audio format.")
     ] = None,
     voice: Annotated[
-        Literal[
-            "af",
-            "af_alloy",
-            "af_aoede",
-            "af_bella",
-            "af_heart",
-            "af_jessica",
-            "af_kore",
-            "af_nicole",
-            "af_nova",
-            "af_river",
-            "af_sarah",
-            "af_sky",
-            "am_adam",
-            "am_echo",
-            "am_eric",
-            "am_fenrir",
-            "am_liam",
-            "am_michael",
-            "am_onyx",
-            "am_puck",
-            "am_santa",
-            "bf_alice",
-            "bf_emma",
-            "bf_isabella",
-            "bf_lily",
-            "bm_daniel",
-            "bm_fable",
-            "bm_george",
-            "bm_lewis",
-            "ef_dora",
-            "em_alex",
-            "em_santa",
-            "ff_siwis",
-            "hf_alpha",
-            "hf_beta",
-            "hm_omega",
-            "hm_psi",
-            "if_sara",
-            "im_nicola",
-            "jf_alpha",
-            "jf_gongitsune",
-            "jf_nezumi",
-            "jf_tebukuro",
-            "jm_kumo",
-            "pf_dora",
-            "pm_alex",
-            "pm_santa",
-            "zf_xiaobei",
-            "zf_xiaoni",
-            "zf_xiaoxiao",
-            "zm_yunjian",
-            "zm_yunxi",
-            "zm_yunxia",
-            "zm_yunyang",
-        ]
-        | None,
+        str | None,
         typer.Option("-v", "--voice", help="Voice to use for TTS."),
     ] = None,
     language: Annotated[
@@ -112,14 +56,7 @@ def convert_command(
         typer.Option(
             "-l",
             "--language",
-            help="Language code (a=American English, b=British English, etc.).",
-        ),
-    ] = None,
-    lang: Annotated[
-        str | None,
-        typer.Option(
-            "--lang",
-            help="Override language for phonemization (e.g., 'de', 'fr', 'en-us'). By default, language is determined from the voice.",
+            help="BCP-47 language or auto; document metadata is used when omitted.",
         ),
     ] = None,
     use_spacy: Annotated[
@@ -146,19 +83,21 @@ def convert_command(
             "-s", "--speed", help="Speech speed (0.5 to 2.0).", min=0.5, max=2.0
         ),
     ] = None,
-    use_gpu: Annotated[
-        bool | None,
-        typer.Option(
-            "--gpu/--no-gpu",
-            help="Compatibility shortcut: --gpu maps to provider=auto and --no-gpu maps to provider=cpu.",
-        ),
-    ] = None,
     provider: Annotated[
         str | None,
         typer.Option(
             "--provider",
             help="ONNX Runtime execution provider or alias (auto, cpu, nnapi, xnnpack, or a full *ExecutionProvider name).",
         ),
+    ] = None,
+    model: Annotated[
+        str | None, typer.Option("--model", help="PyKokoro model ID."),
+    ] = None,
+    quality: Annotated[
+        str | None, typer.Option("--quality", help="Model quality/quantization."),
+    ] = None,
+    source: Annotated[
+        str | None, typer.Option("--source", help="Model source repository."),
     ] = None,
     chapters: Annotated[
         str | None,
@@ -319,7 +258,7 @@ def convert_command(
             "--emphasis-level",
             help=(
                 "Audible emphasis strength: 0=off, 1=light, 2=normal, 3=strong. "
-                "Level 2 matches the previous --enable-ssmd-emphasis behavior."
+                "Level 2 provides the normal emphasis approximation."
             ),
             min=0,
             max=3,
@@ -390,36 +329,6 @@ def convert_command(
             resolve_path=False,
         ),
     ] = None,
-    use_mixed_language: Annotated[
-        bool | None,
-        typer.Option(
-            "--use-mixed-language/--no-use-mixed-language",
-            help="Deprecated compatibility option; true is rejected. Use explicit SSMD lang spans.",
-        ),
-    ] = None,
-    mixed_language_primary: Annotated[
-        str | None,
-        typer.Option(
-            "--mixed-language-primary",
-            help="Primary language for mixed-language mode (e.g., 'de', 'en-us').",
-        ),
-    ] = None,
-    mixed_language_allowed: Annotated[
-        str | None,
-        typer.Option(
-            "--mixed-language-allowed",
-            help="Comma-separated list of allowed languages (e.g., 'de,en-us').",
-        ),
-    ] = None,
-    mixed_language_confidence: Annotated[
-        float | None,
-        typer.Option(
-            "--mixed-language-confidence",
-            help="Detection confidence threshold for mixed-language mode (0.0-1.0, default: 0.7).",
-            min=0.0,
-            max=1.0,
-        ),
-    ] = None,
     phoneme_dictionary_path: Annotated[
         str | None,
         typer.Option(
@@ -476,16 +385,6 @@ def convert_command(
             ),
         ),
     ] = None,
-    enable_ssmd_emphasis: Annotated[
-        bool,
-        typer.Option(
-            "--enable-ssmd-emphasis",
-            help=(
-                "Enable the legacy gain-only SSMD emphasis approximation. "
-                "Equivalent to --emphasis-level 2."
-            ),
-        ),
-    ] = False,
     ssmd_profile_validation: Annotated[
         bool | None,
         typer.Option(
@@ -602,13 +501,14 @@ def convert_command(
         output_format=output_format,
         voice=voice,
         language=language,
-        lang=lang,
         use_spacy=use_spacy,
         spacy_model=spacy_model,
         spacy_model_size=spacy_model_size,
         speed=speed,
-        use_gpu=use_gpu,
         provider=provider,
+        model_variant=model,
+        model_quality=quality,
+        model_source=source,
         chapters=chapters,
         skip_chapters=skip_chapters,
         silence=silence,
@@ -640,10 +540,6 @@ def convert_command(
         keep_chapter_files=keep_chapter_files,
         voice_blend=voice_blend,
         voice_database=voice_database,
-        use_mixed_language=use_mixed_language,
-        mixed_language_primary=mixed_language_primary,
-        mixed_language_allowed=mixed_language_allowed,
-        mixed_language_confidence=mixed_language_confidence,
         phoneme_dictionary_path=phoneme_dictionary_path,
         phoneme_dict_case_sensitive=phoneme_dict_case_sensitive,
         subchapter_markers=tuple(subchapter_markers or ()),
@@ -651,7 +547,6 @@ def convert_command(
         ssmd_unknown_header=ssmd_unknown_header,
         ssmd_missing_voice=ssmd_missing_voice,
         ssmd_emphasis=ssmd_emphasis,
-        enable_ssmd_emphasis=enable_ssmd_emphasis,
         ssmd_profile_validation=ssmd_profile_validation,
         ssmd_fail_on_warning=ssmd_fail_on_warning,
         ssmd_voice=ssmd_voice,
@@ -790,13 +685,6 @@ def sample_command(
     language: Annotated[
         LanguageCode | None, typer.Option("-l", "--language", help="Language for TTS.")
     ] = None,
-    lang: Annotated[
-        str | None,
-        typer.Option(
-            "--lang",
-            help="Override language for phonemization (e.g., 'de', 'fr', 'en-us').",
-        ),
-    ] = None,
     speed: Annotated[
         float | None,
         typer.Option(
@@ -808,13 +696,6 @@ def sample_command(
         typer.Option(
             "--seed",
             help="Random seed for reproducible pause variance and randomized handling.",
-        ),
-    ] = None,
-    use_gpu: Annotated[
-        bool | None,
-        typer.Option(
-            "--gpu/--no-gpu",
-            help="Compatibility shortcut: --gpu maps to provider=auto and --no-gpu maps to provider=cpu.",
         ),
     ] = None,
     provider: Annotated[
@@ -839,36 +720,6 @@ def sample_command(
     verbose: Annotated[
         bool, typer.Option("--verbose", help="Show detailed output.")
     ] = False,
-    use_mixed_language: Annotated[
-        bool,
-        typer.Option(
-            "--use-mixed-language",
-            help="Deprecated compatibility option; true is rejected. Use explicit SSMD lang spans.",
-        ),
-    ] = False,
-    mixed_language_primary: Annotated[
-        str | None,
-        typer.Option(
-            "--mixed-language-primary",
-            help="Primary language for mixed-language mode (e.g., 'de', 'en-us').",
-        ),
-    ] = None,
-    mixed_language_allowed: Annotated[
-        str | None,
-        typer.Option(
-            "--mixed-language-allowed",
-            help="Comma-separated list of allowed languages (e.g., 'de,en-us').",
-        ),
-    ] = None,
-    mixed_language_confidence: Annotated[
-        float | None,
-        typer.Option(
-            "--mixed-language-confidence",
-            help="Detection confidence threshold for mixed-language mode (0.0-1.0, default: 0.7).",
-            min=0.0,
-            max=1.0,
-        ),
-    ] = None,
     phoneme_dictionary_path: Annotated[
         str | None,
         typer.Option(
@@ -900,18 +751,12 @@ def sample_command(
         output_format=output_format,
         voice=voice,
         language=language,
-        lang=lang,
         speed=speed,
         random_seed=random_seed,
-        use_gpu=use_gpu,
         provider=provider,
         split_mode=split_mode,
         play_audio=play_audio,
         verbose=verbose,
-        use_mixed_language=use_mixed_language,
-        mixed_language_primary=mixed_language_primary,
-        mixed_language_allowed=mixed_language_allowed,
-        mixed_language_confidence=mixed_language_confidence,
         phoneme_dictionary_path=phoneme_dictionary_path,
         phoneme_dict_case_sensitive=phoneme_dict_case_sensitive,
     )
@@ -931,63 +776,7 @@ def read_command(
         ),
     ] = None,
     voice: Annotated[
-        Literal[
-            "af",
-            "af_alloy",
-            "af_aoede",
-            "af_bella",
-            "af_heart",
-            "af_jessica",
-            "af_kore",
-            "af_nicole",
-            "af_nova",
-            "af_river",
-            "af_sarah",
-            "af_sky",
-            "am_adam",
-            "am_echo",
-            "am_eric",
-            "am_fenrir",
-            "am_liam",
-            "am_michael",
-            "am_onyx",
-            "am_puck",
-            "am_santa",
-            "bf_alice",
-            "bf_emma",
-            "bf_isabella",
-            "bf_lily",
-            "bm_daniel",
-            "bm_fable",
-            "bm_george",
-            "bm_lewis",
-            "ef_dora",
-            "em_alex",
-            "em_santa",
-            "ff_siwis",
-            "hf_alpha",
-            "hf_beta",
-            "hm_omega",
-            "hm_psi",
-            "if_sara",
-            "im_nicola",
-            "jf_alpha",
-            "jf_gongitsune",
-            "jf_nezumi",
-            "jf_tebukuro",
-            "jm_kumo",
-            "pf_dora",
-            "pm_alex",
-            "pm_santa",
-            "zf_xiaobei",
-            "zf_xiaoni",
-            "zf_xiaoxiao",
-            "zm_yunjian",
-            "zm_yunxi",
-            "zm_yunxia",
-            "zm_yunyang",
-        ]
-        | None,
+        str | None,
         typer.Option("-v", "--voice", help="TTS voice to use."),
     ] = None,
     language: Annotated[
@@ -995,13 +784,6 @@ def read_command(
     ] = None,
     speed: Annotated[
         float | None, typer.Option("-s", "--speed", help="Speech speed (default: 1.0).")
-    ] = None,
-    use_gpu: Annotated[
-        bool | None,
-        typer.Option(
-            "--gpu/--no-gpu",
-            help="Compatibility shortcut: --gpu maps to provider=auto and --no-gpu maps to provider=cpu.",
-        ),
     ] = None,
     provider: Annotated[
         str | None,
@@ -1126,7 +908,6 @@ def read_command(
         voice=voice,
         language=language,
         speed=speed,
-        use_gpu=use_gpu,
         provider=provider,
         content_mode=content_mode,
         chapters=chapters,

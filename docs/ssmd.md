@@ -1,6 +1,6 @@
-# SSMD 0.8.6
+# SSMD 0.8.7
 
-ttsforge treats SSMD 0.8.6 as a document format, not as decorated plain text. Generated,
+ttsforge treats SSMD 0.8.7 as a document format, not as decorated plain text. Generated,
 edited, and direct `.ssmd` documents are validated with the public `ssmd` APIs and the
 PyKokoro 0.9 profile before synthesis. Header metadata is never sent to speech.
 
@@ -64,11 +64,9 @@ layers: epub2text performs semantic extraction, TTSForge preserves the resulting
 controlled Markdown in SSMD, and the SSMD emphasis policy controls audible rendering.
 Emphasis is spoken plainly by default: it does not add automatic gain, rate, or pitch
 changes, and its metadata is preserved. Use `--emphasis-level 1`, `2`, or `3` for Light,
-Normal, or Strong gain-only audible emphasis; level 2 is the current legacy behavior.
-Use `--ssmd-emphasis approximate` or the deprecated `--enable-ssmd-emphasis` only as
-advanced/compatibility controls, and use `warn` or `error` for stricter behavior.
-Explicit document prosody such as `[fast words]{rate="fast"}` remains active in plain
-mode. Language, voice, prosody, say-as, substitution, phoneme, break, mark, paragraph,
+Normal, or Strong gain-only audible emphasis; level 2 is the normal emphasis approximation.
+Use `warn` or `error` for stricter SSMD emphasis behavior. Explicit document prosody such as
+`[fast words]{rate="fast"}` remains active in plain mode. Language, voice, prosody, say-as,
 heading, and supported audio attributes are passed to the renderer.
 
 ### Automatic written-to-spoken preparation vs explicit say-as
@@ -103,7 +101,6 @@ Useful conversion options include:
 --ssmd-missing-voice error|use-default
 --emphasis-level 0|1|2|3
 --ssmd-emphasis plain|approximate|warn|error
---enable-ssmd-emphasis
 --detect-emphasis
 --ssmd-voice narrator=af_sarah
 --pause-voice-change 0.35

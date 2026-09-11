@@ -73,20 +73,21 @@ def test_wav_merge_writes_audio_and_silence(tmp_path: Path) -> None:
     assert len(data) == 4 + 3 + 240
 
 
-def test_wav_merge_rejects_wrong_sample_rate(tmp_path: Path) -> None:
+def test_wav_merge_rejects_mixed_sample_rates(tmp_path: Path) -> None:
     from ttsforge.audio_merge import MergeMeta
 
-    chapter = tmp_path / "wrong.wav"
-    sf.write(chapter, np.zeros(4, dtype=np.float32), 8000)
-    with pytest.raises(ValueError, match="mono files"):
+    first = tmp_path / "first.wav"
+    second = tmp_path / "second.wav"
+    sf.write(first, np.zeros(4, dtype=np.float32), 8000)
+    sf.write(second, np.zeros(4, dtype=np.float32), 16000)
+    with pytest.raises(ValueError, match="one sample rate"):
         AudioMerger(lambda message, level="info": None).merge_chapter_wavs(
-            [chapter],
-            [1.0],
-            ["Wrong"],
+            [first, second],
+            [1.0, 1.0],
+            ["First", "Second"],
             tmp_path / "output.wav",
             MergeMeta(fmt="wav", silence_between_chapters=0),
         )
-
 
 def test_silence_wav_writes_fractional_duration_in_bounded_chunks(
     tmp_path: Path, monkeypatch: pytest.MonkeyPatch
