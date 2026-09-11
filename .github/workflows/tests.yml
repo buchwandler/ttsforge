@@ -29,8 +29,20 @@ jobs:
         brew install espeak-ng ffmpeg
     - name: Install espeak-ng (Windows)
       if: matrix.os == 'windows-latest'
+      shell: pwsh
       run: |
-        choco install espeak-ng ffmpeg-full
+        choco install espeak-ng ffmpeg-full --yes --no-progress
+        $espeak = Get-Command espeak-ng.exe -ErrorAction SilentlyContinue | Select-Object -First 1
+        if (-not $espeak) {
+          $espeak = Get-ChildItem -Path @($env:ProgramFiles, ${env:ProgramFiles(x86)}) -Filter espeak-ng.exe -File -Recurse -ErrorAction SilentlyContinue | Select-Object -First 1
+        }
+        if (-not $espeak) {
+          throw "eSpeak NG executable was not found after installation"
+        }
+        $espeakPath = if ($espeak.Source) { $espeak.Source } else { $espeak.FullName }
+        $espeakDirectory = Split-Path -Parent $espeakPath
+        $espeakDirectory | Out-File -FilePath $env:GITHUB_PATH -Encoding utf8 -Append
+        & $espeakPath --version
     - name: Install packages
       run: |
         python -m pip install --upgrade pip
