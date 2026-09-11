@@ -91,13 +91,16 @@ def convert_command(
         ),
     ] = None,
     model: Annotated[
-        str | None, typer.Option("--model", help="PyKokoro model ID."),
+        str | None,
+        typer.Option("--model", help="PyKokoro model ID."),
     ] = None,
     quality: Annotated[
-        str | None, typer.Option("--quality", help="Model quality/quantization."),
+        str | None,
+        typer.Option("--quality", help="Model quality/quantization."),
     ] = None,
     source: Annotated[
-        str | None, typer.Option("--source", help="Model source repository."),
+        str | None,
+        typer.Option("--source", help="Model source repository."),
     ] = None,
     chapters: Annotated[
         str | None,

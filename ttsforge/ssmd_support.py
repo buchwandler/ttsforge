@@ -306,6 +306,7 @@ def build_pykokoro_ssmd_config(
     """Translate a ttsforge policy at the pykokoro boundary."""
 
     from .pykokoro_adapter import SSMDPauseOverrides, SSMDRenderConfig
+
     pause = policy.pause_overrides
     pause_defaults = (
         SSMDPauseOverrides(

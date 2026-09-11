@@ -192,7 +192,7 @@ def resolve_voice_names(
 
 def resolve_voice_languages(
     model_source: str | None = None, model_variant: str | None = None
- ) -> dict[str, tuple[str, ...]]:
+) -> dict[str, tuple[str, ...]]:
     """Return discovery-backed BCP-47 languages for each discovered voice."""
     from ..kokoro_lang import canonicalize_language
     from ..pykokoro_adapter import discover_models
@@ -204,8 +204,7 @@ def resolve_voice_languages(
         if model_variant is not None and model.model_id != model_variant:
             continue
         languages = tuple(
-            canonicalize_language(str(value))
-            for value in (model.languages or ())
+            canonicalize_language(str(value)) for value in (model.languages or ())
         )
         for voice in model.voices:
             result.setdefault(voice, set()).update(languages)

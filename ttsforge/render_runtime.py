@@ -65,6 +65,7 @@ class PlaybackSink:
         if factory is None:
             try:
                 from .pykokoro_adapter import get_sound_device_player
+
                 SoundDevicePlayer = get_sound_device_player()
             except ImportError as exc:
                 raise RuntimeError(

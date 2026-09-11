@@ -7,15 +7,16 @@ versioning:
 entry_id: entry-0004
 release_version: 0.4.0
 kind: docs
-summary: Documented PyKokoro 0.9.4, provider extras, metadata discovery, and explicit
-  SSMD language spans
+summary:
+  Documented PyKokoro 0.9.4, provider extras, metadata discovery, and explicit SSMD
+  language spans
 status: accepted
 audience: null
 scopes: []
 source_refs: []
 paths:
-- README.md
-- docs
+  - README.md
+  - docs
 issues: []
 prs: []
 sources: []

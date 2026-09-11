@@ -64,10 +64,11 @@ layers: epub2text performs semantic extraction, TTSForge preserves the resulting
 controlled Markdown in SSMD, and the SSMD emphasis policy controls audible rendering.
 Emphasis is spoken plainly by default: it does not add automatic gain, rate, or pitch
 changes, and its metadata is preserved. Use `--emphasis-level 1`, `2`, or `3` for Light,
-Normal, or Strong gain-only audible emphasis; level 2 is the normal emphasis approximation.
-Use `warn` or `error` for stricter SSMD emphasis behavior. Explicit document prosody such as
-`[fast words]{rate="fast"}` remains active in plain mode. Language, voice, prosody, say-as,
-heading, and supported audio attributes are passed to the renderer.
+Normal, or Strong gain-only audible emphasis; level 2 is the normal emphasis
+approximation. Use `warn` or `error` for stricter SSMD emphasis behavior. Explicit
+document prosody such as `[fast words]{rate="fast"}` remains active in plain mode.
+Language, voice, prosody, say-as, heading, and supported audio attributes are passed to
+the renderer.
 
 ### Automatic written-to-spoken preparation vs explicit say-as
 

@@ -22,10 +22,7 @@ def test_provider_precedence(
     provider: str | None,
     expected: str,
 ) -> None:
-    assert (
-        resolve_onnx_provider(config, provider_override=provider)
-        == expected
-    )
+    assert resolve_onnx_provider(config, provider_override=provider) == expected
 
 
 @pytest.mark.parametrize(
@@ -44,10 +41,7 @@ def test_provider_precedence(
     ],
 )
 def test_explicit_provider_uses_shared_syntax_contract(provider: str) -> None:
-    assert (
-        resolve_onnx_provider({}, provider_override=f"  {provider}  ")
-        == provider
-    )
+    assert resolve_onnx_provider({}, provider_override=f"  {provider}  ") == provider
 
 
 @pytest.mark.parametrize("provider", ["", "  ", "potato", "CPU ExecutionProvider"])

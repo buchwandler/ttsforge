@@ -30,8 +30,9 @@ def test_resolve_direct_phrase_config_uses_canonical_language_defaults() -> None
     assert config.phrase_fallback_tries == 4
     assert config.min_phoneme_length == 30
     assert config.resolve_modes["phrase"].phrase_selection == "auto"
-    assert config.resolve_modes["phrase"].neutral_phrase == (
-        defaults["natural-phrase"]["en-gb"]
+    assert (
+        config.resolve_modes["phrase"].neutral_phrase
+        == (defaults["natural-phrase"]["en-gb"])
     )
 
 
@@ -93,6 +94,4 @@ def test_short_sentence_config_command_initializes_nested_override(
     advanced_path = tmp_path / "short_sentence_advanced.json"
     assert advanced_path.exists()
     saved = json.loads(config_path.read_text(encoding="utf-8"))
-    assert saved["conversion"]["short_sentence"] == (
-        f"config={advanced_path}"
-    )
+    assert saved["conversion"]["short_sentence"] == (f"config={advanced_path}")

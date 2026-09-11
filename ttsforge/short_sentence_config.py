@@ -70,6 +70,7 @@ def default_advanced_short_sentence_data() -> dict[str, Any]:
         RandomizedPhraseResolveMode,
         WrapResolveMode,
     )
+
     phrase = PhraseResolveMode()
     randomized = RandomizedPhraseResolveMode()
     wrap = WrapResolveMode()
@@ -318,6 +319,7 @@ def _build_short_sentence_config(
         ShortSentenceConfig,
         WrapResolveMode,
     )
+
     for key in data:
         if _normalize_key(key) not in _KNOWN_OPTIONS:
             _warn(warn, f"Unrecognized short-sentence option '{key}'")
@@ -464,6 +466,7 @@ def _has_option(data: dict[str, Any], key: str) -> bool:
 
 def _normalize_language_code(language_code: str | None) -> str:
     from .kokoro_lang import canonicalize_language
+
     return canonicalize_language(language_code or "en-us")
 
 

@@ -13,7 +13,7 @@ audience: null
 scopes: []
 source_refs: []
 paths:
-- ttsforge/cli/commands_conversion.py
+  - ttsforge/cli/commands_conversion.py
 issues: []
 prs: []
 sources: []

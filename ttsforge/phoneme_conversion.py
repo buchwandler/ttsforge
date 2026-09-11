@@ -500,9 +500,7 @@ class PhonemeConverter:
         segments_processed = 0
         total_segments = len(chapter.segments)
         assert self._runner is not None
-        lang_code = (
-            chapter.segments[0].lang if chapter.segments else "en-us"
-        )
+        lang_code = chapter.segments[0].lang if chapter.segments else "en-us"
 
         # Open WAV file for writing
         title_result: Any | None = None
@@ -1117,9 +1115,7 @@ class PhonemeConverter:
                 if not self._cancel_event.is_set() and chapter.segments:
                     assert self._runner is not None
                     lang_code = (
-                        chapter.segments[0].lang
-                        if chapter.segments
-                        else "en-us"
+                        chapter.segments[0].lang if chapter.segments else "en-us"
                     )
                     ssmd_text = self._phoneme_segments_to_ssmd(chapter.segments)
                     result = self._runner.synthesize(

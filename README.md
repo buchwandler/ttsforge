@@ -294,7 +294,6 @@ ttsforge config short-sentence show
 ttsforge config short-sentence reset
 ```
 
-
 ### Filename Templates
 
 Customize output filenames with metadata:
@@ -463,9 +462,9 @@ plain extraction; the second preserves or unwraps inline emphasis without affect
 headings; the third controls friendly audible strength; the fourth remains the advanced
 SSMD policy; and the fifth selects AudioSig processing for explicit rate and pitch
 annotations. The default preserves EPUB emphasis but leaves automatic audible emphasis
-The default preserves EPUB emphasis but leaves automatic audible emphasis off. Level 2 is
-the normal emphasis approximation. `psola` is accepted as an alias for AudioSig's canonical
-`td_psola`.
+The default preserves EPUB emphasis but leaves automatic audible emphasis off. Level 2
+is the normal emphasis approximation. `psola` is accepted as an alias for AudioSig's
+canonical `td_psola`.
 
 The user-friendly levels are `0=Off`, `1=Light`, `2=Normal`, and `3=Strong`. The
 advanced policies are `plain`, `approximate`, `warn`, and `error`. Explicit SSMD prosody
@@ -722,8 +721,8 @@ ttsforge config --show
 ttsforge sample "OpenVINO test" --provider openvino
 ```
 
-NNAPI and XNNPACK are execution providers, not GPU modes. PyKokoro applies its documented
-`ONNX_PROVIDER` environment override after TTSForge resolves configuration.
+NNAPI and XNNPACK are execution providers, not GPU modes. PyKokoro applies its
+documented `ONNX_PROVIDER` environment override after TTSForge resolves configuration.
 
 ```bash
 ttsforge convert book.epub --provider xnnpack
@@ -764,19 +763,20 @@ build; use another available provider if NNAPI is not exposed.
 
 ## Configuration Options
 
-| Option | Default | Description |
-| --- | --- | --- |
-| `tts.voice` | `None` | Metadata-selected voice |
-| `tts.language` | `auto` | Canonical BCP-47 language |
-| `tts.speed` | `1.0` | Speech speed (0.5-2.0) |
-| `audio.format` | `m4b` | Output format |
-| `runtime.provider` | `cpu` | ONNX Runtime provider |
-| `model.quality` | `None` | Automatic or explicit quality |
-| `model.source` | `None` | Automatic or explicit source |
-| `model.id` | `None` | Automatic or explicit model profile |
-| `audio.silence_between_chapters` | `2.0` | Chapter gap in seconds |
-| `text.short_sentence` | `None` | Short-sentence handling |
-| `output_filename_template` | `{book_title}` | Output filename template |
+| Option                           | Default        | Description                         |
+| -------------------------------- | -------------- | ----------------------------------- |
+| `tts.voice`                      | `None`         | Metadata-selected voice             |
+| `tts.language`                   | `auto`         | Canonical BCP-47 language           |
+| `tts.speed`                      | `1.0`          | Speech speed (0.5-2.0)              |
+| `audio.format`                   | `m4b`          | Output format                       |
+| `runtime.provider`               | `cpu`          | ONNX Runtime provider               |
+| `model.quality`                  | `None`         | Automatic or explicit quality       |
+| `model.source`                   | `None`         | Automatic or explicit source        |
+| `model.id`                       | `None`         | Automatic or explicit model profile |
+| `audio.silence_between_chapters` | `2.0`          | Chapter gap in seconds              |
+| `text.short_sentence`            | `None`         | Short-sentence handling             |
+| `output_filename_template`       | `{book_title}` | Output filename template            |
+
 ## Documentation
 
 Full documentation: https://ttsforge.readthedocs.io/

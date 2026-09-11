@@ -380,9 +380,7 @@ def phonemes_convert(
     # Load config for defaults
     config = load_config()
     try:
-        resolved_provider = resolve_onnx_provider(
-            config, provider_override=provider
-        )
+        resolved_provider = resolve_onnx_provider(config, provider_override=provider)
     except ValueError as exc:
         console.print(f"[red]{exc}[/red]")
         raise typer.Exit(code=2) from exc

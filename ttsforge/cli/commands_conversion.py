@@ -98,11 +98,9 @@ def _resolve_emphasis_controls(
     configured_mode: object,
     explicit_level: int | None,
     explicit_mode: str | None,
- ) -> tuple[EmphasisMode, float, int | None]:
+) -> tuple[EmphasisMode, float, int | None]:
     """Resolve friendly emphasis controls."""
-    controls = sum(
-        value is not None for value in (explicit_level, explicit_mode)
-    )
+    controls = sum(value is not None for value in (explicit_level, explicit_mode))
     if controls > 1:
         raise typer.BadParameter(
             "Choose only one emphasis control. Use --emphasis-level for "
@@ -145,8 +143,6 @@ def _resolve_emphasis_controls(
     if mode == "plain":
         return mode, 1.0, 0
     return mode, 1.0, None
-
-
 
 
 def _resolve_prosody_policy(
@@ -714,9 +710,7 @@ def convert(
         console.print(f"[red]Invalid prosody configuration:[/red] {exc}")
         raise typer.Exit(code=2) from exc
     try:
-        resolved_provider = resolve_onnx_provider(
-            config, provider_override=provider
-        )
+        resolved_provider = resolve_onnx_provider(config, provider_override=provider)
     except ValueError as exc:
         console.print(f"[red]{exc}[/red]")
         raise typer.Exit(code=2) from exc
@@ -1260,7 +1254,6 @@ def convert(
                 "default_format", "m4b"
             )
 
-
     ssmd_bindings = _parse_ssmd_voice_bindings(ssmd_voice)
     ssmd_policy = _resolve_ssmd_policy(
         config=config,
@@ -1333,7 +1326,8 @@ def convert(
     # Validate all effective settings before showing a summary or asking for
     # confirmation. Config-derived values do not pass through Typer's bounds.
     try:
-        options = ConversionOptions.from_plan(execution_plan,
+        options = ConversionOptions.from_plan(
+            execution_plan,
             voice=resolved_defaults["voice"],
             language=effective_language,
             speed=resolved_defaults["speed"],
@@ -1995,7 +1989,6 @@ def sample(
         },
     )
 
-
     # Auto-detect if voice is a blend
     voice_value = resolved_defaults["voice"]
     if voice_value is None:
@@ -2442,9 +2435,7 @@ def read(
         console.print(f"[red]Invalid prosody configuration:[/red] {exc}")
         raise typer.Exit(code=2) from exc
     try:
-        resolved_provider = resolve_onnx_provider(
-            config, provider_override=provider
-        )
+        resolved_provider = resolve_onnx_provider(config, provider_override=provider)
     except ValueError as exc:
         console.print(f"[red]{exc}[/red]")
         raise typer.Exit(code=2) from exc

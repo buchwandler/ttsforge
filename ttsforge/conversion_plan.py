@@ -202,6 +202,7 @@ def _decision(
         locator=None if explicit else config_key,
     )
 
+
 def resolve_conversion_plan(
     source_path: Path | ConversionRequest,
     *,

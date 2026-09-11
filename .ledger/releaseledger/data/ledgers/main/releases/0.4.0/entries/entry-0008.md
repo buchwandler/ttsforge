@@ -13,7 +13,7 @@ audience: null
 scopes: []
 source_refs: []
 paths:
-- ttsforge/cli/utility_light.py
+  - ttsforge/cli/utility_light.py
 issues: []
 prs: []
 sources: []

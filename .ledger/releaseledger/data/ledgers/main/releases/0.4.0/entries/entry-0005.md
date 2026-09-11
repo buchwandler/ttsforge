@@ -13,9 +13,9 @@ audience: null
 scopes: []
 source_refs: []
 paths:
-- ttsforge/cli/backend_config.py
-- pyproject.toml
-- ttsforge/kokoro_runner.py
+  - ttsforge/cli/backend_config.py
+  - pyproject.toml
+  - ttsforge/kokoro_runner.py
 issues: []
 prs: []
 sources: []

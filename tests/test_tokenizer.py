@@ -436,4 +436,3 @@ class TestMixedLanguageMigration:
         config = TokenizerConfig()
         assert not hasattr(config, "use_mixed_language")
         assert not hasattr(config, "mixed_language_allowed")
-

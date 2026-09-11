@@ -908,9 +908,7 @@ class ConversionOptions:
     prosody_policy: ProsodyPolicy = field(default_factory=ProsodyPolicy)
 
     @classmethod
-    def from_plan(
-        cls, plan: Any, **overrides: Any
-    ) -> ConversionOptions:
+    def from_plan(cls, plan: Any, **overrides: Any) -> ConversionOptions:
         """Create runtime options from one fully resolved conversion plan."""
         pipeline = plan.pipeline
         output = Path(plan.output.path)
@@ -972,6 +970,7 @@ class ConversionOptions:
                 "conversion_unit": pipeline.conversion_unit,
             }[key]
         return cls(**values)
+
     def effective_onnx_provider(self) -> str:
         """Return the canonical provider requested by this option set."""
         return self.onnx_provider or "cpu"
@@ -1009,7 +1008,6 @@ class RuntimeOptions:
         return ConversionOptions.from_plan(plan, **overrides)
 
 
-
 # Pattern to detect chapter markers in text
 CHAPTER_PATTERN = re.compile(
     r"(?:^|\n)\s*(?:"
@@ -1027,8 +1025,6 @@ CHAPTER_PATTERN = re.compile(
 def detect_language_from_iso(iso_code: str | None) -> str:
     """Convert an optional ISO language code to canonical BCP-47."""
     return get_pykokoro_language(iso_code or "en-us")
-
-
 
 
 class TTSConverter:
@@ -1096,7 +1092,6 @@ class TTSConverter:
         from .kokoro_runner import KokoroRunner, KokoroRunOptions
 
         self.log("Initializing ONNX TTS pipeline...")
-
 
         tokenizer_config = TokenizerConfig(
             use_spacy=self.options.use_spacy,

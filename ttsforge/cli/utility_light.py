@@ -189,10 +189,7 @@ def _show_provider_status(config: dict[str, Any]) -> None:
             resolve_execution_provider,
         )
 
-
-        configured = resolve_onnx_provider(
-            config, provider_override=None
-        )
+        configured = resolve_onnx_provider(config, provider_override=None)
         with warnings.catch_warnings(record=True) as caught:
             warnings.simplefilter("always")
             available = get_available_execution_providers()
@@ -306,7 +303,7 @@ def config_show_command(
     effective: bool = False,
     user: bool = False,
     as_json: bool = False,
- ) -> None:
+) -> None:
     """Show persisted overrides or effective schema-2 configuration."""
     if effective and user:
         raise typer.BadParameter("--effective and --user cannot be combined")
@@ -350,7 +347,7 @@ def config_unset_command(path: str) -> None:
         target.pop(parts[-1], None)
     for index in range(len(parts) - 1, 0, -1):
         parent: Any = document
-        for part in parts[:index - 1]:
+        for part in parts[: index - 1]:
             if not isinstance(parent, dict):
                 break
             parent = parent.get(part)
@@ -368,6 +365,7 @@ def config_unset_command(path: str) -> None:
 def config_path_command() -> None:
     """Print the user configuration path."""
     from ..utils import get_user_config_path
+
     typer.echo(get_user_config_path())
 
 

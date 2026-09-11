@@ -19,6 +19,7 @@ class ShortSentenceStats:
 
     def add_segments(self, segments: list[Any]) -> None:
         from .pykokoro_adapter import SHORT_SENTENCE_META_KEY
+
         for segment in segments:
             metadata = getattr(segment, "ssmd_metadata", None)
             if not isinstance(metadata, dict):

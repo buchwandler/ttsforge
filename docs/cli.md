@@ -51,7 +51,6 @@ default, language is determined from the voice.
 
 `-s, --speed FLOAT` : Speech speed multiplier (0.5 to 2.0). Default: `1.0`.
 
-
 `--provider PROVIDER` : ONNX Runtime execution provider or alias (`auto`, `cpu`,
 `openvino`, `nnapi`, `xnnpack`, or a full `*ExecutionProvider` name). Available on
 `convert`, `sample`, `read`, `demo`, and `phonemes convert`.
@@ -348,7 +347,6 @@ ttsforge sample [TEXT] [OPTIONS]
 
 `-s, --speed FLOAT` : Speech speed. Default: `1.0`.
 
-
 `--provider PROVIDER` : ONNX Runtime execution provider or alias (`auto`, `cpu`,
 `openvino`, `nnapi`, `xnnpack`, or a full `*ExecutionProvider` name).
 
@@ -404,7 +402,6 @@ stdin.
 `-l, --language LANG` : Language for TTS.
 
 `-s, --speed FLOAT` : Speech speed. Default: `1.0`.
-
 
 `--provider PROVIDER` : ONNX Runtime execution provider or alias (`auto`, `cpu`,
 `openvino`, `nnapi`, `xnnpack`, or a full `*ExecutionProvider` name).
@@ -503,7 +500,6 @@ ttsforge demo [OPTIONS]
 `af_heart,am_adam`.
 
 `-s, --speed FLOAT` : Speech speed. Default: `1.0`.
-
 
 `--provider PROVIDER` : ONNX Runtime execution provider or alias (`auto`, `cpu`,
 `openvino`, `nnapi`, `xnnpack`, or a full `*ExecutionProvider` name).
@@ -637,7 +633,6 @@ ttsforge config short-sentence show
 ttsforge config short-sentence reset
 ```
 
-
 ## phonemes
 
 Commands for working with phonemes and pre-tokenized content.
@@ -708,7 +703,6 @@ ttsforge phonemes convert PHONEME_FILE [OPTIONS]
 `-v, --voice VOICE` : Voice to use for TTS.
 
 `-s, --speed FLOAT` : Speech speed. Default: `1.0`.
-
 
 `--provider PROVIDER` : ONNX Runtime execution provider or alias (`auto`, `cpu`,
 `openvino`, `nnapi`, `xnnpack`, or a full `*ExecutionProvider` name).

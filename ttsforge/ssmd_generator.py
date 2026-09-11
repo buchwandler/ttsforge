@@ -262,7 +262,7 @@ def chapter_to_ssmd(
     source_format: Literal["plain", "markdown"] = "plain",
     include_title: bool = True,
     document_header: Mapping[str, Any] | None = None,
- ) -> str:
+) -> str:
     """Convert a chapter to SSMD format."""
     try:
         if source_format == "markdown":

@@ -89,6 +89,7 @@ def test_wav_merge_rejects_mixed_sample_rates(tmp_path: Path) -> None:
             MergeMeta(fmt="wav", silence_between_chapters=0),
         )
 
+
 def test_silence_wav_writes_fractional_duration_in_bounded_chunks(
     tmp_path: Path, monkeypatch: pytest.MonkeyPatch
 ) -> None:

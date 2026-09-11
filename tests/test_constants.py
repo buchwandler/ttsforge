@@ -13,7 +13,16 @@ def test_default_config_uses_canonical_language_and_provider() -> None:
 
 def test_language_descriptions_are_canonical() -> None:
     assert set(LANGUAGE_DESCRIPTIONS) == {
-        "en-us", "en-gb", "de", "es", "fr-fr", "hi", "it", "ja", "pt-br", "zh"
+        "en-us",
+        "en-gb",
+        "de",
+        "es",
+        "fr-fr",
+        "hi",
+        "it",
+        "ja",
+        "pt-br",
+        "zh",
     }
 
 

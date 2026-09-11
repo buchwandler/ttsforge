@@ -117,4 +117,3 @@ DEFAULT_CONFIG = {
     "embed_ssmd_voice_bindings": False,
     "embed_ssmd_pause_defaults": False,
 }
-

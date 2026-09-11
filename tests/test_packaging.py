@@ -39,16 +39,11 @@ def test_pykokoro_dependency_floor_is_released_handoff() -> None:
     assert "phrasplit>=0.3.7,<0.4" in dependencies
     assert "ssmd>=0.8.7,<0.9" in dependencies
     extras = project["project"]["optional-dependencies"]
-    assert not any(
-        dependency.startswith("onnxruntime")
-        for dependency in dependencies
-    )
+    assert not any(dependency.startswith("onnxruntime") for dependency in dependencies)
     for provider in ("cpu", "gpu", "openvino", "directml", "coreml"):
         provider_dependencies = extras[provider]
         assert len(provider_dependencies) == 1
-        assert provider_dependencies[0] == (
-            f"pykokoro[{provider}]>=0.9.4,<0.10"
-        )
+        assert provider_dependencies[0] == (f"pykokoro[{provider}]>=0.9.4,<0.10")
 
 
 def test_audiosig_dependency_floor_supports_waveform_primitives() -> None:

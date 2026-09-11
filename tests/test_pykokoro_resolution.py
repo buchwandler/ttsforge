@@ -23,6 +23,7 @@ from ttsforge.kokoro_lang import get_onnx_lang_code, get_pykokoro_language
 def test_public_resolver_is_importable() -> None:
     """resolve_pipeline_config must be part of the public pykokoro API."""
     from pykokoro import resolve_pipeline_config
+
     assert callable(resolve_pipeline_config)
 
 

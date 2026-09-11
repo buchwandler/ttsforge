@@ -3,9 +3,9 @@
 ttsforge stores its configuration in a JSON file and provides a CLI interface for
 managing settings.
 
-The active generation stack targets PyKokoro 0.9.4 with kokorog2p 0.9.5, phrasplit 0.3.7, and
-SSMD 0.8.7. Omitted model and voice settings remain `None` so PyKokoro can select
-language-aware metadata defaults.
+The active generation stack targets PyKokoro 0.9.4 with kokorog2p 0.9.5, phrasplit
+0.3.7, and SSMD 0.8.7. Omitted model and voice settings remain `None` so PyKokoro can
+select language-aware metadata defaults.
 
 ## Configuration File Location
 
@@ -48,7 +48,6 @@ ttsforge config short-sentence init
 ttsforge config short-sentence show
 ttsforge config short-sentence reset
 ```
-
 
 ## Configuration Options
 
@@ -237,7 +236,6 @@ resolves the profile-supported default quality.
 - Type: string or null
 - Default: `None`
 - Examples: `v1.0` and `v1.2-de-martin` (voice `martin`)
-
 
 `default_split_mode` : Default text splitting mode for processing.
 
@@ -554,8 +552,8 @@ ttsforge convert book.epub -v bf_emma -f mp3
 ttsforge sample "Provider test" --provider xnnpack
 ```
 
-Provider resolution uses explicit `--provider`, then `runtime.provider`, then the
-CPU default. PyKokoro may apply its documented `ONNX_PROVIDER` environment override during
+Provider resolution uses explicit `--provider`, then `runtime.provider`, then the CPU
+default. PyKokoro may apply its documented `ONNX_PROVIDER` environment override during
 runtime provider resolution.
 
 ## Environment Variables

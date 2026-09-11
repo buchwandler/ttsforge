@@ -310,7 +310,6 @@ class TestDetectLanguageFromIso:
         assert detect_language_from_iso("zh") == "zh"
 
 
-
 class TestHashFunctions:
     """Tests for hash functions."""
 

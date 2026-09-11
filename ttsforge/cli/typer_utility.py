@@ -242,8 +242,6 @@ def short_sentence_config_command(
     short_sentence_advanced_config(ctx=ctx, action=action)
 
 
-
-
 def extract_names_command(
     input_file: Annotated[
         Path,
@@ -404,6 +402,7 @@ def register(app: typer.Typer) -> None:
     app.command(name="demo")(demo_command)
     app.command(name="download")(download_command)
     from .utility_light import doctor_command
+
     app.command(name="doctor")(doctor_command)
     config_app = typer.Typer(
         cls=RepeatedPairGroup,
@@ -420,6 +419,7 @@ def register(app: typer.Typer) -> None:
         config_show_command,
         config_unset_command,
     )
+
     config_app.command(name="show")(config_show_command)
     config_app.command(name="get")(config_get_command)
     config_app.command(name="set")(config_set_command)

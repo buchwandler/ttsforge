@@ -54,6 +54,7 @@ def test_migrate_config_rejects_conflicting_language_override() -> None:
     with pytest.raises(ValueError, match="phonemization_lang conflicts"):
         migrate_config({"default_language": "de", "phonemization_lang": "fr"})
 
+
 @pytest.mark.parametrize(
     ("key", "value"),
     [

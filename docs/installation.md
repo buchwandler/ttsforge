@@ -138,10 +138,10 @@ python -m spacy download en_core_web_md
 pip install ttsforge
 ```
 
-The base installation is provider-neutral. Install exactly one provider extra in the environment
-used for rendering. Provider-dependent modules are loaded only when audio rendering starts, so
-`import ttsforge`, `ttsforge --help`, and configuration/inspection commands work without model
-initialization.
+The base installation is provider-neutral. Install exactly one provider extra in the
+environment used for rendering. Provider-dependent modules are loaded only when audio
+rendering starts, so `import ttsforge`, `ttsforge --help`, and configuration/inspection
+commands work without model initialization.
 
 Provider extras (do not combine them in one environment):
 
@@ -183,9 +183,10 @@ pip install -e ".[dev]"
 
 ## ONNX Runtime Providers
 
-Select a provider with an alias or full runtime provider name. Install the matching provider extra
-in a fresh environment, and do not install multiple provider extras together. NNAPI and XNNPACK
-are runtime providers exposed by platform-specific builds rather than TTSForge installation extras:
+Select a provider with an alias or full runtime provider name. Install the matching
+provider extra in a fresh environment, and do not install multiple provider extras
+together. NNAPI and XNNPACK are runtime providers exposed by platform-specific builds
+rather than TTSForge installation extras:
 
 ```bash
 pip install "ttsforge[cpu]"
@@ -223,10 +224,10 @@ ttsforge sample "Termux provider test" --provider nnapi
 ```
 
 Provider availability and the documented `ONNX_PROVIDER` environment override are
-handled by PyKokoro. With the required patched PyKokoro release, GitHub `v1.0` uses
-the embedded standard vocabulary and does not download Hugging Face `config.json`.
-NNAPI is not guaranteed; use a provider exposed by the installed Android ONNX Runtime
-build. Run `ttsforge doctor` to inspect the environment.
+handled by PyKokoro. With the required patched PyKokoro release, GitHub `v1.0` uses the
+embedded standard vocabulary and does not download Hugging Face `config.json`. NNAPI is
+not guaranteed; use a provider exposed by the installed Android ONNX Runtime build. Run
+`ttsforge doctor` to inspect the environment.
 
 ## Memory diagnostics
 

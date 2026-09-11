@@ -117,18 +117,14 @@ def demo(
     """
     config = load_config()
     try:
-        resolved_provider = resolve_onnx_provider(
-            config, provider_override=provider
-        )
+        resolved_provider = resolve_onnx_provider(config, provider_override=provider)
     except ValueError as exc:
         console.print(f"[red]{exc}[/red]")
         raise typer.Exit(code=2) from exc
     model_path = ctx.obj.get("model_path") if ctx.obj else None
     voices_path = ctx.obj.get("voices_path") if ctx.obj else None
     short_sentence_stats = ShortSentenceStats()
-    voice_languages = _discover_voice_languages(
-        *_resolve_model_metadata(config)
-    )
+    voice_languages = _discover_voice_languages(*_resolve_model_metadata(config))
 
     # Playback is not compatible with --separate or --blend-presets (multiple files)
     if play_audio and separate:
@@ -235,9 +231,7 @@ def demo(
 
                     # Generate audio with blended voice
                     blend_lang = voice_languages.get(voice_names[0], ("en-us",))[0]
-                    result = pipeline.run(
-                        demo_text, voice=voice_blend, lang=blend_lang
-                    )
+                    result = pipeline.run(demo_text, voice=voice_blend, lang=blend_lang)
                     short_sentence_stats.add_audio_result(result)
                     samples = result.audio
                     sr = result.sample_rate
@@ -308,6 +302,7 @@ def demo(
                 console.print(f"[yellow]Warning:[/yellow] Unknown voice '{v}'")
     elif language:
         from ..kokoro_lang import canonicalize_language
+
         requested_language = canonicalize_language(language)
         for voice, languages in voice_languages.items():
             if requested_language in languages:

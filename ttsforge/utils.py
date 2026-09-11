@@ -427,7 +427,7 @@ def _flatten_config(document: Mapping[str, Any]) -> dict[str, Any]:
 
 def _config_document_from_flat(
     config: Mapping[str, Any], *, include_defaults: bool = False
- ) -> dict[str, Any]:
+) -> dict[str, Any]:
     document: dict[str, Any] = {"schema_version": CONFIG_SCHEMA_VERSION}
     for key, path in _CONFIG_KEY_PATHS.items():
         if key in config and (
@@ -454,6 +454,7 @@ def effective_config_document() -> dict[str, Any]:
     document = load_user_config()
     flat = {**DEFAULT_CONFIG, **_flatten_config(document)}
     return _config_document_from_flat(flat, include_defaults=True)
+
 
 def migrate_config(config: Mapping[str, Any]) -> dict[str, Any]:
     """Migrate legacy flat configuration to the schema-2 override format."""
@@ -482,6 +483,7 @@ def migrate_config(config: Mapping[str, Any]) -> dict[str, Any]:
         language = "auto"
     if language is not None:
         from .kokoro_lang import canonicalize_language
+
         put("tts", "language", canonicalize_language(str(language)))
     put("tts", "voice", source.get("default_voice"))
     put("tts", "speed", source.get("default_speed"))
@@ -510,9 +512,9 @@ def migrate_config(config: Mapping[str, Any]) -> dict[str, Any]:
     legacy_language = source.get("phonemization_lang")
     if legacy_language is not None and language is not None:
         from .kokoro_lang import canonicalize_language
-        if (
-            canonicalize_language(str(legacy_language))
-            != canonicalize_language(str(language))
+
+        if canonicalize_language(str(legacy_language)) != canonicalize_language(
+            str(language)
         ):
             raise ValueError(
                 "phonemization_lang conflicts with the document language; "
@@ -544,16 +546,36 @@ def migrate_config(config: Mapping[str, Any]) -> dict[str, Any]:
         put("prosody", key.removeprefix("prosody_"), source.get(key))
 
     handled = {
-        "default_voice", "default_language", "default_speed", "onnx_provider",
-        "use_gpu", "model_variant", "model_source", "model_quality",
-        "use_spacy", "spacy_model", "spacy_model_size", "default_format",
-        "silence_between_chapters", "phonemization_lang",
-        "ssmd_parse_header", "ssmd_unknown_header", "ssmd_missing_voice",
-        "ssmd_emphasis_mode", "detect_emphasis", "ssmd_voice_bindings",
-        "embed_ssmd_voice_bindings", "embed_ssmd_pause_defaults",
-        "prosody_method", "prosody_fallback_methods", "prosody_strict",
-        "prosody_clip", "prosody_n_fft", "prosody_hop_length",
-        "prosody_filter_width", "prosody_rolloff",
+        "default_voice",
+        "default_language",
+        "default_speed",
+        "onnx_provider",
+        "use_gpu",
+        "model_variant",
+        "model_source",
+        "model_quality",
+        "use_spacy",
+        "spacy_model",
+        "spacy_model_size",
+        "default_format",
+        "silence_between_chapters",
+        "phonemization_lang",
+        "ssmd_parse_header",
+        "ssmd_unknown_header",
+        "ssmd_missing_voice",
+        "ssmd_emphasis_mode",
+        "detect_emphasis",
+        "ssmd_voice_bindings",
+        "embed_ssmd_voice_bindings",
+        "embed_ssmd_pause_defaults",
+        "prosody_method",
+        "prosody_fallback_methods",
+        "prosody_strict",
+        "prosody_clip",
+        "prosody_n_fft",
+        "prosody_hop_length",
+        "prosody_filter_width",
+        "prosody_rolloff",
         "prosody_boundary_blend_ms",
     }
     for key, path in _CONFIG_KEY_PATHS.items():
@@ -578,6 +600,8 @@ def migrate_config(config: Mapping[str, Any]) -> dict[str, Any]:
         elif section:
             migrated[name] = section
     return migrated
+
+
 def load_config() -> dict[str, Any]:
     """Load effective configuration from the schema-2 user document."""
     config_path = get_user_config_path()
@@ -587,8 +611,7 @@ def load_config() -> dict[str, Any]:
         with open(config_path, encoding="utf-8") as handle:
             raw = json.load(handle)
         is_schema_two = (
-            isinstance(raw, dict)
-            and raw.get("schema_version") == CONFIG_SCHEMA_VERSION
+            isinstance(raw, dict) and raw.get("schema_version") == CONFIG_SCHEMA_VERSION
         )
         document = raw if is_schema_two else migrate_config(raw)
         if not is_schema_two:
@@ -632,6 +655,7 @@ def resolve_conversion_defaults(
     """Resolve conversion defaults with CLI > config > DEFAULT_CONFIG."""
     if config.get("schema_version") == CONFIG_SCHEMA_VERSION:
         config = {**DEFAULT_CONFIG, **_flatten_config(config)}
+
     def resolve(name: str, config_key: str, default_key: str) -> Any:
         value = overrides.get(name)
         if value is not None:
@@ -1100,6 +1124,7 @@ def load_tts_pipeline() -> tuple[Any, Any]:
     import numpy as np
 
     from .pykokoro_adapter import KokoroPipeline
+
     return np, KokoroPipeline
 
 

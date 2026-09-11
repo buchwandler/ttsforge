@@ -73,6 +73,7 @@ class KokoroRunOptions:
         """Return the canonical provider requested by this runner option set."""
         return self.onnx_provider or "cpu"
 
+
 class PreparedUnits:
     """TTSForge's dependency-light facade over PyKokoro prepared units."""
 
@@ -112,6 +113,7 @@ class PreparedUnits:
 
 
 PreparedParagraphUnits = PreparedUnits
+
 
 class KokoroRunner:
     class LogCallback(Protocol):
@@ -387,6 +389,7 @@ class KokoroRunner:
             audio_resolver=audio_resolver,
             random_seed=random_seed,
         )
+
     def get_short_sentence_stats(self) -> ShortSentenceStats:
         return self.short_sentence_stats.copy()
 

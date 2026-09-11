@@ -362,11 +362,9 @@ class AudioMerger:
             return SAMPLE_RATE
         if len(rates) != 1:
             raise ValueError(
-                "Audio inputs must use one sample rate; "
-                f"found {sorted(rates)}"
+                f"Audio inputs must use one sample rate; found {sorted(rates)}"
             )
         return next(iter(rates))
-
 
     def _merge_wavs(
         self,

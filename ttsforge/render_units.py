@@ -53,14 +53,14 @@ def renderer_contract_payload() -> dict[str, object]:
         "unit_filename_schema": UNIT_FILENAME_SCHEMA,
         "paragraph_manifest_schema": PARAGRAPH_MANIFEST_SCHEMA,
     }
+
+
 def renderer_environment_diagnostics() -> dict[str, str]:
     """Return installed package versions for diagnostics, not identity."""
     return {
         "pykokoro": _runtime_package_version("pykokoro"),
         "kokorog2p": _runtime_package_version("kokorog2p"),
     }
-
-
 
 
 def validate_conversion_unit(value: str) -> ConversionUnit:
