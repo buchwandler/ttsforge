@@ -779,7 +779,6 @@ def _marker_records(result: Any) -> list[dict[str, Any]]:
     return records
 
 
-
 def _normalize_aggregate_marker_offsets(
     markers: list[dict[str, Any]],
     *,

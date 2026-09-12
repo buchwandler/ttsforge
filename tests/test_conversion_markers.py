@@ -74,6 +74,7 @@ def test_m4b_finalization_uses_merger_rate_and_globalizes_resume_markers(
         if str(path).endswith(".m4b"):
             raise AssertionError("final M4B must not be probed with soundfile")
         return real_info(path, *args, **kwargs)
+
     monkeypatch.setattr("ttsforge.conversion.sf.info", no_m4b_probe)
 
     first = TTSConverter(options)
@@ -101,8 +102,6 @@ def test_m4b_finalization_uses_merger_rate_and_globalizes_resume_markers(
     resumed = second.convert_chapters_resumable(chapters, output, resume=True)
 
     assert resumed.success, resumed.error_message
-    resumed_payload = json.loads(
-        output.with_suffix(".m4b.markers.json").read_text()
-    )
+    resumed_payload = json.loads(output.with_suffix(".m4b.markers.json").read_text())
     assert resumed_payload["sample_rate"] == 16000
     assert resumed_payload["markers"] == payload["markers"]

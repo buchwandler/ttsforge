@@ -73,6 +73,7 @@ def test_wav_merge_writes_audio_and_silence(tmp_path: Path) -> None:
     assert rate == 24000
     assert len(data) == 4 + 3 + 240
 
+
 def test_wav_merge_returns_non_default_sample_rate(tmp_path: Path) -> None:
     from ttsforge.audio_merge import MergeMeta
 
@@ -109,7 +110,6 @@ def test_ordered_wav_merge_returns_validated_sample_rate(tmp_path: Path) -> None
     )
 
     assert sample_rate == 16000
-
 
 
 def test_wav_merge_rejects_mixed_sample_rates(tmp_path: Path) -> None:
