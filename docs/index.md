@@ -8,7 +8,7 @@ ONNX TTS (Text-to-Speech).
 :caption: User Guide
 
 installation
-    migration-v0.4
+migration-v0.4
 quickstart
 cli
 ssmd

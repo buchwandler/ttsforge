@@ -34,7 +34,7 @@ short-sentence command, and SSMD emphasis switches have been removed.
 
 Automatic mixed-language detection is removed. Mark language changes explicitly in SSMD:
 
-```ssmd
+```text
 [Bonjour le monde]{lang="fr-fr"}
 ```
 
