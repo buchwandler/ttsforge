@@ -161,7 +161,7 @@ class AudioMerger:
         chapter_titles: list[str],
         output_path: Path,
         meta: MergeMeta,
-    ) -> None:
+    ) -> int:
         self._validate_inputs(chapter_files, chapter_durations, chapter_titles)
         sample_rate = self._validated_sample_rate(chapter_files)
 
@@ -174,7 +174,7 @@ class AudioMerger:
                     chapter_files, temp_output, meta.silence_between_chapters
                 )
                 os.replace(temp_output, output_path)
-            return
+            return sample_rate
 
         ffmpeg = get_ffmpeg_path()
         with tempfile.TemporaryDirectory(
@@ -247,6 +247,8 @@ class AudioMerger:
                     t += meta.silence_between_chapters
             self.add_chapters_to_m4b(output_path, times, meta.cover_image)
 
+        return sample_rate
+
     def merge_ordered_wavs(
         self,
         inputs: Sequence[OrderedAudioInput],
@@ -254,7 +256,7 @@ class AudioMerger:
         *,
         chapter_boundaries: Sequence[ChapterBoundary] = (),
         meta: MergeMeta | None = None,
-    ) -> None:
+    ) -> int:
         """Concatenate finalized paragraph WAVs without adding any gaps."""
         ordered = tuple(sorted(inputs, key=lambda item: item.sequence_index))
         if not ordered:
@@ -269,7 +271,7 @@ class AudioMerger:
             if item.duration < 0 or item.content_duration < 0:
                 raise ValueError("Ordered audio durations cannot be negative")
 
-        self._validated_sample_rate([item.path for item in ordered])
+        sample_rate = self._validated_sample_rate([item.path for item in ordered])
         effective_meta = meta or MergeMeta(fmt="wav", silence_between_chapters=0.0)
         output_path.parent.mkdir(parents=True, exist_ok=True)
         if effective_meta.fmt == "wav":
@@ -279,7 +281,7 @@ class AudioMerger:
                 temporary = Path(temp_name) / output_path.name
                 self._merge_wavs([item.path for item in ordered], temporary, 0.0)
                 os.replace(temporary, output_path)
-            return
+            return sample_rate
 
         ffmpeg = get_ffmpeg_path()
         with tempfile.TemporaryDirectory(
@@ -354,17 +356,21 @@ class AudioMerger:
                 effective_meta.cover_image,
             )
 
+        return sample_rate
+
     @staticmethod
     def _validated_sample_rate(chapter_files: list[Path]) -> int:
         try:
-            rates = {int(sf.info(str(path)).samplerate) for path in chapter_files}
+            rates: set[int] = {
+                int(sf.info(str(path)).samplerate) for path in chapter_files
+            }
         except (OSError, RuntimeError):
-            return SAMPLE_RATE
+            return int(SAMPLE_RATE)
         if len(rates) != 1:
             raise ValueError(
                 f"Audio inputs must use one sample rate; found {sorted(rates)}"
             )
-        return next(iter(rates))
+        return int(next(iter(rates)))
 
     def _merge_wavs(
         self,

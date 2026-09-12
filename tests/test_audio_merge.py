@@ -61,16 +61,55 @@ def test_wav_merge_writes_audio_and_silence(tmp_path: Path) -> None:
     sf.write(first, np.ones(4, dtype=np.float32), 24000, subtype="PCM_16")
     sf.write(second, np.full(3, 0.5, dtype=np.float32), 24000, subtype="PCM_16")
     output = tmp_path / "merged.wav"
-    AudioMerger(lambda message, level="info": None).merge_chapter_wavs(
+    sample_rate = AudioMerger(lambda message, level="info": None).merge_chapter_wavs(
         [first, second],
         [4 / 24000, 3 / 24000],
         ["One", "Two"],
         output,
         MergeMeta(fmt="wav", silence_between_chapters=0.01),
     )
+    assert sample_rate == 24000
     data, rate = sf.read(output)
     assert rate == 24000
     assert len(data) == 4 + 3 + 240
+
+def test_wav_merge_returns_non_default_sample_rate(tmp_path: Path) -> None:
+    from ttsforge.audio_merge import MergeMeta
+
+    first = tmp_path / "first.wav"
+    second = tmp_path / "second.wav"
+    sf.write(first, np.zeros(4, dtype=np.float32), 16000)
+    sf.write(second, np.zeros(4, dtype=np.float32), 16000)
+
+    sample_rate = AudioMerger(lambda message, level="info": None).merge_chapter_wavs(
+        [first, second],
+        [4 / 16000, 4 / 16000],
+        ["First", "Second"],
+        tmp_path / "merged.wav",
+        MergeMeta(fmt="wav", silence_between_chapters=0),
+    )
+
+    assert sample_rate == 16000
+
+
+def test_ordered_wav_merge_returns_validated_sample_rate(tmp_path: Path) -> None:
+    from ttsforge.audio_merge import OrderedAudioInput
+
+    first = tmp_path / "first.wav"
+    second = tmp_path / "second.wav"
+    sf.write(first, np.zeros(4, dtype=np.float32), 16000)
+    sf.write(second, np.zeros(4, dtype=np.float32), 16000)
+
+    sample_rate = AudioMerger(lambda message, level="info": None).merge_ordered_wavs(
+        [
+            OrderedAudioInput(first, 0, 0, "One", 4 / 16000, 4 / 16000, 0),
+            OrderedAudioInput(second, 1, 0, "One", 4 / 16000, 4 / 16000, 0),
+        ],
+        tmp_path / "merged.wav",
+    )
+
+    assert sample_rate == 16000
+
 
 
 def test_wav_merge_rejects_mixed_sample_rates(tmp_path: Path) -> None:
@@ -137,19 +176,20 @@ def test_ffmpeg_formats_and_m4b_metadata(
     monkeypatch.setattr("ttsforge.audio_merge.get_ffmpeg_path", lambda: "ffmpeg")
     for fmt in ("opus", "mp3", "flac"):
         output = tmp_path / f"out.{fmt}"
-        merger.merge_chapter_wavs(
+        sample_rate = merger.merge_chapter_wavs(
             [chapter],
             [1.0],
             ["Chapter"],
             output,
             MergeMeta(fmt=fmt, silence_between_chapters=0),
         )
+        assert sample_rate == 24000
         assert output.exists()
     output = tmp_path / "out.m4b"
     cover = tmp_path / "cover.jpg"
     cover.touch()
     monkeypatch.setattr(merger, "add_chapters_to_m4b", lambda *args: None)
-    merger.merge_chapter_wavs(
+    sample_rate = merger.merge_chapter_wavs(
         [chapter, chapter],
         [1.0, 2.0],
         ["One", "Two"],
@@ -162,6 +202,7 @@ def test_ffmpeg_formats_and_m4b_metadata(
             cover_image=cover,
         ),
     )
+    assert sample_rate == 24000
     assert output.exists()
     assert any("-metadata" in cmd and "title=Book" in cmd for cmd in calls)
 

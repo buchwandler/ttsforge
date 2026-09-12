@@ -779,6 +779,22 @@ def _marker_records(result: Any) -> list[dict[str, Any]]:
     return records
 
 
+
+def _normalize_aggregate_marker_offsets(
+    markers: list[dict[str, Any]],
+    *,
+    sample_rate: int,
+) -> list[dict[str, Any]]:
+    normalized: list[dict[str, Any]] = []
+    for marker in markers:
+        record = dict(marker)
+        sample_offset = round(float(record["time_s"]) * sample_rate)
+        record["sample_offset"] = sample_offset
+        record["time_s"] = sample_offset / sample_rate
+        normalized.append(record)
+    return normalized
+
+
 def _write_marker_sidecar(path: Path, result: Any) -> list[dict[str, Any]]:
     markers = _marker_records(result)
     sample_rate = int(getattr(result, "sample_rate", SAMPLE_RATE) or SAMPLE_RATE)
@@ -1681,27 +1697,18 @@ class TTSConverter:
             author=self.options.author,
             cover_image=self.options.cover_image,
         )
-        self._merger.merge_ordered_wavs(
+        merge_sample_rate = self._merger.merge_ordered_wavs(
             ordered,
             output_path,
             chapter_boundaries=boundaries,
             meta=meta,
         )
         aggregate_markers = self._paragraph_marker_records(state, paragraph_dir)
-        sample_rates = {
-            unit.sample_rate
-            for chapter in state.chapters
-            for unit in chapter.units
-            if unit.completed
-        }
-        manifest_sample_rate = (
-            next(iter(sample_rates)) if len(sample_rates) == 1 else None
-        )
         atomic_write_json(
             output_path.with_suffix(output_path.suffix + ".markers.json"),
             {
                 "schema_version": 1,
-                "sample_rate": manifest_sample_rate,
+                "sample_rate": merge_sample_rate,
                 "markers": aggregate_markers,
             },
             indent=2,
@@ -3197,13 +3204,17 @@ class TTSConverter:
                 "before final merge",
                 provider=self.options.effective_onnx_provider(),
             )
-            self._merger.merge_chapter_wavs(
+            merge_sample_rate = self._merger.merge_chapter_wavs(
                 # The merger reads already released chapter WAV files.
                 chapter_files,
                 chapter_durations,
                 chapter_titles,
                 output_path,
                 meta,
+            )
+            aggregate_markers = _normalize_aggregate_marker_offsets(
+                aggregate_markers,
+                sample_rate=merge_sample_rate,
             )
             log_snapshot(
                 self.log,
@@ -3218,7 +3229,7 @@ class TTSConverter:
                 aggregate_marker_path,
                 {
                     "schema_version": 1,
-                    "sample_rate": int(sf.info(str(output_path)).samplerate),
+                    "sample_rate": merge_sample_rate,
                     "markers": aggregate_markers,
                 },
                 indent=2,

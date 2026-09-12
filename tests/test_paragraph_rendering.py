@@ -5,6 +5,7 @@ from pathlib import Path
 from types import SimpleNamespace
 
 import numpy as np
+import pytest
 import soundfile as sf
 
 from ttsforge.conversion import (
@@ -177,7 +178,9 @@ class VariableRunner(FakeRunner):
         return prepared
 
 
-def test_paragraph_conversion_writes_ordered_units_and_merges(tmp_path: Path):
+def test_paragraph_conversion_uses_merger_sample_rate(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
     output = tmp_path / "book.wav"
     options = ConversionOptions(
         output_format="wav",
@@ -188,6 +191,15 @@ def test_paragraph_conversion_writes_ordered_units_and_merges(tmp_path: Path):
     )
     converter = TTSConverter(options)
     fake = FakeRunner()
+    real_merge = converter._merger.merge_ordered_wavs
+
+    def merge_with_reported_rate(*args, **kwargs):
+        real_merge(*args, **kwargs)
+        return 16000
+
+    monkeypatch.setattr(
+        converter._merger, "merge_ordered_wavs", merge_with_reported_rate
+    )
     converter._runner = fake
     chapters = [
         Chapter(title="One", content="first", index=0),
@@ -210,6 +222,10 @@ def test_paragraph_conversion_writes_ordered_units_and_merges(tmp_path: Path):
     assert result.paragraphs_dir.joinpath("playlist.m3u8").is_file()
     merged, rate = sf.read(output, dtype="float32")
     assert rate == 24000
+    marker_payload = json.loads(
+        output.with_suffix(".wav.markers.json").read_text(encoding="utf-8")
+    )
+    assert marker_payload["sample_rate"] == 16000
     assert len(merged) == sum(sf.info(path).frames for path in files)
     assert all(item.released for prepared in fake.prepared for item in prepared.results)
 
