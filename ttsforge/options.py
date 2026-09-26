@@ -22,6 +22,9 @@ class AudiobookOptions:
     language: str | None = None
     voice: str | None = None
     engine: str | None = None
+    model: str | None = None
+    model_source: str | None = None
+    quality: str | None = None
     speed: float | None = None
     bitrate: str | None = None
     target_lufs: float | None = None

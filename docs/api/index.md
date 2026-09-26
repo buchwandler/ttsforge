@@ -30,9 +30,8 @@ status = app.projects.status(created.project)
 print(status.next_actions)
 ```
 
-The local Readio checkout is required for this API until a compatible public release is
-published. See [Installation](../installation.md) for the development setup and
-compatibility gate.
+Readio `>=0.3.1` provides this public API. See [Installation](../installation.md) for
+the standard package install and optional source-development setup.
 
 ## Audiobook export
 

@@ -28,13 +28,13 @@ def _metadata() -> dict[str, object]:
     return tomllib.loads((PROJECT / "pyproject.toml").read_text(encoding="utf-8"))
 
 
-def test_readio_is_declared_without_a_speculative_version_floor() -> None:
+def test_readio_requirement_uses_the_released_preflight_api_floor() -> None:
     dependencies = _metadata()["project"]["dependencies"]
     readio = [
         item for item in dependencies if item.split("[", 1)[0].startswith("readio")
     ]
 
-    assert readio == ["readio"]
+    assert readio == ["readio>=0.3.1"]
 
 
 def test_ttsforge_does_not_declare_backend_or_rendering_dependencies() -> None:

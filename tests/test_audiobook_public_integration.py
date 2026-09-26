@@ -96,4 +96,4 @@ def test_public_inspection_and_project_creation_persist_chapter_scope(
     assert setup.selected_chapters == (2,)
     assert reopened.project == setup.project
     assert reopened.created is False
-    assert reopened.selected_chapters == ()
+    assert reopened.selected_chapters == (2,)

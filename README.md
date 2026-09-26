@@ -14,11 +14,9 @@ TTSForge does not implement or bundle a parallel speech engine. Use Readio's pub
 application API and its engine integrations; TTSForge maps audiobook choices to those
 services.
 
-> [!IMPORTANT] The Readio API required by this migration is not yet available in a
-> compatible PyPI release. The published Readio `v0.2.4` does not provide the required
-> audiobook API. For now, use the local Readio checkout as described in
-> [Installation](docs/installation.md). The published-version pin and clean PyPI install
-> check remain blocked; no minimum version is guessed.
+TTSForge requires Readio `>=0.3.1`, the first published release with the required public
+audiobook API. Install TTSForge normally, then add a Readio engine integration as
+needed; see [Installation](docs/installation.md) for setup and development instructions.
 
 ## What it does
 
@@ -32,13 +30,19 @@ services.
 
 ## Quick start
 
-Once a compatible Readio release is available, install TTSForge and an engine through
-Readio's optional extras. During development, install the sibling Readio checkout; see
-[Installation](docs/installation.md).
+Install TTSForge and a Readio engine integration using the Readio extra for your
+platform; see [Installation](docs/installation.md) for details. Then run:
 
 ```bash
 ttsforge convert novel.epub
 ```
+
+In an interactive terminal, a new project shows the detected chapters, prompts for a
+selection, then displays Readio's effective audiobook settings before confirmation.
+Build progress updates live by chapter. Reusing a project uses its saved chapter scope
+without prompting again. For automation, specify `--chapters` and use `--yes` to skip
+confirmation, or use `--non-interactive` to disable all prompts; without an explicit
+selection, non-interactive runs include all chapters.
 
 Useful follow-up commands:
 
@@ -89,7 +93,7 @@ separately. Backend-specific commands such as `read`, `sample`, `demo`, `downloa
 
 ## Documentation
 
-- [Installation and compatibility status](docs/installation.md)
+- [Installation](docs/installation.md)
 - [Quick start](docs/quickstart.md)
 - [CLI reference](docs/cli.md)
 - [Project and output lifecycle](docs/projects.md)

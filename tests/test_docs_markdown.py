@@ -23,30 +23,35 @@ def test_sphinx_enables_myst_markdown() -> None:
     assert "deflist" in config["myst_enable_extensions"]
 
 
-def test_readme_describes_readio_frontend_and_release_gate() -> None:
+def test_install_docs_describe_released_readio_floor() -> None:
     readme = (ROOT / "README.md").read_text(encoding="utf-8")
     installation = (DOCS / "installation.md").read_text(encoding="utf-8")
-    migration = (DOCS / "migration-readio.md").read_text(encoding="utf-8")
+    index = (DOCS / "index.md").read_text(encoding="utf-8")
+    testing = (DOCS / "testing.md").read_text(encoding="utf-8")
 
-    assert "audiobook-focused command-line frontend for [Readio]" in readme
-    assert "no minimum version is guessed" in readme
-    assert "compatible published pin" in installation
-    assert "A compatible release is not yet available on PyPI" in installation
-    assert "not Readio projects" in migration
-    assert "--fresh" in migration
-    assert (
-        "`read`, `sample`, `demo`, `download`, and `phonemes` are removed" in migration
+    for document in (readme, installation, index, testing):
+        assert "Readio `>=0.3.1`" in document
+        assert "not yet available" not in document
+    assert "Readio checkout is not required for a normal installation" in " ".join(
+        installation.split()
     )
+    assert "python -m pip install ttsforge" in installation
 
 
-def test_user_docs_explain_project_reuse_and_removed_backend_examples() -> None:
-    projects = (DOCS / "projects.md").read_text(encoding="utf-8")
+def test_user_docs_cover_interaction_progress_and_persisted_chapter_scope() -> None:
+    quickstart = (DOCS / "quickstart.md").read_text(encoding="utf-8")
     cli = (DOCS / "cli.md").read_text(encoding="utf-8")
-    examples = (ROOT / "examples" / "README.md").read_text(encoding="utf-8")
+    projects = (DOCS / "projects.md").read_text(encoding="utf-8")
+    examples = " ".join(
+        (ROOT / "examples" / "README.md").read_text(encoding="utf-8").split()
+    )
     api = (DOCS / "api" / "index.md").read_text(encoding="utf-8")
 
-    assert "chapter scope" in projects
-    assert "Former TTSForge workspaces" in projects
-    assert "are no longer registered" in cli
+    assert "prompts for a selection" in quickstart
+    assert "--yes" in quickstart and "--non-interactive" in quickstart
+    assert "--model-source" in quickstart and "--quality" in quickstart
+    assert "--model MODEL" in cli and "--model-source SOURCE" in cli
+    assert "--non-interactive" in cli and "chapter-aware progress" in cli
+    assert "`--chapters` when reusing a project" in projects
     assert "no TTSForge examples that import PyKokoro" in examples
     assert "from readio.api import Readio" in api

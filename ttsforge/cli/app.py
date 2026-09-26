@@ -5,7 +5,7 @@ from __future__ import annotations
 import json
 import traceback
 from collections.abc import Callable
-from dataclasses import asdict
+from dataclasses import asdict, replace
 from pathlib import Path
 from typing import Annotated, TypeVar
 
@@ -27,10 +27,20 @@ from readio.api import (
 from rich.console import Console
 from rich.table import Table
 
-from ..audiobook import AudiobookConverter, ProjectSetup
+from ..audiobook import AudiobookConverter, ConversionPreflight, ProjectSetup
+from ..chapter_selection import format_chapter_numbers, parse_chapter_selection
 from ..options import AudiobookOptions
-from ..progress import RichReadioProgress
-from ..readio_backend import create_readio
+from ..progress import (
+    LineReadioProgress,
+    LiveReadioProgress,
+    NullReadioProgress,
+    ProgressRenderer,
+    RichReadioProgress,
+)
+from ..readio_backend import create_readio, synthesis_request
+from ..ui.chapters import chapter_table, choose_chapters
+from ..ui.interaction import InteractionMode, resolve_interaction_mode
+from ..ui.preflight import render_completion, render_preflight
 
 T = TypeVar("T")
 _output = Console(stderr=False, highlight=False)
@@ -90,9 +100,22 @@ def _run(action: Callable[[], T], *, debug: bool) -> T:
         raise typer.Exit(code=1) from exc
 
 
-def _converter(json_mode: bool) -> AudiobookConverter:
-    progress = RichReadioProgress(json_mode=json_mode)
-    return AudiobookConverter(on_event=progress)
+def _converter(
+    json_mode: bool,
+    progress: ProgressRenderer | None = None,
+) -> AudiobookConverter:
+    handler = (
+        progress if progress is not None else RichReadioProgress(json_mode=json_mode)
+    )
+    return AudiobookConverter(on_event=handler)
+
+
+def _progress_renderer(interaction: InteractionMode) -> ProgressRenderer:
+    if interaction.json:
+        return NullReadioProgress()
+    if interaction.live_progress:
+        return LiveReadioProgress()
+    return LineReadioProgress()
 
 
 def _readio() -> Readio:
@@ -118,6 +141,9 @@ def _options(
     voice: str | None,
     language: str | None,
     engine: str | None,
+    model: str | None = None,
+    model_source: str | None = None,
+    quality: str | None = None,
     speed: float | None,
     bitrate: str | None,
     target_lufs: float | None,
@@ -139,6 +165,9 @@ def _options(
         language=language,
         voice=voice,
         engine=engine,
+        model=model,
+        model_source=model_source,
+        quality=quality,
         speed=speed,
         bitrate=bitrate,
         target_lufs=target_lufs,
@@ -153,16 +182,52 @@ def _options(
 
 
 def _chapter_table(inspection: AudiobookInspection) -> Table:
-    table = Table("#", "Chapter", "Characters")
-    for chapter in inspection.chapters:
-        title = f"{'  ' * chapter.level}{chapter.title}"
-        table.add_row(str(chapter.number), title, f"{chapter.char_count:,}")
-    return table
+    return chapter_table(inspection)
 
 
-def _choose_chapters(inspection: AudiobookInspection) -> str:
-    _output.print(_chapter_table(inspection))
-    return typer.prompt("Chapters to include", default="all")
+def _choose_chapters(
+    inspection: AudiobookInspection,
+    *,
+    book_label: str | None = None,
+) -> str:
+    return choose_chapters(inspection, _output, book_label=book_label)
+
+
+def _book_label(inspection: AudiobookInspection) -> str:
+    title_value = inspection.metadata.get("title")
+    title = title_value if isinstance(title_value, str) else inspection.source.name
+    authors_value = inspection.metadata.get("authors")
+    if isinstance(authors_value, str):
+        author = authors_value
+    elif isinstance(authors_value, (tuple, list)):
+        author = ", ".join(name for name in authors_value if isinstance(name, str))
+    else:
+        author = ""
+    return f"{title} — {author}" if author else title
+
+
+def _validate_existing_selection(
+    requested: str | None,
+    inspection: AudiobookInspection,
+    setup: ProjectSetup,
+) -> None:
+    if requested is None:
+        return
+    requested_numbers = tuple(
+        index + 1
+        for index in parse_chapter_selection(requested, len(inspection.chapters))
+    )
+    if not requested_numbers:
+        raise ValueError("Chapter selection must include at least one chapter.")
+    if requested_numbers == setup.selected_chapters:
+        return
+    existing = format_chapter_numbers(setup.selected_chapters)
+    selected = format_chapter_numbers(requested_numbers)
+    raise ValueError(
+        f"Existing project uses chapters {existing}. --chapters {selected} cannot "
+        "modify the scope of an existing Readio project. Use --fresh or "
+        "--project PATH to create a new project with a different selection."
+    )
 
 
 def _json_dump(payload: object) -> None:
@@ -184,11 +249,17 @@ def convert(
     ] = None,
     interactive_chapters: Annotated[
         bool,
-        typer.Option("--interactive-chapters", help="Prompt to select chapters."),
+        typer.Option(
+            "--interactive-chapters",
+            help="Deprecated; interactive terminals now prompt automatically.",
+        ),
     ] = False,
     voice: Annotated[str | None, typer.Option("--voice")] = None,
     language: Annotated[str | None, typer.Option("--language")] = None,
     engine: Annotated[str | None, typer.Option("--engine")] = None,
+    model: Annotated[str | None, typer.Option("--model")] = None,
+    model_source: Annotated[str | None, typer.Option("--model-source")] = None,
+    quality: Annotated[str | None, typer.Option("--quality")] = None,
     speed: Annotated[float | None, typer.Option("--speed", min=0.5, max=2.0)] = None,
     bitrate: Annotated[str | None, typer.Option("--bitrate")] = None,
     target_lufs: Annotated[float | None, typer.Option("--target-lufs")] = None,
@@ -211,54 +282,116 @@ def convert(
         Path | None,
         typer.Option("--cover", exists=True, dir_okay=False),
     ] = None,
+    yes: Annotated[
+        bool,
+        typer.Option("-y", "--yes", help="Skip final confirmation."),
+    ] = False,
+    non_interactive: Annotated[
+        bool,
+        typer.Option("--non-interactive", help="Disable all prompts."),
+    ] = False,
     json_mode: Annotated[bool, typer.Option("--json")] = False,
     debug: Annotated[bool, typer.Option("--debug")] = False,
 ) -> None:
-    """Inspect a book and create or reuse its persistent Readio project."""
+    """Inspect, configure, and build an audiobook through Readio."""
+    del (
+        interactive_chapters
+    )  # Kept as a compatibility alias for automatic TTY behavior.
+    interaction = resolve_interaction_mode(
+        json_mode=json_mode,
+        assume_yes=yes,
+        force_non_interactive=non_interactive,
+    )
 
     def action() -> tuple[
         AudiobookInspection,
         ProjectSetup,
-        AudiobookExportResult | ProjectBuildResult,
+        ConversionPreflight,
+        AudiobookExportResult | ProjectBuildResult | None,
     ]:
-        _validate_output_format(output_format)
-        converter = _converter(json_mode)
-        inspection = converter.inspect(source)
-        selected_chapters = chapters
-        if interactive_chapters and selected_chapters is None:
-            selected_chapters = _choose_chapters(inspection)
-        options = _options(
-            source,
-            project=project,
-            chapters=selected_chapters or "all",
-            output=output,
-            output_format=output_format.lower(),
-            voice=voice,
-            language=language,
-            engine=engine,
-            speed=speed,
-            bitrate=bitrate,
-            target_lufs=target_lufs,
-            offline=offline,
-            refresh=refresh,
-            force=force,
-            fresh=fresh,
-            title=title,
-            author=author,
-            cover=cover,
-        )
-        setup = converter.create_or_open_project(options, inspection=inspection)
-        result = converter.build_and_export(setup.project, options)
-        return inspection, setup, result
+        progress = _progress_renderer(interaction)
+        try:
+            _validate_output_format(output_format)
+            converter = _converter(interaction.json, progress=progress)
+            inspection = converter.inspect(source)
+            options = _options(
+                source,
+                project=project,
+                chapters=chapters if chapters is not None else "all",
+                output=output,
+                output_format=output_format.lower(),
+                voice=voice,
+                language=language,
+                engine=engine,
+                model=model,
+                model_source=model_source,
+                quality=quality,
+                speed=speed,
+                bitrate=bitrate,
+                target_lufs=target_lufs,
+                offline=offline,
+                refresh=refresh,
+                force=force,
+                fresh=fresh,
+                title=title,
+                author=author,
+                cover=cover,
+            )
+            existing = converter.find_project(options)
+            if existing is not None:
+                setup = converter.create_or_open_project(
+                    options,
+                    inspection=inspection,
+                    existing_project=existing,
+                    project_checked=True,
+                )
+                _validate_existing_selection(chapters, inspection, setup)
+            else:
+                if interaction.interactive and chapters is None:
+                    options = replace(
+                        options,
+                        chapters=_choose_chapters(
+                            inspection, book_label=_book_label(inspection)
+                        ),
+                    )
+                setup = converter.create_or_open_project(
+                    options, inspection=inspection, project_checked=True
+                )
 
-    inspection, setup, result = _run(action, debug=debug)
-    if json_mode:
+            progress.set_chapters(setup.chapters)
+            request = synthesis_request(options)
+            preflight = converter.preflight(
+                setup, inspection, options, synthesis=request
+            )
+            progress.set_synthesis(preflight.synthesis)
+            if not interaction.json:
+                render_preflight(preflight, _output)
+            if interaction.confirm and not typer.confirm(
+                "Create this audiobook?", default=True
+            ):
+                _output.print("Cancelled; the Readio project remains available.")
+                return inspection, setup, preflight, None
+
+            result = converter.build_and_export(
+                setup.project,
+                options,
+                synthesis=preflight.synthesis_request,
+            )
+            return inspection, setup, preflight, result
+        finally:
+            progress.close()
+
+    _inspection, setup, preflight, result = _run(action, debug=debug)
+    if result is None:
+        return
+    if interaction.json:
         _json_dump(
             {
                 "source": str(source),
                 "project": str(setup.project.root),
                 "created": setup.created,
                 "selected_chapters": list(setup.selected_chapters),
+                "synthesis": asdict(preflight.synthesis),
                 "output": str(result.output_path) if result.output_path else None,
                 "format": (
                     result.format
@@ -269,20 +402,7 @@ def convert(
             }
         )
         return
-    _output.print(f"Book: {source}")
-    _output.print(f"Project: {setup.project.root}")
-    if result.output_path:
-        _output.print(f"Output: {result.output_path}")
-    if setup.created:
-        _output.print(
-            "Created Readio project with chapters: "
-            + ", ".join(map(str, setup.selected_chapters))
-        )
-    else:
-        _output.print(
-            "Reusing existing Readio project; its chapter selection is persistent."
-        )
-    _output.print(f"Available chapters: {len(inspection.chapters)}")
+    render_completion(preflight, _output)
 
 
 @app.command("list")

@@ -15,14 +15,17 @@ ttsforge convert novel.epub
 
 | Option                          | Meaning                                                                        |
 | ------------------------------- | ------------------------------------------------------------------------------ |
-| `-o, --output PATH`             | Output file path. By default, use the source stem and selected format.         |
-| `-f, --format FORMAT`           | Output format; default `m4b`. Use `ttsforge formats` to see available formats. |
+| `-o, --output PATH`             | Output file path; defaults to the source stem and selected format.             |
+| `-f, --format FORMAT`           | Output format; default `m4b`. Use `ttsforge formats` for available formats.    |
 | `--project PATH`                | Project directory; default is `<source-stem>.readio` beside the EPUB.          |
-| `--chapters SELECTION`          | Initial project chapter scope, such as `1-5`, `1,3,5`, or `all`.               |
-| `--interactive-chapters`        | Prompt for the initial chapter selection.                                      |
+| `--chapters SELECTION`          | Chapter scope for a new project, such as `1-5`, `1,3,5`, or `all`.             |
+| `--interactive-chapters`        | Deprecated compatibility flag; interactive terminals now prompt automatically. |
 | `--voice VOICE`                 | Engine voice/selector supported by Readio.                                     |
 | `--language LANG`               | Synthesis language/profile override.                                           |
 | `--engine ENGINE`               | Readio synthesis engine.                                                       |
+| `--model MODEL`                 | Model selector forwarded to Readio.                                            |
+| `--model-source SOURCE`         | Model-source selector forwarded to Readio.                                     |
+| `--quality QUALITY`             | Quality value forwarded to Readio.                                             |
 | `--speed FLOAT`                 | Synthesis speed from `0.5` to `2.0`.                                           |
 | `--bitrate VALUE`               | Export bitrate where the selected format supports it.                          |
 | `--target-lufs FLOAT`           | Composition loudness target.                                                   |
@@ -31,7 +34,28 @@ ttsforge convert novel.epub
 | `--cover PATH`                  | Explicit cover image for audiobook export.                                     |
 | `--force`                       | Ask Readio to replace an existing output it owns.                              |
 | `--fresh`                       | Create a separate project and preserve the existing one.                       |
-| `--json`                        | Emit a JSON result.                                                            |
+| `-y, --yes`                     | Skip final confirmation; does not disable chapter selection prompts.           |
+| `--non-interactive`             | Disable all prompts.                                                           |
+| `--json`                        | Emit one JSON result without prompts or human-readable progress.               |
+
+## Conversion interaction and progress
+
+When stdin, stdout, and stderr are terminals, conversion is interactive unless `--json`
+or `--non-interactive` is selected. A new project without `--chapters` shows the
+detected chapter table and prompts for a selection. An existing project uses its saved
+chapter scope and does not prompt again. TTSForge displays a preflight summary with
+Readio's effective synthesis resolution, then asks for confirmation (default yes).
+`--yes` skips this confirmation only; it does not skip automatic chapter selection.
+
+For a new project in non-interactive mode, chapter selection defaults to `all` unless
+`--chapters` is explicit. JSON mode never prompts or emits progress prose on stdout; it
+emits one JSON result. Existing projects keep their persisted scope. If an explicit
+`--chapters` value conflicts with that saved scope, conversion fails with guidance to
+use `--fresh` or another `--project` path.
+
+A TTY conversion uses a live, chapter-aware progress display. Redirected/non-interactive
+runs print milestone lines rather than every segment; JSON mode has no human-readable
+progress.
 
 Chapter selection is project scope: it is persisted when the project is first created.
 Reusing a project does not replace its saved chapter scope. Use another `--project` or

@@ -5,10 +5,9 @@ persistent project lifecycle, synthesis engines, composition, reuse, and exports
 TTSForge presents an EPUB audiobook workflow and maps choices to Readio's public
 services.
 
-> **Compatibility notice:** The Readio API required by TTSForge is not yet available in
-> a compatible PyPI release. Use the local Readio checkout for development. The
-> published-version pin and clean-install checks are blocked until a compatible release
-> exists. See [Installation](installation.md).
+TTSForge requires Readio `>=0.3.1`, whose public API supplies its audiobook project,
+synthesis preflight, and export workflows. See [Installation](installation.md) for user
+and development setup.
 
 ```{toctree}
 :maxdepth: 2

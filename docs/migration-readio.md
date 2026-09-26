@@ -6,11 +6,15 @@ owns projects, planning, synthesis, composition, resumability, invalidation, and
 
 ## Compatibility and installation
 
-The required Readio API is available in the local development checkout, but not in the
-currently published Readio `v0.2.4`. Install the sibling Readio checkout as described in
-[Installation](installation.md). The published Readio version floor and clean PyPI
-install test remain blocked until a compatible release is published. Do not guess or pin
-an unreleased version.
+TTSForge requires Readio `>=0.3.1`. Install the published package with:
+
+```bash
+python -m pip install ttsforge
+```
+
+Install a supported Readio engine extra if you need synthesis. A sibling Readio checkout
+is needed only when developing against Readio source; see
+[Installation](installation.md).
 
 ## What changes
 

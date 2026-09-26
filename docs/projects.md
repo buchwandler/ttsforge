@@ -45,8 +45,18 @@ create another project with `--project` or use `--fresh`:
 ttsforge convert novel.epub --chapters 1-3 --fresh
 ```
 
-`--interactive-chapters` prompts for an initial selection. `list` and `info` inspect the
-source EPUB without creating a project.
+When an interactive terminal creates a new project without explicit `--chapters`,
+TTSForge shows the detected chapters and prompts for the initial selection
+automatically. In non-TTY or `--non-interactive` mode, it defaults to all chapters
+unless a selection was provided. The deprecated `--interactive-chapters` flag is no
+longer needed.
+
+A reused project keeps its persisted chapter scope and does not prompt again. If you
+pass `--chapters` when reusing a project, the selection must match the saved scope;
+TTSForge rejects a conflict rather than silently changing or ignoring it. Use another
+`--project` path or `--fresh` to create a project for a different selection. The
+preflight view shows the exact persisted chapters. `list` and `info` inspect the source
+EPUB without creating a project.
 
 ## Fresh projects and outputs
 

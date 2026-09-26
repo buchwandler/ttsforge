@@ -1,7 +1,8 @@
 # Quick start
 
-Install a working local Readio checkout and TTSForge first; the published Readio release
-does not yet contain TTSForge's required API. See [Installation](installation.md).
+Install TTSForge with Readio `>=0.3.1`, then install a supported Readio engine extra if
+you want to synthesize speech. See [Installation](installation.md) for platform and
+development instructions.
 
 ## Inspect and convert
 
@@ -24,22 +25,23 @@ reusable work.
 
 ## Select chapters
 
-Choose the chapter scope when the project is first created:
+For a new project, an interactive terminal automatically displays the detected chapters
+and prompts for a selection; no extra flag is required. Use `--chapters` to select
+explicitly and skip that prompt:
 
 ```bash
 ttsforge convert novel.epub --chapters 1-5
 ```
 
-Use `--interactive-chapters` to choose from a prompt. The selected chapters belong to
-the persistent project; changing the selection later requires a separate project, for
-example:
+The selected scope is saved with the project. Reusing it does not ask for chapters
+again, and a conflicting `--chapters` value is rejected rather than silently ignored.
+Use `--project` or `--fresh` to create another project with a different selection.
+`--interactive-chapters` is deprecated; normal TTY behavior is automatic.
 
-```bash
-ttsforge convert novel.epub --chapters 1-5 --fresh
-```
-
-See [Projects and outputs](projects.md) for how `--fresh`, `--project`, and old TTSForge
-workspaces behave.
+When stdin, stdout, and stderr are not all terminals, or when `--non-interactive` is
+supplied, and selects all chapters unless `--chapters` was provided. `--yes` skips only
+the final confirmation; `--json` disables all prompts and human-readable progress. See
+[Projects and outputs](projects.md) for project scope and reuse details.
 
 ## Preview, plan, and status
 
@@ -64,13 +66,15 @@ ttsforge formats
 ttsforge convert novel.epub --format mp3 --output ./novel.mp3
 ```
 
-You can provide voice, language, engine, speed, bitrate, loudness, metadata, and cover
-choices on `convert`. Voice and model options are supplied by Readio's installed engines
-and catalog, not by a TTSForge-maintained voice list:
+You can set voice, language, engine, model, model source, quality, and speed, plus
+export bitrate, loudness, metadata, and cover. Readio resolves effective synthesis
+values; the preflight view shows those resolved values before you commit to the build.
+Model selectors and quality values are forwarded opaquely to Readio and installed
+engines:
 
 ```bash
 ttsforge voices --language en-us
-ttsforge convert novel.epub --voice af_heart --speed 1.1 --cover cover.jpg
+ttsforge convert novel.epub --voice af_heart --model kokoro-v1 --model-source github --quality fp32 --speed 1.1 --cover cover.jpg
 ```
 
 Run `ttsforge convert --help` for the complete options available in this build.

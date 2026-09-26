@@ -13,6 +13,9 @@ def test_required_public_api_symbols_are_available() -> None:
         "Readio",
         "ReadioEvent",
         "AudiobookInspection",
+        "AudiobookProjectDescription",
+        "AudiobookProjectChapter",
+        "SynthesisResolution",
         "AudiobookExportOptions",
         "AudiobookExportResult",
         "AUDIOBOOK_EXPORT_FORMAT",
@@ -26,8 +29,8 @@ def test_required_public_api_symbols_are_available() -> None:
     missing = sorted(name for name in required if not hasattr(readio_api, name))
     assert not missing, (
         "The installed Readio does not provide TTSForge's required public API: "
-        f"{', '.join(missing)}. Install the development Readio checkout; do not "
-        "infer a published minimum version until a compatible release exists."
+        f"{', '.join(missing)}. Install Readio 0.3.1 or newer "
+        "with TTSForge's dependencies."
     )
     assert readio_api.PUBLIC_API_VERSION == 1
 
@@ -61,11 +64,20 @@ def test_m4b_is_a_distinct_public_audiobook_export_contract() -> None:
 def test_public_services_support_composition_then_audiobook_export() -> None:
     request = readio_api.ProjectBuildRequest(
         target="composition",
-        synthesis=readio_api.SynthesisRequest(language="en-us", voice="af_heart"),
+        synthesis=readio_api.SynthesisRequest(
+            language="en-us",
+            voice="af_heart",
+            model="kokoro-v1",
+            model_source="github",
+            quality="fp32",
+        ),
         composition=readio_api.CompositionOptions(target_lufs=-18.0),
     )
     assert request.target == "composition"
     assert request.synthesis.voice == "af_heart"
+    assert request.synthesis.model == "kokoro-v1"
+    assert request.synthesis.model_source == "github"
+    assert request.synthesis.quality == "fp32"
 
     app = readio_api.Readio()
     assert callable(app.audiobooks.inspect)
@@ -73,4 +85,6 @@ def test_public_services_support_composition_then_audiobook_export() -> None:
     assert callable(app.audiobooks.export)
     assert callable(app.projects.status)
     assert callable(app.projects.build)
+    assert callable(app.audiobooks.describe_project)
+    assert callable(app.projects.resolve_synthesis)
     assert callable(app.projects.preview)

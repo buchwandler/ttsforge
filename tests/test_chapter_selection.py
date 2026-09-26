@@ -1,6 +1,7 @@
 import pytest
 
 from ttsforge.chapter_selection import (
+    format_chapter_numbers,
     parse_chapter_selection,
     resolve_chapter_selection,
 )
@@ -37,3 +38,14 @@ def test_resolve_chapter_selection_skips_from_included_range() -> None:
 
 def test_resolve_chapter_selection_can_skip_all_selected_chapters() -> None:
     assert resolve_chapter_selection("1-3", "all", 5) == []
+
+
+def test_format_chapter_numbers_uses_compact_canonical_ranges() -> None:
+    assert format_chapter_numbers((5, 6, 7, 9, 10)) == "5-7,9-10"
+    assert format_chapter_numbers((3, 1, 2, 2)) == "1-3"
+    assert format_chapter_numbers(()) == "none"
+
+
+def test_format_chapter_numbers_rejects_zero_and_negative_values() -> None:
+    with pytest.raises(ValueError, match=">= 1"):
+        format_chapter_numbers((0, 1))

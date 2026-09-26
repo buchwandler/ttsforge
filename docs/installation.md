@@ -4,16 +4,11 @@ TTSForge is an audiobook frontend for Readio. Readio supplies persistent project
 synthesis engines, and export services; install engine integrations as Readio extras
 rather than installing a TTSForge-specific backend.
 
-## Compatibility gate
+## Requirements
 
-TTSForge requires Readio's public application API v1, including persistent projects and
-the audiobook-specific M4B export service. The published Readio `v0.2.4` predates these
-APIs. A compatible release is not yet available on PyPI.
-
-The project intentionally has no guessed Readio version floor. A compatible published
-pin, clean PyPI installation, `pip check`, and installed-package CLI smoke test remain
-blocked until the required API is actually released. Do not treat `pip install ttsforge`
-from the current PyPI dependency set as a verified installation.
+TTSForge requires Readio `>=0.3.1`, which provides the public audiobook project,
+synthesis preflight, and M4B export APIs used by the CLI. This is the declared
+dependency floor; a local Readio checkout is not required for a normal installation.
 
 ## Development installation
 
@@ -63,18 +58,19 @@ ttsforge list novel.epub
 ttsforge convert novel.epub
 ```
 
-## Later PyPI installation
+## Install from PyPI
 
-Once a compatible Readio release is published and the release gate is cleared, the
-intended user installation is:
+Install TTSForge with its declared Readio dependency floor:
 
 ```bash
 python -m pip install ttsforge
+# Optional example: install Readio's Kokoro engine extra
+python -m pip install "readio[kokoro]"
 ```
 
-Then install a Readio engine extra if needed, using the package extra documented by that
-compatible Readio release. The exact minimum Readio version will be recorded here only
-after it exists and has been tested; it is deliberately unspecified for now.
+Then install a Readio engine extra if needed, using the package extra documented for
+that engine and platform. `ttsforge doctor` and `ttsforge formats` report the active
+environment.
 
 ## Supported Python
 

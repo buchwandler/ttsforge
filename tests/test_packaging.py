@@ -24,10 +24,10 @@ def test_setuptools_scm_has_intentional_fallback() -> None:
     assert _project()["tool"]["setuptools_scm"]["fallback_version"] == "0.4.0"
 
 
-def test_readio_requirement_does_not_guess_a_minimum_version() -> None:
+def test_readio_requirement_uses_the_released_preflight_api_floor() -> None:
     dependencies = _project()["project"]["dependencies"]
-    assert "readio" in dependencies
-    assert not any(item.startswith(("readio>", "readio=")) for item in dependencies)
+    assert "readio>=0.3.1" in dependencies
+    assert "readio" not in dependencies
 
 
 def test_removed_backend_modules_are_not_part_of_the_source_package() -> None:

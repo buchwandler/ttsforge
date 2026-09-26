@@ -49,9 +49,10 @@ project-local behavior—use
 ## Command-line overrides and projects
 
 `convert` and `preview` accept per-operation options such as `--voice`, `--language`,
-`--engine`, `--speed`, and `--target-lufs`. These are mapped to Readio public request
-types; they do not create a second TTSForge config schema. Persistent project state and
-Readio's rules for effective settings determine reuse. Refer to the
+`--engine`, `--model`, `--model-source`, `--quality`, `--speed`, and `--target-lufs`.
+These are mapped to Readio public request types; they do not create a second TTSForge
+config schema. Persistent project state and Readio's rules for effective settings
+determine reuse. Refer to the
 [Readio project guide](https://github.com/buchwandler/readio/blob/main/docs/projects.md)
 before relying on project/global setting precedence.
 

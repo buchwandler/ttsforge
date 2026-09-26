@@ -37,6 +37,9 @@ def _options() -> AudiobookOptions:
         language="en-us",
         voice="af_heart",
         engine="kokoro",
+        model="kokoro-v1",
+        model_source="github",
+        quality="fp32",
         speed=1.1,
         bitrate="128k",
         target_lufs=-18.0,
@@ -53,8 +56,13 @@ def test_synthesis_and_composition_options_map_to_public_readio_types() -> None:
     options = _options()
 
     synthesis = synthesis_request(options)
+    shared = project_build_request(options, target="composition", synthesis=synthesis)
+    assert shared.synthesis is synthesis
     assert synthesis.language == "en-us"
     assert synthesis.voice == "af_heart"
+    assert synthesis.model == "kokoro-v1"
+    assert synthesis.model_source == "github"
+    assert synthesis.quality == "fp32"
     assert synthesis.engine == "kokoro"
     assert synthesis.speed == 1.1
     assert synthesis.offline is True

@@ -33,6 +33,9 @@ def synthesis_request(options: AudiobookOptions) -> SynthesisRequest:
     """Translate the small audiobook UX model to Readio synthesis options."""
     return SynthesisRequest(
         language=options.language,
+        model=options.model,
+        model_source=options.model_source,
+        quality=options.quality,
         voice=options.voice,
         engine=options.engine,
         speed=options.speed,
@@ -75,19 +78,21 @@ def project_build_request(
     options: AudiobookOptions,
     *,
     target: BuildTarget,
+    synthesis: SynthesisRequest | None = None,
 ) -> ProjectBuildRequest:
     """Build the public project request for composition or generic export."""
+    resolved_synthesis = synthesis or synthesis_request(options)
     if target == "composition":
         return ProjectBuildRequest(
             target=target,
             selection="all",
-            synthesis=synthesis_request(options),
+            synthesis=resolved_synthesis,
             composition=composition_options(options),
         )
     return ProjectBuildRequest(
         target=target,
         selection="all",
-        synthesis=synthesis_request(options),
+        synthesis=resolved_synthesis,
         composition=composition_options(options),
         export=generic_export_options(options),
     )

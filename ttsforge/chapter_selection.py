@@ -1,5 +1,7 @@
 from __future__ import annotations
 
+from collections.abc import Iterable
+
 
 def parse_chapter_selection(selection: str, total_chapters: int) -> list[int]:
     """Parse chapter selection string into list of 0-based chapter indices.
@@ -73,6 +75,28 @@ def parse_chapter_selection(selection: str, total_chapters: int) -> list[int]:
             indices.add(chapter_num - 1)
 
     return sorted(indices)
+
+
+def format_chapter_numbers(chapters: Iterable[int]) -> str:
+    """Format 1-based chapter numbers as compact, canonical ranges."""
+    numbers = sorted(set(chapters))
+    if not numbers:
+        return "none"
+    if numbers[0] < 1:
+        raise ValueError("Chapter numbers must be >= 1.")
+
+    ranges: list[str] = []
+    start = previous = numbers[0]
+    for number in numbers[1:]:
+        if number < 1:
+            raise ValueError("Chapter numbers must be >= 1.")
+        if number == previous + 1:
+            previous = number
+            continue
+        ranges.append(str(start) if start == previous else f"{start}-{previous}")
+        start = previous = number
+    ranges.append(str(start) if start == previous else f"{start}-{previous}")
+    return ",".join(ranges)
 
 
 def resolve_chapter_selection(

@@ -12,6 +12,7 @@ from readio.api import (
     SUPPORTED_AUDIOBOOK_FORMATS,
     AudiobookExportResult,
     AudiobookInspection,
+    AudiobookProjectChapter,
     PreviewRequest,
     PreviewResult,
     ProjectBuildRequest,
@@ -22,6 +23,8 @@ from readio.api import (
     ProjectStatus,
     Readio,
     ReadioEvent,
+    SynthesisRequest,
+    SynthesisResolution,
 )
 
 from .chapter_selection import parse_chapter_selection
@@ -42,7 +45,32 @@ class ProjectSetup:
 
     project: ProjectRef
     created: bool
-    selected_chapters: tuple[int, ...] = ()
+    chapters: tuple[AudiobookProjectChapter, ...] = ()
+
+    @property
+    def selected_chapters(self) -> tuple[int, ...]:
+        return tuple(chapter.number for chapter in self.chapters)
+
+
+@dataclass(frozen=True, slots=True)
+class ConversionPreflight:
+    """Resolved, user-facing audiobook setup prepared before synthesis."""
+
+    source: Path
+    title: str | None
+    author: str | None
+    project: ProjectRef
+    project_created: bool
+    available_chapters: int
+    chapters: tuple[AudiobookProjectChapter, ...]
+    output: Path | None
+    format: str
+    synthesis_request: SynthesisRequest
+    synthesis: SynthesisResolution
+    bitrate: str | None
+    target_lufs: float | None
+    offline: bool
+    refresh: bool
 
 
 class LegacyWorkspaceError(ValueError):
@@ -71,11 +99,34 @@ class AudiobookConverter:
         """Return the stable sibling project path for an EPUB."""
         return source.with_suffix(".readio")
 
+    def find_project(self, options: AudiobookOptions) -> ProjectRef | None:
+        """Find the selected project, refusing an opaque legacy directory."""
+        if options.fresh:
+            return None
+        project_path = options.project or self.default_project_path(options.source)
+        try:
+            existing = self._app.projects.find(project_path)
+        except ProjectFormatError as exc:
+            raise LegacyWorkspaceError(
+                "This directory is not a Readio project and cannot resume a "
+                "legacy TTSForge workspace. Start a new Readio project with "
+                "--fresh."
+            ) from exc
+        if existing is None and project_path.exists():
+            raise LegacyWorkspaceError(
+                f"The existing directory is not a Readio project: {project_path}. "
+                "Legacy TTSForge workspaces cannot be resumed; use --fresh "
+                "to create a separate Readio project."
+            )
+        return existing
+
     def create_or_open_project(
         self,
         options: AudiobookOptions,
         *,
         inspection: AudiobookInspection | None = None,
+        existing_project: ProjectRef | None = None,
+        project_checked: bool = False,
     ) -> ProjectSetup:
         """Create an EPUB project once, then reuse its persisted chapter scope."""
         project_path = options.project or self.default_project_path(options.source)
@@ -83,26 +134,17 @@ class AudiobookConverter:
             project_path = self._fresh_project_path(project_path)
 
         if not options.fresh:
-            try:
-                existing = self._app.projects.find(project_path)
-            except ProjectFormatError as exc:
-                raise LegacyWorkspaceError(
-                    "This directory is not a Readio project and cannot resume a "
-                    "legacy TTSForge workspace. Start a new Readio project with "
-                    "--fresh."
-                ) from exc
+            existing = (
+                existing_project if project_checked else self.find_project(options)
+            )
             if existing is not None:
+                project = self._app.projects.open(existing.root)
+                description = self._app.audiobooks.describe_project(project)
                 return ProjectSetup(
-                    project=self._app.projects.open(project_path),
+                    project=project,
                     created=False,
+                    chapters=description.chapters,
                 )
-            if project_path.exists():
-                raise LegacyWorkspaceError(
-                    f"The existing directory is not a Readio project: {project_path}. "
-                    "Legacy TTSForge workspaces cannot be resumed; use --fresh "
-                    "to create a separate Readio project."
-                )
-
         if inspection is None:
             inspection = self.inspect(options.source)
         if options.chapters.strip().lower() == "all":
@@ -123,7 +165,46 @@ class AudiobookConverter:
         return ProjectSetup(
             project=created.project,
             created=True,
-            selected_chapters=tuple(chapter.number for chapter in created.chapters),
+            chapters=created.chapters,
+        )
+
+    def preflight(
+        self,
+        setup: ProjectSetup,
+        inspection: AudiobookInspection,
+        options: AudiobookOptions,
+        *,
+        synthesis: SynthesisRequest | None = None,
+    ) -> ConversionPreflight:
+        """Resolve and collect the exact settings planned for the build."""
+        request = synthesis if synthesis is not None else synthesis_request(options)
+        resolved = self._app.projects.resolve_synthesis(setup.project, request)
+        title_value = inspection.metadata.get("title")
+        title = title_value if isinstance(title_value, str) else None
+        authors_value = inspection.metadata.get("authors")
+        if isinstance(authors_value, str):
+            author = authors_value
+        elif isinstance(authors_value, (tuple, list)):
+            authors = [name for name in authors_value if isinstance(name, str)]
+            author = ", ".join(authors) or None
+        else:
+            author = None
+        return ConversionPreflight(
+            source=options.source,
+            title=title,
+            author=author,
+            project=setup.project,
+            project_created=setup.created,
+            available_chapters=len(inspection.chapters),
+            chapters=setup.chapters,
+            output=options.output,
+            format=options.format.lower(),
+            synthesis_request=request,
+            synthesis=resolved,
+            bitrate=options.bitrate,
+            target_lufs=options.target_lufs,
+            offline=options.offline,
+            refresh=options.refresh,
         )
 
     def status(self, project: ProjectRef | Path) -> ProjectStatus:
@@ -138,6 +219,8 @@ class AudiobookConverter:
         self,
         project: ProjectRef | Path,
         options: AudiobookOptions,
+        *,
+        synthesis: SynthesisRequest | None = None,
     ) -> AudiobookExportResult | ProjectBuildResult:
         """Build the project and export with the format-specific public API."""
         output_format = options.format.lower()
@@ -145,7 +228,10 @@ class AudiobookConverter:
             if output_format != AUDIOBOOK_EXPORT_FORMAT:
                 raise ValueError(f"Unsupported audiobook format: {output_format}")
             self._app.projects.build(
-                project, project_build_request(options, target="composition")
+                project,
+                project_build_request(
+                    options, target="composition", synthesis=synthesis
+                ),
             )
             return self._app.audiobooks.export(
                 project, audiobook_export_options(options)
@@ -157,7 +243,8 @@ class AudiobookConverter:
                 f"choose from {', '.join(supported)}."
             )
         return self._app.projects.build(
-            project, project_build_request(options, target="export")
+            project,
+            project_build_request(options, target="export", synthesis=synthesis),
         )
 
     def preview(
@@ -180,9 +267,10 @@ class AudiobookConverter:
         options: AudiobookOptions,
         *,
         target: BuildTarget,
+        synthesis: SynthesisRequest | None = None,
     ) -> ProjectBuildRequest:
-        """Map a TTSForge audiobook choice to Readio's project build request."""
-        return project_build_request(options, target=target)
+        """Map an audiobook choice and optional shared request to Readio."""
+        return project_build_request(options, target=target, synthesis=synthesis)
 
     @staticmethod
     def _fresh_project_path(project_path: Path) -> Path:

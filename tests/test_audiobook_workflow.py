@@ -12,9 +12,11 @@ from readio.api import (
     AudiobookProjectChapter,
     AudiobookProjectResult,
     ProjectRef,
+    SynthesisRequest,
+    SynthesisResolution,
 )
 
-from ttsforge.audiobook import AudiobookConverter, LegacyWorkspaceError
+from ttsforge.audiobook import AudiobookConverter, LegacyWorkspaceError, ProjectSetup
 from ttsforge.options import AudiobookOptions
 
 
@@ -101,6 +103,16 @@ def test_existing_project_is_opened_and_not_reinitialized(tmp_path: Path) -> Non
     created: list[Path] = []
     app = SimpleNamespace(
         audiobooks=SimpleNamespace(
+            describe_project=lambda project: SimpleNamespace(
+                chapters=(
+                    AudiobookProjectChapter(
+                        number=2,
+                        scope_id="chapter-0002",
+                        title="Second",
+                        level=0,
+                    ),
+                )
+            ),
             inspect=lambda path: pytest.fail(
                 "existing project should not reinspect EPUB"
             ),
@@ -118,7 +130,7 @@ def test_existing_project_is_opened_and_not_reinitialized(tmp_path: Path) -> Non
 
     assert setup.project is project
     assert setup.created is False
-    assert setup.selected_chapters == ()
+    assert setup.selected_chapters == (2,)
     assert opened == [project_path]
     assert created == []
 
@@ -201,3 +213,49 @@ def test_status_and_preview_delegate_to_project_service(tmp_path: Path) -> None:
     assert observed["status_target"] is project
     assert observed["preview_target"] is project
     assert observed["preview_request"].selection == "first:3"  # type: ignore[union-attr]
+
+
+def test_preflight_resolves_and_retains_one_shared_synthesis_request(
+    tmp_path: Path,
+) -> None:
+    source = tmp_path / "book.epub"
+    project = _project(tmp_path / "book.readio")
+    request = SynthesisRequest(language="en-us", voice="af_heart")
+    resolution = SynthesisResolution(
+        engine="pykokoro",
+        language="en-us",
+        voice="af_heart",
+        model="kokoro-v1",
+        model_source="github",
+        quality="fp32",
+        speed=1.1,
+        unit="paragraph",
+        pause_mode="sentence",
+        voice_level=None,
+    )
+    observed: list[tuple[object, object]] = []
+
+    def resolve(target: object, synthesis: object) -> SynthesisResolution:
+        observed.append((target, synthesis))
+        return resolution
+
+    converter = AudiobookConverter(
+        app=SimpleNamespace(projects=SimpleNamespace(resolve_synthesis=resolve))
+    )
+    chapters = (
+        AudiobookProjectChapter(number=2, scope_id="scope-2", title="Second", level=0),
+    )
+    setup = ProjectSetup(project=project, created=False, chapters=chapters)
+    options = AudiobookOptions(source=source, output=tmp_path / "book.m4b")
+
+    preflight = converter.preflight(
+        setup, _inspection(source), options, synthesis=request
+    )
+
+    assert observed == [(project, request)]
+    assert preflight.synthesis_request is request
+    assert preflight.synthesis is resolution
+    assert preflight.title == "Sample book"
+    assert preflight.author == "A. Writer"
+    assert preflight.chapters == chapters
+    assert tuple(chapter.number for chapter in preflight.chapters) == (2,)
