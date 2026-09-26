@@ -1,20 +1,29 @@
-# ttsforge Documentation
+# TTSForge documentation
 
-**ttsforge** is a command-line tool for converting EPUB files to audiobooks using Kokoro
-ONNX TTS (Text-to-Speech).
+TTSForge is an audiobook-focused command-line frontend for Readio. Readio owns the
+persistent project lifecycle, synthesis engines, composition, reuse, and exports;
+TTSForge presents an EPUB audiobook workflow and maps choices to Readio's public
+services.
+
+> **Compatibility notice:** The Readio API required by TTSForge is not yet available in
+> a compatible PyPI release. Use the local Readio checkout for development. The
+> published-version pin and clean-install checks are blocked until a compatible release
+> exists. See [Installation](installation.md).
 
 ```{toctree}
 :maxdepth: 2
 :caption: User Guide
 
 installation
-migration-v0.4
+migration-readio
+Historical migration notes <migration-v0.4>
 quickstart
 cli
-ssmd
+projects
 configuration
-filename_templates
 voices
+ssmd
+filename_templates
 testing
 changelog
 ```
@@ -26,69 +35,29 @@ changelog
 api/index
 ```
 
-## Features
-
-- **EPUB to Audiobook Conversion**: Convert EPUB files to M4B, MP3, WAV, FLAC, or OPUS
-  formats
-- **PyKokoro metadata voices**: Discover profile voices without a fixed TTSForge
-  whitelist
-- **SSMD Editing**: Edit intermediate SSMD files to fine-tune pronunciation and pacing
-- **Resumable Conversions**: Long audiobook conversions can be interrupted and resumed
-- **Phoneme Pre-tokenization**: Pre-process text to phonemes for faster batch
-  conversions
-- **Configurable Filename Templates**: Customize output filenames with book metadata
-- **Voice Blending**: Mix multiple voices for custom narration styles
-- **GPU Acceleration**: Optional GPU support for faster processing
-- **Chapter Selection**: Convert specific chapters or chapter ranges
-- **Explicit SSMD language spans**: Mark mixed-language text with `lang` annotations
-- **Streaming Read**: Real-time playback with the `read` command (optional audio extra)
-
-## Quick Example
+## Workflow overview
 
 ```bash
-# Install ttsforge
-pip install ttsforge
-
-# Convert an EPUB to audiobook (M4B format with chapters)
-ttsforge convert book.epub
-
-# Convert with a specific voice
-ttsforge convert book.epub -v am_adam
-
-# Convert specific chapters
-ttsforge convert book.epub --chapters 1-5
-
-# List available voices
-ttsforge voices
+ttsforge list novel.epub
+ttsforge preview novel.epub
+ttsforge convert novel.epub
+ttsforge status novel.readio
 ```
 
-## Supported Languages
+TTSForge creates or reuses a Readio project, normally `<book-stem>.readio` beside the
+EPUB. Readio manages project state and decides which work can be reused. M4B is produced
+through Readio's audiobook export service; generic formats use its project export
+service.
 
-ttsforge supports 10 languages with native TTS voices (including German):
-
-- **American English** (a)
-- **British English** (b)
-- **German** (d)
-- **Spanish** (e)
-- **French** (f)
-- **Hindi** (h)
-- **Italian** (i)
-- **Japanese** (j)
-- **Brazilian Portuguese** (p)
-- **Mandarin Chinese** (z)
-
-## Requirements
-
-- Python 3.10 or later
-- ffmpeg (required for MP3/FLAC/OPUS/M4B output and chapter merging)
-- espeak-ng (for phonemization)
-- PyKokoro 0.9.4 with kokorog2p 0.9.5 and SSMD 0.8.7
-- ~330MB disk space for ONNX models (downloaded automatically)
-- sounddevice (optional, for playback features)
+See the [Readio API guide](https://github.com/buchwandler/readio/blob/main/docs/api.md)
+and [project guide](https://github.com/buchwandler/readio/blob/main/docs/projects.md)
+for service details. TTSForge deliberately does not duplicate Readio's internal project
+schema or engine documentation. For reproducible command-line recipes, see the
+[TTSForge examples](https://github.com/buchwandler/ttsforge/blob/main/examples/README.md).
 
 ## License
 
-ttsforge is released under the MIT License.
+TTSForge is released under the MIT License.
 
 ## Indices and tables
 

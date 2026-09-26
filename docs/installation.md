@@ -1,320 +1,83 @@
 # Installation
 
-This guide covers the installation of ttsforge and its dependencies.
+TTSForge is an audiobook frontend for Readio. Readio supplies persistent projects,
+synthesis engines, and export services; install engine integrations as Readio extras
+rather than installing a TTSForge-specific backend.
 
-## System Requirements
+## Compatibility gate
 
-- **Python**: 3.10 or later
-- **Operating System**: Linux, macOS, or Windows
-- **Disk Space**: ~330MB for ONNX models (downloaded automatically on first use)
+TTSForge requires Readio's public application API v1, including persistent projects and
+the audiobook-specific M4B export service. The published Readio `v0.2.4` predates these
+APIs. A compatible release is not yet available on PyPI.
 
-## Dependencies
+The project intentionally has no guessed Readio version floor. A compatible published
+pin, clean PyPI installation, `pip check`, and installed-package CLI smoke test remain
+blocked until the required API is actually released. Do not treat `pip install ttsforge`
+from the current PyPI dependency set as a verified installation.
 
-ttsforge requires the following external tools:
+## Development installation
 
-### AudioSig waveform primitives
-
-TTSForge depends directly on AudioSig `>=0.1.2,<0.2` for reusable NumPy waveform
-operations: duration-based silence generation and arithmetic-mean channel downmixing.
-NumPy remains a direct dependency for TTSForge arrays, composition, playback buffers,
-and bounded I/O buffers. SoundFile remains required for audio decoding and encoding;
-AudioSig does not replace TTSForge's file, FFmpeg, or audiobook orchestration layers.
-
-### PyKokoro, kokorog2p, and spaCy model policy
-
-The package requires PyKokoro `>=0.9.4,<0.10`, kokorog2p `>=0.9.5,<1.0`, SSMD
-`>=0.8.7,<0.9`, and phrasplit `>=0.3.7,<0.4`. TTSForge forwards document language and
-ONNX provider through the PyKokoro 0.9 pipeline. Omitted model and voice values use
-PyKokoro metadata discovery; explicit profiles, custom model paths, and voice databases
-remain supported.
-
-PyKokoro owns written-form preparation and language-aware model selection.
-Mixed-language changes must be explicit SSMD spans such as `[Welt]{lang="de"}`. TTSForge
-no longer provides automatic mixed-language detection, and the legacy mixed-language
-settings are rejected with migration guidance.
-
-The default `use_spacy=null` policy selects the highest compatible installed local model
-and falls back when none is installed; strict requests require a model.
-
-Users should not install `spokenform` separately for TTSForge. The compatible kokorog2p
-release owns its Spokenform and abbr2words constraints.
-
-Install one or more compatible local spaCy packages when strict behavior or higher
-quality automatic selection is wanted:
+For local development, check out TTSForge beside the Readio repository and install both
+editable. For Kokoro-backed synthesis, include Readio's `kokoro` extra:
 
 ```bash
-python -m spacy download en_core_web_lg
-```
-
-With multiple tiers installed, automatic conversion may use a different model after an
-environment change. The concrete model is recorded in state; an incompatible old run is
-rejected rather than mixing model identities. Use an explicit `spacy_model` or
-`spacy_model_size` to make a workflow reproducible.
-
-### ffmpeg (Required for MP3/FLAC/OPUS/M4B)
-
-ffmpeg is required for MP3/FLAC/OPUS/M4B output and chapter merging.
-
-**Termux (Android):**
-
-```bash
-pkg install ffmpeg
-```
-
-**Ubuntu/Debian:**
-
-```bash
-sudo apt-get install ffmpeg
-```
-
-**macOS (Homebrew):**
-
-```bash
-brew install ffmpeg
-```
-
-**Windows:**
-
-Download from <https://ffmpeg.org/download.html> and add it to `PATH`.
-
-### Optional: bundled ffmpeg via Python (not available on all platforms)
-
-If you cannot install a system ffmpeg, you can try the optional prebuilt binaries:
-
-```bash
-pip install "ttsforge[static_ffmpeg]"
-```
-
-### espeak-ng (Required for Phonemization)
-
-espeak-ng is used for text-to-phoneme conversion.
-
-**Ubuntu/Debian:**
-
-```bash
-sudo apt-get install espeak-ng
-```
-
-**macOS (Homebrew):**
-
-```bash
-brew install espeak-ng
-```
-
-**Windows:**
-
-Download from <https://github.com/espeak-ng/espeak-ng/releases>
-
-### Audio Playback (Optional)
-
-Audio playback features (`--play` flags and the `read` command) require `sounddevice`:
-
-```bash
-pip install "ttsforge[audio]"
-```
-
-Or install directly:
-
-```bash
-pip install sounddevice
-```
-
-### spaCy Models (Optional)
-
-spaCy is used for sentence splitting, name extraction, and spaCy-aware phonemization
-workflows. The base conversion does not require a local model in automatic mode:
-
-```bash
-pip install spacy
-python -m spacy download en_core_web_sm
-python -m spacy download en_core_web_md
-```
-
-## Installing ttsforge
-
-### From PyPI (Recommended)
-
-```bash
-pip install ttsforge
-```
-
-The base installation is provider-neutral. Install exactly one provider extra in the
-environment used for rendering. Provider-dependent modules are loaded only when audio
-rendering starts, so `import ttsforge`, `ttsforge --help`, and configuration/inspection
-commands work without model initialization.
-
-Provider extras (do not combine them in one environment):
-
-```bash
-pip install "ttsforge[cpu]"       # ONNX Runtime CPU
-pip install "ttsforge[gpu]"       # ONNX Runtime CUDA
-pip install "ttsforge[openvino]"  # ONNX Runtime OpenVINO
-pip install "ttsforge[directml]"  # ONNX Runtime DirectML
-pip install "ttsforge[coreml]"    # ONNX Runtime CoreML (macOS)
-```
-
-Optional non-provider extras:
-
-```bash
-# Audio playback (required for --play and read)
-pip install "ttsforge[audio]"
-
-# Bundled ffmpeg binaries
-pip install "ttsforge[static_ffmpeg]"
-```
-
-### From Source
-
-```bash
+# From a directory where both repositories will live
+git clone https://github.com/buchwandler/readio.git
 git clone https://github.com/buchwandler/ttsforge.git
 cd ttsforge
-pip install -e .
+
+python -m venv .venv
+. .venv/bin/activate                 # Windows: .venv\Scripts\activate
+python -m pip install --upgrade pip
+python -m pip install -e "../readio[kokoro]" -e ".[dev]"
 ```
 
-### Development Installation
+Readio also provides optional `piper` and `pocket` engine extras where those engines are
+supported. They are installed and diagnosed through Readio, not through
+TTSForge-specific backend extras. Consult the
+[Readio installation guide](https://github.com/buchwandler/readio/blob/main/docs/index.md)
+for engine requirements and platform-specific setup.
 
-For development with testing and linting tools:
+To install only TTSForge's development and test tools against the local Readio checkout,
+omit the engine extra:
 
 ```bash
-git clone https://github.com/buchwandler/ttsforge.git
-cd ttsforge
-pip install -e ".[dev]"
+python -m pip install -e ../readio -e ".[dev]"
 ```
 
-## ONNX Runtime Providers
-
-Select a provider with an alias or full runtime provider name. Install the matching
-provider extra in a fresh environment, and do not install multiple provider extras
-together. NNAPI and XNNPACK are runtime providers exposed by platform-specific builds
-rather than TTSForge installation extras:
+## Verify the environment
 
 ```bash
-pip install "ttsforge[cpu]"
-ttsforge config set runtime.provider cpu
-ttsforge sample "Provider test" --provider cpu
+ttsforge --help
+ttsforge doctor
+ttsforge engines
+ttsforge formats
 ```
 
-For a desktop build exposing OpenVINO:
+`doctor` reports Readio's detected runtimes, dependencies, paths, and available formats.
+Install an engine extra if no synthesis engine is runnable. For a real workflow, first
+inspect an EPUB and then create a project:
 
 ```bash
-pip install "ttsforge[openvino]"
-ttsforge config set runtime.provider openvino
-ttsforge sample "OpenVINO provider test" --provider openvino
+ttsforge list novel.epub
+ttsforge convert novel.epub
 ```
 
-For CUDA:
+## Later PyPI installation
+
+Once a compatible Readio release is published and the release gate is cleared, the
+intended user installation is:
 
 ```bash
-pip install "ttsforge[gpu]"
-ttsforge config set runtime.provider cuda
+python -m pip install ttsforge
 ```
 
-For Termux/Android, use the declared PyKokoro release with an ONNX Runtime build
-exposing NNAPI or XNNPACK:
+Then install a Readio engine extra if needed, using the package extra documented by that
+compatible Readio release. The exact minimum Readio version will be recorded here only
+after it exists and has been tested; it is deliberately unspecified for now.
 
-```bash
-ttsforge config \
-  --set model_source github \
-  --set model_variant v1.0 \
-  --set model_quality fp32 \
-  --set onnx_provider nnapi
-ttsforge config --show
-ttsforge download
-ttsforge sample "Termux provider test" --provider nnapi
-```
+## Supported Python
 
-Provider availability and the documented `ONNX_PROVIDER` environment override are
-handled by PyKokoro. With the required patched PyKokoro release, GitHub `v1.0` uses the
-embedded standard vocabulary and does not download Hugging Face `config.json`. NNAPI is
-not guaranteed; use a provider exposed by the installed Android ONNX Runtime build. Run
-`ttsforge doctor` to inspect the environment.
-
-## Memory diagnostics
-
-Set `TTSFORGE_MEMORY_DEBUG=1` to log RSS, peak RSS, available memory, and the effective
-ONNX provider before and after runner initialization, chapter synthesis, WAV writing,
-result release, state saves, final merging, and converter cleanup. Native allocators may
-retain pages at a high-water mark after audio release; this diagnostic does not claim a
-provider-native leak from RSS alone.
-
-## Mixed-Language Support
-
-Mixed-language changes must be explicit SSMD spans, for example `[Welt]{lang="de"}`.
-TTSForge does not automatically detect language changes. The legacy
-`use_mixed_language=true` setting and related CLI options are rejected with migration
-guidance.
-
-## Downloading Models
-
-ttsforge uses Kokoro ONNX models (~330MB total) which are downloaded automatically on
-first use. You can also download them proactively:
-
-```bash
-# Download models
-ttsforge download
-
-# Force re-download
-ttsforge download --force
-```
-
-Models are stored in:
-
-- Linux: `~/.cache/ttsforge/`
-- macOS: `~/Library/Caches/ttsforge/`
-- Windows: `%LOCALAPPDATA%\ttsforge\Cache\`
-
-## Verifying Installation
-
-Verify that ttsforge is installed correctly:
-
-```bash
-# Check version
-ttsforge --version
-
-# Show current configuration
-ttsforge config --show
-
-# Generate a sample audio file
-ttsforge sample "Hello, world!"
-```
-
-If the sample command succeeds and creates `sample.wav`, ttsforge is ready to use.
-
-## Troubleshooting
-
-### ffmpeg not found
-
-If you see "ffmpeg not found" errors when creating M4B files:
-
-1. Ensure ffmpeg is installed (see above)
-2. Verify it's in your PATH: `ffmpeg -version`
-3. On Windows, you may need to restart your terminal after installation
-
-### espeak-ng not found
-
-If phonemization fails:
-
-1. Ensure espeak-ng is installed (see above)
-2. On Linux, the library should be `libespeak-ng.so.1`
-3. On macOS with Homebrew, it's typically at `/opt/homebrew/lib/libespeak-ng.dylib`
-
-### Model download fails
-
-If model download fails:
-
-1. Check your internet connection
-2. Try downloading manually with `ttsforge download`
-3. Check disk space (~330MB required)
-4. The model directory can be found with `ttsforge config --show`
-
-### Requested provider unavailable
-
-If an explicitly requested provider is unavailable:
-
-1. Run `ttsforge config --show` and inspect the available, configured, and resolved
-   providers.
-2. Confirm the installed ONNX Runtime build exposes the requested provider.
-3. Use `--provider auto` or another provider reported as available.
-
-For CUDA specifically, ensure `onnxruntime-gpu` is installed (not just `onnxruntime`),
-verify CUDA is installed, and check CUDA compatibility with ONNX Runtime.
+TTSForge and Readio support Python 3.10 or newer. Engine runtime availability and
+audio-format encoders vary by platform; use `ttsforge doctor` and `ttsforge formats` for
+the active environment rather than assuming a provider or format is installed.

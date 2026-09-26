@@ -1,827 +1,126 @@
-# CLI Reference
+# CLI reference
 
-Complete command-line interface reference for ttsforge.
+TTSForge exposes a focused audiobook workflow over Readio's public services. Run
+`ttsforge --help` or `ttsforge COMMAND --help` for help from the installed build. Use
+`--json` on supported commands for machine-readable results and `--debug` for a
+traceback after an error.
 
-The command tree is declared with explicit typed Typer wrappers. CLI startup, help, and
-version output remain independent of the ONNX provider. The legacy `--set KEY VALUE`
-configuration grammar accepts repeated pairs, including values that begin with `-`.
+## `convert`
 
-## Global Options
-
-```bash
-ttsforge --version    # Show version and exit
-ttsforge --help       # Show help message
-```
-
-## convert
-
-Convert an EPUB file to an audiobook.
+Inspect an EPUB, create or reuse its Readio project, and build/export an audiobook:
 
 ```bash
-ttsforge convert EPUB_FILE [OPTIONS]
+ttsforge convert novel.epub
 ```
 
-### Arguments
+| Option                          | Meaning                                                                        |
+| ------------------------------- | ------------------------------------------------------------------------------ |
+| `-o, --output PATH`             | Output file path. By default, use the source stem and selected format.         |
+| `-f, --format FORMAT`           | Output format; default `m4b`. Use `ttsforge formats` to see available formats. |
+| `--project PATH`                | Project directory; default is `<source-stem>.readio` beside the EPUB.          |
+| `--chapters SELECTION`          | Initial project chapter scope, such as `1-5`, `1,3,5`, or `all`.               |
+| `--interactive-chapters`        | Prompt for the initial chapter selection.                                      |
+| `--voice VOICE`                 | Engine voice/selector supported by Readio.                                     |
+| `--language LANG`               | Synthesis language/profile override.                                           |
+| `--engine ENGINE`               | Readio synthesis engine.                                                       |
+| `--speed FLOAT`                 | Synthesis speed from `0.5` to `2.0`.                                           |
+| `--bitrate VALUE`               | Export bitrate where the selected format supports it.                          |
+| `--target-lufs FLOAT`           | Composition loudness target.                                                   |
+| `--offline` / `--refresh`       | Control Readio's offline/resource-refresh behavior for this request.           |
+| `--title TEXT`, `--author TEXT` | Audiobook metadata overrides.                                                  |
+| `--cover PATH`                  | Explicit cover image for audiobook export.                                     |
+| `--force`                       | Ask Readio to replace an existing output it owns.                              |
+| `--fresh`                       | Create a separate project and preserve the existing one.                       |
+| `--json`                        | Emit a JSON result.                                                            |
 
-`EPUB_FILE` : Path to the EPUB file to convert (required).
+Chapter selection is project scope: it is persisted when the project is first created.
+Reusing a project does not replace its saved chapter scope. Use another `--project` or
+`--fresh` for a different selection. See [Projects and outputs](projects.md).
 
-### Options
+M4B is exported through Readio's audiobook service; generic formats use Readio's project
+export. TTSForge does not encode audio itself. Readio's public API determines output
+reuse and replacement safety.
 
-`-o, --output PATH` : Output file path. Defaults to input filename with new extension in
-the same directory.
-
-`-f, --format FORMAT` : Output audio format. Choices: `wav`, `mp3`, `flac`, `opus`,
-`m4b`. Default: `m4b`.
-
-`-v, --voice VOICE` : Voice to use for TTS. Can be a single voice name or a voice blend.
-
-- Single voice: `af_heart`, `am_adam`, etc.
-- Voice blend: `af_nicole:50,am_michael:50` (auto-detects blend format)
-
-See {doc}`voices` for PyKokoro metadata-discovered voices. Omit the option to use the
-profile default for the document language.
-
-`-l, --language LANG` : Language code for TTS. Choices: `a` (American English), `b`
-(British English), `e` (Spanish), `f` (French), `h` (Hindi), `i` (Italian), `j`
-(Japanese), `p` (Brazilian Portuguese), `z` (Mandarin Chinese). Default: auto-detected
-from EPUB metadata.
-
-`--lang LANG` : Override language for phonemization (e.g., `de`, `fr`, `en-us`). By
-default, language is determined from the voice.
-
-`-s, --speed FLOAT` : Speech speed multiplier (0.5 to 2.0). Default: `1.0`.
-
-`--provider PROVIDER` : ONNX Runtime execution provider or alias (`auto`, `cpu`,
-`openvino`, `nnapi`, `xnnpack`, or a full `*ExecutionProvider` name). Available on
-`convert`, `sample`, `read`, `demo`, and `phonemes convert`.
-
-`--chapters SELECTION` : Chapters to convert. Examples: `1-5`, `1,3,5`, `1-3,5,7-10`,
-`all`. Default: all chapters (interactive selection if not specified).
-
-`--silence FLOAT` : Silence duration between chapters in seconds. Default: `2.0`.
-
-`--pause-clause FLOAT` : Pause after clauses in seconds. Default: `0.5`.
-
-`--pause-sentence FLOAT` : Pause after sentences in seconds. Default: `0.7`.
-
-`--pause-paragraph FLOAT` : Pause after paragraphs in seconds. Default: `0.9`.
-
-`--pause-variance FLOAT` : Random variance added to pauses in seconds. Default: `0.05`.
-
-`--pause-mode MODE` : Pause mode: `tts`, `manual`, or `auto`. Default: `auto`.
-
-`--disable-short-sentence` : Disable special handling for short sentences.
-
-`--short-sentence TEXT` : Short-sentence handling config. Example:
-`mode=randomized,threshold=30,selection=auto,max-tries=3`. Can also reference a JSON
-config with `config=path/to/short_sentence.json`. See
-`ttsforge config short-sentence init`.
-
-`--announce-chapters / --no-announce-chapters` : Read chapter titles aloud before
-chapter content. Default: enabled.
-
-`--chapter-pause FLOAT` : Pause after chapter title announcement in seconds. Default:
-`2.0`.
-
-`--title TEXT` : Title metadata for the audiobook. Defaults to EPUB title.
-
-`--author TEXT` : Author metadata for the audiobook. Defaults to EPUB author.
-
-`--cover PATH` : Cover image for M4B format.
-
-### SSMD 0.8.6 options
-
-`--ssmd-header / --no-ssmd-header` : Parse or preserve an exact leading front-matter
-block.
-
-`--ssmd-unknown-header POLICY` : `warn`, `error`, or `ignore` unknown header keys.
-
-`--ssmd-missing-voice POLICY` : `error` or `use-default` for unresolved logical roles.
-
-`--emphasis-level INTEGER` : User-friendly audible strength: `0=Off`, `1=Light`,
-`2=Normal`, or `3=Strong`. Level 2 is the normal emphasis approximation.
-
-`--ssmd-emphasis MODE` : Advanced policy: `plain`, `approximate`, `warn`, or `error`.
-For normal audible strength use `--emphasis-level`. Approximation is gain-only; it does
-not change speech rate.
-
-existing SSMD emphasis. Use `--detect-emphasis` separately when EPUB italic/bold styling
-should first be extracted into SSMD annotations. Choose only one emphasis control.
-
-`--epub-content-mode [markdown|plain]` : Select structured chapter Markdown extraction
-(default) or the explicit legacy plain compatibility path.
-
-`--detect-emphasis / --no-detect-emphasis` : Preserve or unwrap EPUB italic and bold
-semantics in generated SSMD. Headings and scene breaks are preserved independently; when
-omitted, `detect_emphasis` from configuration is used.
-
-`--prosody-method METHOD` : One-off override for the configured SSMD prosody algorithm:
-`wsola`, `esola`, `td_psola`, `psola`, or `phase_vocoder`. `psola` is the user-facing
-alias for AudioSig `td_psola`.
-
-`--prosody-strict / --no-prosody-strict` : Override whether prosody fallback is strict.
-Advanced tuning values remain available through persistent configuration. The conversion
-summary shows the effective method, fallbacks, strictness, clipping, FFT/hop, and
-boundary-blend values.
-
-`--ssmd-voice ROLE=VOICE` : Repeatable explicit Kokoro binding override.
-
-`--ssmd-pause-defaults / --no-ssmd-pause-defaults` and `--pause-voice-change FLOAT` :
-Explicit pause-default enablement and voice-change timing. Explicit pause values
-override document defaults; persistent config values do not.
-
-`--ssmd-audio-root PATH`, `--ssmd-remote-audio`, `--ssmd-audio-max-bytes INTEGER`,
-`--ssmd-audio-max-duration FLOAT` : Secure bounded audio source policy. Remote sources
-require explicit opt-in.
-
-### SSMD inspection
-
-These commands do not initialize ONNX:
+## Inspecting and managing projects
 
 ```bash
-ttsforge ssmd validate FILE
-ttsforge ssmd validate FILE --strict
-ttsforge ssmd inspect FILE --json
+ttsforge list novel.epub
+ttsforge info novel.epub
+ttsforge status novel.readio
+ttsforge plan novel.readio
 ```
 
-`-y, --yes` : Skip confirmation prompts.
+- `list EPUB` displays chapters and character counts.
+- `info EPUB` displays EPUB metadata and chapter count.
+- `status [PROJECT]` reports Readio's stage states and next actions. The argument
+  defaults to the current directory.
+- `plan PROJECT` creates or updates speech plans through Readio.
 
-`--verbose` : Show detailed output during conversion.
+## `preview`
 
-`--split-mode MODE` : Text splitting mode. Choices: `auto`, `line`, `paragraph`,
-`sentence`, `clause`. Default: `auto`.
-
-`--conversion-unit UNIT` : Output and resume granularity: `chapter` (default) or
-`paragraph`. Paragraph mode retains fixed-width-sequence WAVs in
-`<output-stem>_paragraphs/`.
-
-`--resume / --no-resume` : Enable or disable resume capability. Default: enabled.
-
-`--use-spacy / --no-spacy` : Require or disable spaCy in sentence/G2P processing. When
-neither switch is supplied, automatic mode selects the highest compatible installed
-local model and falls back without one. `--use-spacy` is strict.
-
-`--spacy-model PACKAGE` : Require one exact local spaCy package. This is strict and
-overrides `--spacy-model-size`.
-
-`--spacy-model-size sm|md|lg|trf` : Require one exact local spaCy tier. If neither this
-nor `--spacy-model` is set, TTSForge selects the highest installed compatible model.
-Selection never downloads packages. Exact package and tier requests are strict.
-
-`--fresh` : Discard any previous progress and start conversion from scratch.
-
-When a discovered resume candidate fails strong compatibility validation, the CLI exits
-with the reason and an instruction to use `--fresh`; it does not announce a resume and
-then silently create a replacement state. Paragraph summaries use completed/total unit
-counts and show the next chapter and paragraph.
-
-`--generate-ssmd` : Generate only SSMD files without creating audio (for manual
-editing).
-
-`--keep-chapters` : Keep individual chapter audio files after conversion.
-
-`--voice-blend SPEC` : Blend multiple voices (traditional method). Format:
-`voice1:weight1,voice2:weight2`. Example: `af_nicole:50,am_michael:50`.
-
-**Note:** You can also specify blends directly in the `--voice` parameter, which will
-auto-detect the blend format. Both methods work identically.
-
-`--voice-db PATH` : Path to custom voice database (SQLite).
-
-`--phoneme-dict PATH` : Path to custom phoneme dictionary JSON file for pronunciation
-overrides.
-
-`--phoneme-dict-case-sensitive` : Make phoneme dictionary matching case-sensitive
-(default: case-insensitive).
-
-`--use-mixed-language` : Deprecated compatibility option. `true` is rejected because
-TTSForge does not automatically detect language changes.
-
-`--mixed-language-primary`, `--mixed-language-allowed`, and
-`--mixed-language-confidence` are deprecated compatibility options. Use explicit SSMD
-spans such as `[Welt]{lang="de"}` instead.
-
-Phoneme export exposes the same spaCy request options and stores the concrete sentence
-model in export metadata. Name extraction exposes `--spacy-model`, `--spacy-model-size`,
-and `--language`; it validates that the selected package supports PERSON NER (and POS
-tagging when `--include-all` is used).
-
-### Examples
+Render a small preview through the project pipeline:
 
 ```bash
-# Basic conversion
-ttsforge convert book.epub
-
-# Convert with specific voice and speed
-ttsforge convert book.epub -v am_adam -s 1.1
-
-# Convert chapters 1-5 to MP3
-ttsforge convert book.epub --chapters 1-5 -f mp3
-
-# Full options
-ttsforge convert book.epub \
-    --voice af_sarah \
-    --speed 1.1 \
-    --format m4b \
-    --title "My Audiobook" \
-    --author "Author Name" \
-    --cover cover.jpg \
-    --output ./audiobooks/mybook.m4b \
-    --yes
-
-# Resume interrupted conversion
-ttsforge convert book.epub
-
-# Start fresh (discard progress)
-ttsforge convert book.epub --fresh
-
-# Mixed-language conversion (German with English terms)
-ttsforge convert book.epub \
-    --use-mixed-language \
-    --mixed-language-primary de \
-    --mixed-language-allowed de,en-us
+ttsforge preview novel.epub --selection first:3
 ```
 
-### Paragraph conversion and resume
+Options include `--project`, `--chapters`, `--selection`, `--voice`, `--language`,
+`--engine`, `--speed`, `--target-lufs`, and `--json`. The default selection is
+`first:3`. If no project exists, preview creates the default project; subsequent
+conversion reuses it.
+
+## Readio discovery
 
 ```bash
-ttsforge convert book.epub --conversion-unit paragraph
-ttsforge convert book.epub --conversion-unit paragraph --yes
-ttsforge convert book.epub --fresh --conversion-unit paragraph
+ttsforge voices [--engine ENGINE] [--language LANG] [--model MODEL] [--gender GENDER]
+ttsforge models [--engine ENGINE] [--language LANG] [--status STATUS]
+ttsforge engines
+ttsforge formats
+ttsforge doctor
 ```
 
-The unit choice is fixed in the workspace. Resume without the option restores the saved
-choice; a conflicting choice requires `--fresh`. Paragraph mode retains one WAV per
-render unit, including an optional title unit, plus marker sidecars, a manifest, and a
-playlist. `--generate-ssmd` cannot be combined with paragraph conversion. Paragraph WAVs
-are always retained, so `--keep-chapters` is redundant in that mode. A complete
-paragraph workspace can rebuild a missing final audiobook without initializing
-inference. The maintained inspection workflow is
-`python examples/paragraph_manifest.py book_paragraphs/manifest.json`.
+`voices` and `models` accept `--offline`, `--refresh`, and `--json`. Catalog contents
+and runtime availability depend on the installed Readio engines and local environment.
+`doctor` reports Readio version, configuration, engines, dependencies, formats, and
+paths.
 
-Paragraph mode persists an effective preparation seed per chapter before stochastic
-short-sentence handling. Omit `--seed` to receive a hidden durable seed for each fresh
-chapter, or pass `--seed 42` to use an explicit seed. State schema 5 paragraph
-workspaces cannot safely reconstruct this identity and require `--fresh`. Existing
-schema-7 paragraph workspaces may be upgraded in place to schema 8 when their SSMD,
-generation identity, seed, structure, and retained artifacts still match.
+## `config`
 
-An accepted paragraph resume is monotonic: completed units and their WAV/marker sidecars
-are never silently discarded. Before printing the resume confirmation, TTSForge checks
-the saved contiguous cursor, ownership manifest, completed unit plan, and retained
-artifacts. TTSForge compares its canonical prepared-text SHA-256 and structural
-identity; an opaque provider-hash change alone is not a plan change. If prepared
-content, structure, a WAV, marker, path, or sequence is missing or changed, resume stops
-with a diagnostic such as `paragraph-unit-plan-changed` or `paragraph-audio-missing`. If
-the saved/current SSMD differs, the specific diagnostic is `paragraph-ssmd-changed`. Use
-`--fresh` only when a whole-conversion restart is intended. A valid interrupted
-conversion resumes with the first saved incomplete unit, and live paragraph numbering is
-one-based like the resume summary.
-
-## list
-
-List chapters in an EPUB file.
+All configuration operations use Readio's persisted settings; TTSForge does not maintain
+a duplicate settings file:
 
 ```bash
-ttsforge list EPUB_FILE
+ttsforge config path
+ttsforge config show
+ttsforge config set reader.voice af_heart
+ttsforge config init
+ttsforge config languages
+ttsforge config language en-us
 ```
 
-### Arguments
+`config set KEY VALUE` accepts one value; JSON values such as numbers, booleans, arrays,
+and objects are parsed as JSON, otherwise the value is stored as text. `--path PATH`
+selects an alternate configuration file on `show` and `set`.
 
-`EPUB_FILE` : Path to the EPUB file (required).
+## `ssmd`
 
-### Example
+Readio-backed SSMD commands are:
 
 ```bash
-ttsforge list book.epub
+ttsforge ssmd check FILE [--roundtrip]
+ttsforge ssmd validate FILE [--roundtrip]
+ttsforge ssmd analyze FILE
+ttsforge ssmd roundtrip FILE
+ttsforge ssmd materialize FILE --bindings '{"narrator":"af_heart"}' [--output OUT]
 ```
 
-Output shows chapter numbers, titles, and character counts.
-
-## info
-
-Show metadata and information about an EPUB file.
-
-```bash
-ttsforge info EPUB_FILE
-```
-
-### Arguments
-
-`EPUB_FILE` : Path to the EPUB file (required).
-
-### Example
-
-```bash
-ttsforge info book.epub
-```
-
-Shows title, author, language, publisher, year, chapter count, and file size.
-
-## sample
-
-Generate a sample audio file to test TTS settings.
-
-```bash
-ttsforge sample [TEXT] [OPTIONS]
-```
-
-### Arguments
-
-`TEXT` : Text to convert. If not provided, uses default sample text.
-
-### Options
-
-`-o, --output PATH` : Output file path. Default: `./sample.wav`.
-
-`-f, --format FORMAT` : Output audio format. Default: `wav`.
-
-`-v, --voice VOICE` : TTS voice to use. Can be a single voice or voice blend.
-
-- Single voice: `af_heart`
-- Voice blend: `af_nicole:50,am_michael:50` (auto-detects blend format)
-
-`-l, --language LANG` : Language for TTS.
-
-`--lang LANG` : Override language for phonemization (e.g., `de`, `fr`, `en-us`).
-
-`-s, --speed FLOAT` : Speech speed. Default: `1.0`.
-
-`--provider PROVIDER` : ONNX Runtime execution provider or alias (`auto`, `cpu`,
-`openvino`, `nnapi`, `xnnpack`, or a full `*ExecutionProvider` name).
-
-`--split-mode MODE` : Text splitting mode.
-
-`--verbose` : Show detailed output.
-
-`-p, --play` : Play audio directly (also saves to file if `-o` specified).
-
-**Note:** Playback requires the optional `ttsforge[audio]` extra.
-
-`--use-mixed-language` : Deprecated compatibility option. `true` is rejected because
-automatic mixed-language detection is not provided.
-
-`--mixed-language-primary`, `--mixed-language-allowed`, and
-`--mixed-language-confidence` are deprecated. Use explicit SSMD spans such as
-`[Welt]{lang="de"}`. `--phoneme-dict PATH` : Path to custom phoneme dictionary JSON file
-for pronunciation overrides.
-
-`--phoneme-dict-case-sensitive` : Make phoneme dictionary matching case-sensitive
-(default: case-insensitive).
-
-### Examples
-
-```bash
-# Default sample
-ttsforge sample
-
-# Custom text
-ttsforge sample "Hello, this is a test."
-
-# With voice and output options
-ttsforge sample "Testing voice" --voice am_adam -o test.wav
-```
-
-## read
-
-Stream playback from an EPUB or text file (no output files).
-
-```bash
-ttsforge read [INPUT_FILE] [OPTIONS]
-```
-
-### Arguments
-
-`INPUT_FILE` : Path to EPUB/TXT file, or `-` to read from stdin. If omitted, reads
-stdin.
-
-### Options
-
-`-v, --voice VOICE` : TTS voice to use.
-
-`-l, --language LANG` : Language for TTS.
-
-`-s, --speed FLOAT` : Speech speed. Default: `1.0`.
-
-`--provider PROVIDER` : ONNX Runtime execution provider or alias (`auto`, `cpu`,
-`openvino`, `nnapi`, `xnnpack`, or a full `*ExecutionProvider` name).
-
-`--mode MODE` : Content mode: `chapters` or `pages`.
-
-`-c, --chapters SELECTION` : Chapter selection for `chapters` mode.
-
-`-p, --pages SELECTION` : Page selection for `pages` mode.
-
-`--start-chapter INT` : Start from specific chapter number (1-indexed).
-
-`--start-page INT` : Start from specific page number (1-indexed).
-
-`--page-size INT` : Synthetic page size in characters (default: 2000).
-
-`--resume` : Resume from last saved position.
-
-`--list` : List chapters/pages and exit without reading.
-
-`--split MODE` : Text splitting mode: `sentence` or `paragraph`.
-
-`--pause-clause FLOAT` : Pause after clauses in seconds.
-
-`--pause-sentence FLOAT` : Pause after sentences in seconds.
-
-`--pause-paragraph FLOAT` : Pause after paragraphs in seconds.
-
-`--pause-variance FLOAT` : Random variance added to pauses in seconds.
-
-`--pause-mode MODE` : Pause mode: `tts`, `manual`, or `auto`.
-
-`--disable-short-sentence` : Disable special handling for short sentences.
-
-`--short-sentence TEXT` : Short-sentence handling config. Example:
-`mode=randomized,threshold=30,selection=auto,max-tries=3`. Can also reference a JSON
-config with `config=path/to/short_sentence.json`. See
-`ttsforge config short-sentence init`.
-
-**Note:** Playback requires the optional `ttsforge[audio]` extra.
-
-### Examples
-
-```bash
-# Read an EPUB aloud
-ttsforge read book.epub
-
-# Read pages 1-10
-ttsforge read book.epub --mode pages --pages 1-10
-
-# Resume from last position
-ttsforge read book.epub --resume
-```
-
-## voices
-
-List available TTS voices.
-
-```bash
-ttsforge voices [OPTIONS]
-```
-
-### Options
-
-`-l, --language LANG` : Filter voices by language code.
-
-### Examples
-
-```bash
-# List all voices
-ttsforge voices
-
-# List American English voices
-ttsforge voices -l a
-
-# List British English voices
-ttsforge voices -l b
-```
-
-## demo
-
-Generate a demo audio file with voice samples.
-
-```bash
-ttsforge demo [OPTIONS]
-```
-
-### Options
-
-`-o, --output PATH` : Output file path. Default: `./voices_demo.wav` (or directory with
-`--separate`).
-
-`-l, --language LANG` : Filter voices by language.
-
-`-v, --voice VOICES` : Specific voices to include (comma-separated). Example:
-`af_heart,am_adam`.
-
-`-s, --speed FLOAT` : Speech speed. Default: `1.0`.
-
-`--provider PROVIDER` : ONNX Runtime execution provider or alias (`auto`, `cpu`,
-`openvino`, `nnapi`, `xnnpack`, or a full `*ExecutionProvider` name).
-
-`--silence FLOAT` : Silence between voice samples in seconds. Default: `0.5`.
-
-`--text TEXT` : Custom text to use. Use `{voice}` placeholder for voice name.
-
-`--separate` : Save each voice as a separate file instead of concatenating.
-
-`--blend SPEC` : Voice blend to demo (e.g., `af_nicole:50,am_michael:50`).
-
-`--blend-presets` : Demo a curated set of voice blend combinations.
-
-`-p, --play` : Play audio directly instead of only saving files.
-
-**Note:** Playback requires the optional `ttsforge[audio]` extra.
-
-### Examples
-
-```bash
-# Demo all voices
-ttsforge demo
-
-# Demo American English voices only
-ttsforge demo -l a
-
-# Demo specific voices
-ttsforge demo -v af_heart,am_adam,bf_emma
-
-# Save separate files
-ttsforge demo --separate -o ./voice_samples/
-
-# Custom demo text
-ttsforge demo --text "Hi, I'm {voice}. Nice to meet you!"
-```
-
-## download
-
-Download ONNX model files required for TTS.
-
-```bash
-ttsforge download [OPTIONS]
-```
-
-### Options
-
-`--force` : Force re-download even if files exist.
-
-### Examples
-
-```bash
-# Download models
-ttsforge download
-
-# Force re-download
-ttsforge download --force
-```
-
-## config
-
-Manage ttsforge configuration.
-
-```bash
-ttsforge config [OPTIONS]
-```
-
-Configuration is stored in `~/.config/ttsforge/config.json`.
-
-### Options
-
-`--show` : Show current configuration.
-
-`--reset` : Reset configuration to defaults.
-
-`--set KEY VALUE` : Set a configuration option. Can be used multiple times.
-
-### Examples
-
-```bash
-# Show configuration
-ttsforge config --show
-
-# Set default voice
-ttsforge config --set default_voice am_adam
-
-# Set multiple options
-ttsforge config --set default_voice af_sarah --set default_speed 1.1
-
-# Select the default ONNX provider
-ttsforge config --set onnx_provider nnapi
-
-# Legacy compatibility shortcut
-ttsforge config --set use_gpu true
-
-# Reset to defaults
-ttsforge config --reset
-```
-
-See {doc}`configuration` for all available options.
-
-## config short-sentence
-
-Create, link, or inspect the advanced short-sentence JSON configuration.
-
-```bash
-ttsforge config short-sentence [show|init|reset]
-```
-
-Called without an action, this command prints its help.
-
-### Arguments
-
-`show` : Show the advanced JSON config.
-
-`init` : Write the advanced JSON config and update the ttsforge config to use it.
-
-`reset` : Recreate the advanced JSON config from defaults and update the ttsforge config
-to use it.
-
-### Examples
-
-```bash
-# Create and link the advanced short-sentence config
-ttsforge config short-sentence init
-
-# Show the advanced short-sentence config
-ttsforge config short-sentence show
-
-# Reset the advanced short-sentence config to defaults
-ttsforge config short-sentence reset
-```
-
-## phonemes
-
-Commands for working with phonemes and pre-tokenized content.
-
-### phonemes export
-
-Export an EPUB as pre-tokenized phoneme data.
-
-```bash
-ttsforge phonemes export EPUB_FILE [OPTIONS]
-```
-
-#### Arguments
-
-`EPUB_FILE` : Path to the EPUB file (required).
-
-#### Options
-
-`-o, --output PATH` : Output file path. Default: input filename with `.phonemes.json`.
-
-`--readable` : Export as human-readable text format instead of JSON.
-
-`-l, --language LANG` : Language code for phonemization. Default: `a`.
-
-`--chapters SELECTION` : Chapters to export.
-
-`--vocab-version VERSION` : Vocabulary version. Default: `v1.0`.
-
-`--split-mode MODE` : Split mode: `paragraph`, `sentence`, or `clause`. Default:
-`sentence`.
-
-`--max-chars INT` : Maximum characters per segment. Default: `300`.
-
-#### Examples
-
-```bash
-# Export to phonemes
-ttsforge phonemes export book.epub
-
-# Export as readable format
-ttsforge phonemes export book.epub --readable -o book.readable.txt
-
-# Export specific chapters
-ttsforge phonemes export book.epub --chapters 1-5
-
-# Use clause splitting for shorter segments
-ttsforge phonemes export book.epub --split-mode clause
-```
-
-### phonemes convert
-
-Convert a pre-tokenized phoneme file to audio.
-
-```bash
-ttsforge phonemes convert PHONEME_FILE [OPTIONS]
-```
-
-#### Arguments
-
-`PHONEME_FILE` : Path to the phoneme JSON file (required).
-
-#### Options
-
-`-o, --output PATH` : Output file path.
-
-`-f, --format FORMAT` : Output audio format.
-
-`-v, --voice VOICE` : Voice to use for TTS.
-
-`-s, --speed FLOAT` : Speech speed. Default: `1.0`.
-
-`--provider PROVIDER` : ONNX Runtime execution provider or alias (`auto`, `cpu`,
-`openvino`, `nnapi`, `xnnpack`, or a full `*ExecutionProvider` name).
-
-`--silence FLOAT` : Silence between chapters. Default: `2.0`.
-
-`--pause-clause FLOAT` : Pause after clauses in seconds. Default: `0.5`.
-
-`--pause-sentence FLOAT` : Pause after sentences in seconds. Default: `0.7`.
-
-`--pause-paragraph FLOAT` : Pause after paragraphs in seconds. Default: `0.9`.
-
-`--pause-variance FLOAT` : Random variance added to pauses in seconds. Default: `0.05`.
-
-`--pause-mode MODE` : Pause mode: `tts`, `manual`, or `auto`. Default: `auto`.
-
-`--short-sentence TEXT` : Short-sentence handling config. Example:
-`mode=randomized,threshold=30,selection=auto,max-tries=3`. Can also reference a JSON
-config with `config=path/to/short_sentence.json`. See
-`ttsforge config short-sentence init`.
-
-`--announce-chapters / --no-announce-chapters` : Read chapter titles aloud before
-chapter content. Default: enabled.
-
-`--chapter-pause FLOAT` : Pause after chapter title announcement in seconds. Default:
-`2.0`.
-
-`--chapters SELECTION` : Select chapters to convert.
-
-`--title TEXT` : Audiobook title.
-
-`--author TEXT` : Audiobook author.
-
-`--cover PATH` : Cover image path.
-
-`--voice-blend SPEC` : Blend multiple voices.
-
-`--voice-database PATH` : Path to custom voice database.
-
-`--streaming / --no-streaming` : Use streaming mode (faster, no resume). Default:
-resumable.
-
-`--keep-chapters` : Keep intermediate chapter files.
-
-`-y, --yes` : Skip confirmation prompts.
-
-#### Examples
-
-```bash
-# Convert phoneme file
-ttsforge phonemes convert book.phonemes.json
-
-# With voice and output
-ttsforge phonemes convert book.phonemes.json -v am_adam -o book.m4b
-
-# Streaming mode (faster but no resume)
-ttsforge phonemes convert book.phonemes.json --streaming
-```
-
-### phonemes info
-
-Show information about a phoneme file.
-
-```bash
-ttsforge phonemes info PHONEME_FILE [OPTIONS]
-```
-
-#### Options
-
-`--stats` : Show detailed token statistics.
-
-#### Examples
-
-```bash
-# Basic info
-ttsforge phonemes info book.phonemes.json
-
-# With statistics
-ttsforge phonemes info book.phonemes.json --stats
-```
-
-### phonemes preview
-
-Preview phonemes for given text.
-
-```bash
-ttsforge phonemes preview TEXT [OPTIONS]
-```
-
-#### Options
-
-`-l, --language LANG` : Language code for phonemization. Default: `a`.
-
-`-v, --voice VOICE` : Voice to use for audio preview (when using `--play`). Can be a
-single voice or voice blend (e.g., `af_nicole:50,am_michael:50`).
-
-`--play` : Generate and play audio preview of the phonemes.
-
-**Note:** Playback requires the optional `ttsforge[audio]` extra.
-
-`--tokens` : Show token IDs in addition to phonemes.
-
-`--vocab-version VERSION` : Vocabulary version. Default: `v1.0`.
-
-#### Examples
-
-```bash
-# Preview phonemes
-ttsforge phonemes preview "Hello, world!"
-
-# With tokens
-ttsforge phonemes preview "Hello, world!" --tokens
-
-# Different language
-ttsforge phonemes preview "Bonjour!" -l f
-
-# With audio playback
-ttsforge phonemes preview "Test audio" --play
-
-# With voice blend
-ttsforge phonemes preview "Test blend" --voice "af_nicole:60,am_michael:40" --play
-```
+`validate` additionally requires resolvable voice references. `materialize` writes
+explicit bindings to a new file by default; `--in-place` opts into updating the source
+file. These commands use Readio's SSMD authoring API; see [SSMD tools](ssmd.md).
+
+## Removed commands
+
+`read`, `sample`, `demo`, `download`, and `phonemes` belonged to the former TTSForge
+rendering backend and are no longer registered. TTSForge does not maintain compatibility
+aliases or a parallel engine implementation. See the
+[migration guide](migration-readio.md).

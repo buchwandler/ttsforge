@@ -1,11 +1,17 @@
-"""Regression tests for provider-independent imports and CLI startup."""
+"""Regression tests for provider-independent imports and the public API boundary."""
 
 from __future__ import annotations
 
+import ast
 import os
 import re
 import subprocess
 import sys
+from pathlib import Path
+
+ROOT = Path(__file__).resolve().parents[1]
+PRODUCTION = ROOT / "ttsforge"
+FORBIDDEN_IMPORTS = {"pykokoro", "kokorog2p", "phrasplit", "epub2text"}
 
 
 def _run_python(*args: str) -> subprocess.CompletedProcess[str]:
@@ -14,13 +20,13 @@ def _run_python(*args: str) -> subprocess.CompletedProcess[str]:
         env.pop(name, None)
     env["NO_COLOR"] = "1"
     env["COLUMNS"] = "240"
-
     return subprocess.run(
         [sys.executable, "-W", "error", *args],
         check=False,
         capture_output=True,
         text=True,
         env=env,
+        cwd=ROOT,
     )
 
 
@@ -29,16 +35,37 @@ def _semantic_output(output: str) -> str:
     return " ".join(without_ansi.split())
 
 
-def test_import_ttsforge_does_not_load_onnx_backend() -> None:
+def test_production_imports_only_the_readio_public_api() -> None:
+    violations: list[str] = []
+    for path in PRODUCTION.rglob("*.py"):
+        tree = ast.parse(path.read_text(encoding="utf-8"), filename=str(path))
+        for node in ast.walk(tree):
+            if isinstance(node, ast.Import):
+                modules = [alias.name for alias in node.names]
+            elif isinstance(node, ast.ImportFrom) and node.module:
+                modules = [node.module]
+            else:
+                continue
+            for module in modules:
+                root = module.split(".", 1)[0]
+                if root in FORBIDDEN_IMPORTS:
+                    violations.append(f"{path.relative_to(ROOT)}: {module}")
+                if root == "readio" and module != "readio.api":
+                    violations.append(f"{path.relative_to(ROOT)}: {module}")
+    assert not violations, "Forbidden imports:\n" + "\n".join(violations)
+
+
+def test_import_ttsforge_does_not_load_a_synthesis_backend() -> None:
     result = _run_python(
         "-c",
         "import sys; import ttsforge; "
-        "assert 'pykokoro.onnx_backend' not in sys.modules",
+        "assert not any(name == 'pykokoro' or name.startswith('pykokoro.') "
+        "for name in sys.modules)",
     )
     assert result.returncode == 0, result.stderr
 
 
-def test_help_and_version_are_available_without_backend_import() -> None:
+def test_cli_help_and_version_are_available_without_backend_import() -> None:
     help_result = _run_python("-c", "from ttsforge.cli import main; main(['--help'])")
     version_result = _run_python(
         "-c", "from ttsforge.cli import main; main(['--version'])"
@@ -49,18 +76,22 @@ def test_help_and_version_are_available_without_backend_import() -> None:
     assert "ttsforge version" in version_result.stdout
 
 
-def test_conversion_help_is_provider_independent() -> None:
+def test_convert_help_has_no_backend_specific_controls() -> None:
     result = _run_python(
         "-c", "from ttsforge.cli import main; main(['convert', '--help'])"
     )
     assert result.returncode == 0, result.stderr
-    assert "Generate only SSMD files" in _semantic_output(result.stdout)
+    help_text = _semantic_output(result.stdout)
+    assert "--chapters" in help_text
+    assert "--voice" in help_text
+    assert "--fresh" in help_text
+    assert "--provider" not in help_text
+    assert "--spacy" not in help_text
 
 
-def test_short_sentence_config_help_is_provider_independent() -> None:
+def test_phoneme_command_is_not_registered() -> None:
     result = _run_python(
-        "-c",
-        "from ttsforge.cli import main; main(['config', 'short-sentence', '--help'])",
+        "-c", "from ttsforge.cli import main; main(['phonemes', '--help'])"
     )
-    assert result.returncode == 0, result.stderr
-    assert "Advanced short-sentence config path" in _semantic_output(result.stdout)
+    assert result.returncode != 0
+    assert "No such command 'phonemes'." in result.stderr

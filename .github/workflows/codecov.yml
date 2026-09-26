@@ -1,32 +1,37 @@
 name: CodeCov
+
 on: push
+
 jobs:
-  run:
+  coverage:
     runs-on: ubuntu-latest
-    env:
-      OS: ubuntu-latest
     steps:
-    - uses: actions/checkout@master
-    - name: Setup Python
-      uses: actions/setup-python@master
-    - name: Install espeak-ng
-      run: |
-        sudo apt-get update
-        sudo apt-get install -y espeak-ng ffmpeg
-    - name: 'generate report'
-      run: |
-        pip install coverage click pytest pytest-cov
-        pip install -r requirements-test.txt
-        pip install spacy
-        python -m spacy download en_core_web_sm
-        pip install -e ".[cpu]"
-        pytest --cov --junitxml=junit.xml 
-    - name: Upload coverage to Codecov
-      uses: codecov/codecov-action@v5
-      with:
-        token: ${{ secrets.CODECOV_TOKEN }} # required
-    - name: Upload test results to Codecov
-      if: ${{ !cancelled() }}
-      uses: codecov/test-results-action@v1
-      with:
-        token: ${{ secrets.CODECOV_TOKEN }}
+      - uses: actions/checkout@v4
+        with:
+          path: ttsforge
+      - uses: actions/checkout@v4
+        with:
+          repository: buchwandler/readio
+          ref: main
+          path: readio
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.13"
+      - name: Install TTSForge and Readio source
+        working-directory: ttsforge
+        run: |
+          python -m pip install --upgrade pip
+          python -m pip install -e ../readio
+          python -m pip install -e ".[dev]" coverage
+      - name: Generate coverage report
+        working-directory: ttsforge
+        run: pytest --cov=ttsforge --cov-report=xml --junitxml=junit.xml
+      - name: Upload coverage to Codecov
+        uses: codecov/codecov-action@v5
+        with:
+          token: ${{ secrets.CODECOV_TOKEN }}
+      - name: Upload test results to Codecov
+        if: ${{ !cancelled() }}
+        uses: codecov/test-results-action@v1
+        with:
+          token: ${{ secrets.CODECOV_TOKEN }}

@@ -1,31 +1,46 @@
 # TTSForge examples
 
-The paragraph examples demonstrate the 0.3.0 render-unit workflow.
+These examples use the TTSForge CLI and Readio-backed workflows. There are no TTSForge
+examples that import PyKokoro or implement a renderer directly; synthesis, project
+state, and exports belong to Readio.
 
-- `paragraph_conversion.py` converts an EPUB with `conversion_unit="paragraph"`. It
-  needs ONNX model assets and audio dependencies.
-- `paragraph_resume.py` cancels after a configurable number of finalized units, reports
-  the persisted per-chapter preparation seeds, creates a new converter, and verifies
-  that resume begins at the first incomplete unit. Use `--stop-after 1` (the default)
-  with a real EPUB to keep the first pass incomplete.
-- `paragraph_manifest.py` is inspection-only. It uses the standard library, does not
-  initialize ONNX, validates contiguous sequence numbers, and checks every referenced
-  WAV and marker sidecar.
-- `pykokoro_paragraph_units.py` is a developer-facing low-level example. It needs
-  PyKokoro, ONNX model assets, and writes each result before requesting the next.
+## Inspect before creating a project
 
-Paragraph conversion retains one WAV per render unit: an optional announced title unit
-followed by spoken paragraph units. Files live under `<stem>_paragraphs/` with
-fixed-width sequence names, `manifest.json`, marker sidecars, and `playlist.m3u8`.
+```bash
+ttsforge list novel.epub --json > chapters.json
+ttsforge info novel.epub --json > book.json
+```
 
-The workspace can resume only when the input, selected chapters, generation fingerprint,
-and `conversion_unit` remain compatible. Valid WAVs are skipped. Paragraph preparation
-uses a hidden persisted seed per chapter when `--seed` is omitted, so randomized
-short-sentence choices remain stable across processes. A complete workspace can be
-merged without initializing ONNX. Each low-level result must be persisted or copied
-before advancing iteration, and `release_audio()` must run on success, cancellation, and
-error paths.
+## Create, inspect, and resume through a Readio project
 
-Chapter mode remains chapter-buffered. Paragraph mode prepares a chapter once and
-renders bounded units sequentially. Use the CLI examples as the supported high-level
-workflow; use the PyKokoro example only when integrating at the unit boundary.
+```bash
+ttsforge convert novel.epub --chapters 1-8
+ttsforge status novel.readio --json
+ttsforge convert novel.epub --project novel.readio
+```
+
+The selected chapter scope is persisted in the project. Use a second project path for
+another selection rather than expecting a reused project's scope to change:
+
+```bash
+ttsforge convert novel.epub --chapters 9-12 \
+  --project novel-part-two.readio
+```
+
+## Preview and export
+
+```bash
+ttsforge preview novel.epub --selection first:3
+ttsforge formats --json
+ttsforge convert novel.epub --format mp3 --output novel.mp3
+```
+
+The available formats depend on the installed Readio services and local encoders. M4B
+uses Readio's distinct audiobook export service.
+
+## Python integrations
+
+Use `readio.api` directly for typed project and export operations. TTSForge's Python
+adapter is an internal implementation boundary, not a second public synthesis API. See
+[the API guide](../docs/api/index.md) and
+[Readio's API examples](https://github.com/buchwandler/readio/blob/main/docs/api.md).

@@ -1,389 +1,91 @@
-# Quick Start Guide
+# Quick start
 
-This guide will help you get started with ttsforge quickly.
+Install a working local Readio checkout and TTSForge first; the published Readio release
+does not yet contain TTSForge's required API. See [Installation](installation.md).
 
-## Basic Conversion
+## Inspect and convert
 
-Convert an EPUB file to an audiobook with default settings:
-
-```bash
-ttsforge convert mybook.epub
-```
-
-This creates `mybook.m4b` in the same directory with:
-
-- Default voice: `af_heart` (American English female)
-- Default format: M4B (with chapter markers)
-- Auto-detected language from EPUB metadata
-
-## Choosing a Voice
-
-List available voices:
+List the chapters Readio detects in an EPUB:
 
 ```bash
-ttsforge voices
+ttsforge list novel.epub
+ttsforge info novel.epub
 ```
 
-List voices for a specific language:
+Create or reuse its audiobook project and export the default M4B:
 
 ```bash
-ttsforge voices -l a  # American English
-ttsforge voices -l b  # British English
+ttsforge convert novel.epub
 ```
 
-Convert with a specific voice:
+The default project is `novel.readio` beside the source EPUB, and the default output is
+`novel.m4b`. Re-running the command uses the existing project's saved chapter scope and
+reusable work.
+
+## Select chapters
+
+Choose the chapter scope when the project is first created:
 
 ```bash
-ttsforge convert mybook.epub -v am_adam  # Male voice
+ttsforge convert novel.epub --chapters 1-5
 ```
 
-## Voice Blending
-
-Mix multiple voices for unique narration by specifying voice blends in the `--voice`
-parameter:
+Use `--interactive-chapters` to choose from a prompt. The selected chapters belong to
+the persistent project; changing the selection later requires a separate project, for
+example:
 
 ```bash
-# 50/50 blend of two voices
-ttsforge sample "Hello world" --voice "af_nicole:50,am_michael:50" -p
-
-# Weighted blend (70% Nicole, 30% Michael)
-ttsforge convert mybook.epub --voice "af_nicole:70,am_michael:30"
-
-# Three-way blend
-ttsforge sample "Testing" --voice "af_sky:40,af_bella:30,am_adam:30" -p
+ttsforge convert novel.epub --chapters 1-5 --fresh
 ```
 
-The format is: `voice1:weight1,voice2:weight2,...` where weights are percentages
-(0-100).
+See [Projects and outputs](projects.md) for how `--fresh`, `--project`, and old TTSForge
+workspaces behave.
 
-You can also use the traditional `--voice-blend` parameter:
+## Preview, plan, and status
+
+A preview uses the same Readio project pipeline as a full conversion:
 
 ```bash
-ttsforge convert mybook.epub --voice-blend "af_nicole:50,am_michael:50"
+ttsforge preview novel.epub --selection first:3
+ttsforge plan novel.readio
+ttsforge status novel.readio
 ```
 
-## Output Formats
+`preview` creates or reuses the default project if necessary. `status` reports Readio's
+current stage state and next actions.
 
-ttsforge supports multiple audio formats:
+## Choose an output and synthesis settings
+
+M4B is the default audiobook export. Readio also provides generic audio exports; inspect
+formats and availability for the current environment:
 
 ```bash
-# M4B audiobook (default) - includes chapter markers
-ttsforge convert mybook.epub -f m4b
-
-# MP3
-ttsforge convert mybook.epub -f mp3
-
-# WAV (uncompressed)
-ttsforge convert mybook.epub -f wav
-
-# FLAC (lossless compression)
-ttsforge convert mybook.epub -f flac
-
-# OPUS (efficient compression)
-ttsforge convert mybook.epub -f opus
+ttsforge formats
+ttsforge convert novel.epub --format mp3 --output ./novel.mp3
 ```
 
-## Converting Specific Chapters
-
-Preview chapter list:
+You can provide voice, language, engine, speed, bitrate, loudness, metadata, and cover
+choices on `convert`. Voice and model options are supplied by Readio's installed engines
+and catalog, not by a TTSForge-maintained voice list:
 
 ```bash
-ttsforge list mybook.epub
+ttsforge voices --language en-us
+ttsforge convert novel.epub --voice af_heart --speed 1.1 --cover cover.jpg
 ```
 
-Convert specific chapters:
+Run `ttsforge convert --help` for the complete options available in this build.
+
+## Configuration and troubleshooting
+
+TTSForge accesses Readio's persistent configuration directly:
 
 ```bash
-# Convert chapters 1 through 5
-ttsforge convert mybook.epub --chapters 1-5
-
-# Convert specific chapters
-ttsforge convert mybook.epub --chapters 1,3,5,7
-
-# Mixed selection
-ttsforge convert mybook.epub --chapters 1-3,5,7-10
+ttsforge config show
+ttsforge config set reader.voice af_heart
+ttsforge config set reader.speed 1.1
+ttsforge doctor
 ```
 
-## Speed Control
-
-Adjust speech speed (0.5 to 2.0):
-
-```bash
-# Faster
-ttsforge convert mybook.epub -s 1.2
-
-# Slower
-ttsforge convert mybook.epub -s 0.9
-```
-
-## Resumable Conversions
-
-ttsforge automatically saves progress during conversion. If interrupted:
-
-```bash
-# Simply re-run the same command
-ttsforge convert mybook.epub
-
-# Progress is resumed from the last completed compatible unit
-```
-
-To start fresh, discarding previous progress:
-
-```bash
-ttsforge convert mybook.epub --fresh
-```
-
-### Paragraph output and resume
-
-Use paragraph conversion for visible, independently resumable render-unit WAV artifacts:
-
-```bash
-ttsforge convert mybook.epub --conversion-unit paragraph --yes
-```
-
-This creates `mybook_paragraphs/` with fixed-width globally sequenced WAV names, marker
-sidecars, `manifest.json`, and `playlist.m3u8`. A render unit is an optional announced
-chapter title followed by a spoken paragraph. The files sort in playback order and
-remain after the merged audiobook succeeds. `--split-mode paragraph` is a separate
-internal batching setting. The saved conversion unit, selected chapters, and generation
-fingerprint cannot be changed during resume; use `--fresh` to start a new workspace. A
-complete workspace supports merge-only recovery without ONNX.
-
-The canonical interrupted paragraph workflow is:
-
-```bash
-ttsforge convert "Platform Decay - Martha Wells.epub" --fresh --conversion-unit paragraph
-# Interrupt, then resume without repeating options:
-ttsforge convert "Platform Decay - Martha Wells.epub"
-```
-
-Resume restores the saved chapter selection, paragraph mode, output path, and omitted
-audio-affecting settings. An explicit changed setting is rejected with its field name;
-use the saved value or choose `--fresh` for a new workspace.
-
-Paragraph resume persists a per-chapter preparation seed before randomized processing,
-so a second process skips already finalized units even when the default short-sentence
-handling is enabled. Pass `--seed 42` for an explicit reproducible seed. TTSForge owns
-the persistent unit identity as a SHA-256 of exact prepared text; provider-internal
-descriptor hashes do not invalidate a compatible resume. If saved state is incompatible,
-TTSForge reports the changed fields and stops; use `--fresh` to deliberately discard
-progress and begin again. Verifiable schema-6 state is migrated to schema 7, and a
-compatible schema-7 paragraph identity can migrate to schema 8 without re-rendering its
-retained WAVs. A changed saved/current SSMD is reported as `paragraph-ssmd-changed`.
-Unverifiable state and existing paragraph WAVs are preserved. See
-`python examples/paragraph_resume.py --help` for an example that cancels after a
-configurable number of units before restarting.
-
-Inspect the retained output without loading TTS models:
-
-```bash
-python examples/paragraph_manifest.py mybook_paragraphs/manifest.json
-```
-
-## Phoneme Pre-tokenization
-
-For large books or batch processing, pre-tokenize text to phonemes:
-
-```bash
-# Step 1: Export to phonemes (fast, no TTS)
-ttsforge phonemes export mybook.epub -o mybook.phonemes.json
-
-# Step 2: Convert phonemes to audio (can be run on different machine)
-ttsforge phonemes convert mybook.phonemes.json -v af_heart
-```
-
-Benefits:
-
-- Review phonemes before generating audio
-- Faster repeated conversions (skip phonemization)
-- Separate phonemization from audio generation
-
-## Testing TTS Settings
-
-Generate a sample to test your settings:
-
-```bash
-# Default sample
-ttsforge sample
-
-# Custom text
-ttsforge sample "Hello, this is a test of the voice."
-
-# With specific voice and speed
-ttsforge sample --voice am_adam --speed 1.1
-
-# Play directly (requires audio extra)
-ttsforge sample --play
-```
-
-## Streaming Read (Optional)
-
-Listen to an EPUB or text file in real-time with the `read` command. This requires the
-optional audio playback extra:
-
-```bash
-pip install "ttsforge[audio]"
-```
-
-```bash
-# Read an EPUB aloud
-ttsforge read mybook.epub
-
-# Read a text file
-ttsforge read story.txt
-```
-
-## Voice Demo
-
-Listen to all voices with a demo:
-
-```bash
-# Demo all voices
-ttsforge demo
-
-# Demo voices for a specific language
-ttsforge demo -l a  # American English only
-
-# Save individual voice files
-ttsforge demo --separate -o ./voice_samples/
-```
-
-## Mixed-Language Support
-
-Mixed-language changes must be explicit SSMD spans. Generate or edit the chapter SSMD
-and annotate the foreign segment:
-
-```text
-Das ist ein deutscher Satz. [This is an English sentence.]{lang="en-us"}
-```
-
-TTSForge does not automatically detect language changes. The legacy
-`--use-mixed-language` option and related settings are rejected with migration guidance.
-The document language remains required for the overall synthesis pipeline.
-
-## SSMD Editing
-
-ttsforge uses SSMD (Speech Synthesis Markdown) as an intermediate format between EPUB
-and audio. This allows you to fine-tune pronunciation and pacing.
-
-During conversion, `.ssmd` files are automatically generated for each chapter:
-
-```text
-.{book_title}_chapters/
-├── chapter_001_intro.ssmd
-├── chapter_001_intro.wav
-└── ...
-```
-
-**Basic workflow**:
-
-```bash
-# 1. Start conversion
-ttsforge convert book.epub
-
-# 2. Pause (Ctrl+C) and edit SSMD files
-vim .book_chapters/chapter_001_intro.ssmd
-
-# 3. Resume - auto-detects edits and regenerates audio
-ttsforge convert book.epub
-```
-
-**Common SSMD syntax**:
-
-```text
-...p                               # Paragraph break
-...s                               # Sentence break
-*text*                             # Moderate emphasis
-**text**                           # Strong emphasis
-[Hermione]{ph="hɝmˈIni"}          # Custom pronunciation
-```
-
-EPUB conversion has three layers: epub2text performs semantic Markdown extraction,
-TTSForge generates editable SSMD while preserving that structure, and the SSMD policy
-controls audible rendering. Markdown extraction and emphasis preservation are enabled by
-default, while emphasis is spoken plainly:
-
-```bash
-ttsforge convert book.epub
-```
-
-Use `--no-detect-emphasis` to unwrap italic/bold delimiters without removing headings or
-scene breaks. Use `--epub-content-mode plain` to compare against the legacy flattened
-source path. The persisted equivalents are `epub_content_mode` and `detect_emphasis`.
-
-To control audible emphasis strength without changing the source semantics, use the
-friendly level option:
-
-```bash
-ttsforge convert book.epub --emphasis-level 2
-ttsforge convert book.epub --emphasis-level 3
-```
-
-The levels are `0=Off`, `1=Light`, `2=Normal`, and `3=Strong`. Persist the normal level
-with `ttsforge config --set emphasis_level 2`; subsequent conversions need no emphasis
-flag. `--ssmd-emphasis` remains an advanced policy control. Explicit SSMD prosody
-remains supported independently, and a resume with omitted emphasis options restores the
-saved policy.
-
-**Example SSMD file**:
-
-```text
-Chapter One ...p
-
-[Harry]{ph="hæɹi"} Potter was a *highly unusual* boy. ...s
-He **hated** the summer holidays. ...p
-```
-
-For complete SSMD documentation, see {doc}`ssmd`.
-
-## Configuration
-
-Set default options:
-
-```bash
-# Set default voice
-ttsforge config --set default_voice am_adam
-
-# Set default format
-ttsforge config --set default_format mp3
-
-# Select an ONNX Runtime provider (Termux example)
-ttsforge config --set model_source github --set onnx_provider nnapi
-
-# View all settings
-ttsforge config --show
-```
-
-Provider aliases include `auto`, `cpu`, `openvino`, `nnapi`, and `xnnpack`; full map to
-the canonical provider names. Availability depends on the installed ONNX Runtime build,
-and PyKokoro may apply its documented `ONNX_PROVIDER` environment override. On a desktop
-build exposing OpenVINO, the equivalent persistent setup is:
-
-```bash
-ttsforge config --set onnx_provider openvino
-ttsforge sample "OpenVINO provider test" --provider openvino
-```
-
-## Complete Example
-
-Full conversion with all options:
-
-```bash
-ttsforge convert mybook.epub \
-    --voice af_sarah \
-    --speed 1.1 \
-    --format m4b \
-    --chapters 1-10 \
-    --title "My Audiobook" \
-    --author "Author Name" \
-    --cover cover.jpg \
-    --output ./audiobooks/mybook.m4b
-```
-
-## Next Steps
-
-- {doc}`ssmd` - SSMD editing and syntax reference
-- {doc}`cli` - Complete command reference
-- {doc}`voices` - Detailed voice information
-- {doc}`configuration` - All configuration options
-- {doc}`filename_templates` - Customize output filenames
+The frontend does not create a parallel configuration file. For engine setup and project
+semantics, see the
+[Readio documentation](https://github.com/buchwandler/readio/tree/main/docs).

@@ -1,64 +1,37 @@
-# Testing and Coverage
+# Testing and release checks
 
-Run the normal test suite with:
-
-```bash
-pytest
-```
-
-Paragraph conversion has focused contract coverage:
+Development and tests use the local Readio checkout because the compatible public API is
+not yet available from PyPI. From the TTSForge repository, install the sibling checkout
+and development dependencies:
 
 ```bash
-pytest -q tests/test_pykokoro_unit_contract.py tests/test_conversion_unit_cli.py \
-  tests/test_paragraph_filenames.py tests/test_paragraph_state.py \
-  tests/test_paragraph_rendering.py tests/test_paragraph_audio_parity.py \
-  tests/test_paragraph_merge.py tests/test_paragraph_manifest.py
+python -m pip install -e ../readio -e ".[dev]"
 ```
 
-These tests cover public PyKokoro streaming, schema-6 seed persistence and explicit
-schema-5 paragraph rejection, atomic output and ownership, unit resume boundaries,
-filename ordering, timing parity, no-gap merging, strict CLI mismatch handling, and
-merge-only recovery. The main regression test models a changed stochastic descriptor
-hash and verifies that a saved prefix is not rendered again.
-
-## Minimum dependency contract
-
-Release CI separately installs the exact lower-bound generation stack:
-
-- PyKokoro 0.9.4
-- kokorog2p 0.9.5
-- phrasplit 0.3.7
-- SSMD 0.8.7
-
-The minimum-dependency job proves that the package's declared lower bounds install and
-that representative written-to-spoken source reaches the upstream preparation/G2P
-boundary. The normal OS/Python matrix continues to test currently resolved compatible
-dependencies.
-
-The focused local equivalent is:
+Run the suite and lint:
 
 ```bash
-pytest -q tests/test_packaging.py tests/test_dependency_contract.py \
-  tests/test_pykokoro_unit_contract.py tests/test_name_extractor.py \
-  tests/test_resume_identity.py tests/test_resume_integrity.py
+pytest -q
+ruff check ttsforge tests
 ```
 
-The maintained coverage policy is staged so high-risk code has explicit gates while the
-repository-wide target can be raised as the large CLI modules are decomposed:
+The tests cover the public `readio.api` contract, request mapping, project reuse and
+legacy-workspace handling, chapter selection, event progress, CLI behavior, package
+metadata, and CI configuration. The API contract test asserts the required public API
+version and symbols; use `tests/test_readio_api_contract.py` to diagnose an incompatible
+local Readio checkout.
 
-- repository branch coverage: 55% minimum;
-- `ttsforge/audio_player.py`: 80% minimum;
-- `ttsforge/audio_merge.py`: 75% minimum;
-- changed lines: 85% minimum;
-- changed resume/state lines are expected to meet the same 85% changed-line gate, which
-  is stricter than the initial 80% target.
+## Publishing compatibility gate
 
-The complete policy is wired into tox:
+A compatible published Readio release must exist before setting a Readio minimum version
+or declaring a clean installation successful. Before a TTSForge package release:
 
-```bash
-tox
-```
+1. Set the dependency floor to the first published Readio release with the complete
+   required API.
+2. Test against that floor and the newest compatible Readio release.
+3. Install TTSForge into a clean environment from PyPI, run `pip check`, and smoke-test
+   `ttsforge --help`, `ttsforge doctor`, and an audiobook workflow.
 
-The final changed-line check compares `coverage.xml` with `origin/main` using
-`diff-cover`. A local checkout without that remote can run the first three coverage
-commands directly and use an appropriate local base branch for the final comparison.
+Until those prerequisites exist, the published-version pin and PyPI clean-install gate
+are blocked. Do not substitute a local checkout for the clean PyPI test or guess a
+version number.

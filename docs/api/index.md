@@ -1,246 +1,55 @@
-# API Reference
+# Python API boundary
 
-This section documents the Python API for ttsforge, allowing programmatic use of the
-library.
+The supported TTSForge interface is its command line. TTSForge is intentionally a small
+product layer over Readio rather than a second Python synthesis/project API. Its
+internal adapter modules are implementation details and may change with the Readio
+contract.
 
-## Module Overview
-
-ttsforge is organized into the following modules:
-
-### Core Modules
-
-**ttsforge.cli** : Command-line interface implementation using explicit typed Typer
-wrappers (with Click as the runtime substrate). App construction and help paths are
-provider-independent; implementation modules are imported lazily.
-
-**ttsforge.paths** : Provider-independent user configuration and advanced short-sentence
-path calculations.
-
-**ttsforge.conversion** : Main conversion logic for EPUB to audiobook conversion.
-
-**ttsforge.render_units** : Dependency-light paragraph descriptors, persistent unit
-identity, renderer contracts, and resume reconciliation.
-
-**ttsforge.paragraph_output** : Owned paragraph workspace files, manifests, playlists,
-marker sidecars, and atomic WAV output.
-
-**ttsforge.phoneme_conversion** : Conversion logic for pre-tokenized phoneme files.
-
-### TTS Backend
-
-**ttsforge.kokoro_runner** : Shared Kokoro ONNX runner used by conversion paths.
-
-**ttsforge.kokoro_lang** : Language code helpers for Kokoro.
-
-**ttsforge.phonemes** : Data structures for phoneme book representation.
-
-### Utilities
-
-**ttsforge.constants** : Configuration defaults, voice definitions, and language
-mappings.
-
-**ttsforge.utils** : Utility functions for file handling, configuration, and formatting.
-
-**ttsforge.audio_merge** : Audio concatenation and chapter marker handling.
-
-**ttsforge.chapter_selection** : Parsing helpers for chapter selection strings.
-
-**ttsforge.ssmd_generator** : Canonical SSMD 0.8 generation, validation, deterministic
-front matter, and SHA-256 content hashing helpers.
-
-**ttsforge.ssmd_support** : Stable SSMD policy, document metadata, diagnostics, and
-pykokoro config translation types. Inspection and validation do not initialize ONNX.
-
-**ttsforge.ssmd_audio** : Bounded document-relative local and opt-in HTTPS audio source
-resolution.
-
-**ttsforge.input_reader** : EPUB/text input parsing helpers.
-
-**ttsforge.name_extractor** : Name extraction utilities for dictionary building.
-
-**ttsforge.vocab** : Vocabulary utilities and metadata.
-
-## Quick API Examples
-
-### Basic Text-to-Speech
-
-```python
-from ttsforge.kokoro_lang import get_onnx_lang_code
-from ttsforge.kokoro_runner import KokoroRunOptions, KokoroRunner
-
-# Initialize runner
-opts = KokoroRunOptions(
-    voice="af_heart",
-    speed=1.0,
-    use_gpu=False,
-    onnx_provider="cpu",
-    pause_clause=0.3,
-    pause_sentence=0.5,
-    pause_paragraph=0.9,
-    pause_variance=0.05,
-    use_spacy=None,
-)
-with KokoroRunner(opts, log=print) as runner:
-    result = runner.synthesize(
-        "Hello, world!",
-        lang_code=get_onnx_lang_code("en-us"),
-        pause_mode="tts",
-        is_phonemes=False,
-    )
-    try:
-        import soundfile as sf
-        sf.write("output.wav", result.audio, result.sample_rate)
-        print(result.document_metadata, result.markers)
-    finally:
-        result.release_audio()
-```
-
-### Converting an EPUB
+For Python integrations, use Readio's public API directly. It exposes typed inspection,
+project, build, audiobook export, catalog, diagnostics, configuration, and SSMD
+services:
 
 ```python
 from pathlib import Path
-from ttsforge.conversion import ConversionOptions, TTSConverter
 
-# Configure conversion
-options = ConversionOptions(
-    voice="am_adam",
-    language="a",
-    speed=1.0,
-    output_format="m4b",
-    use_gpu=False,
-    onnx_provider="nnapi",
-    conversion_unit="paragraph",
-    use_spacy=None,
+from readio.api import Readio
+
+app = Readio()
+source = Path("novel.epub")
+
+inspection = app.audiobooks.inspect(source)
+print(inspection.metadata)
+print([chapter.title for chapter in inspection.chapters])
+
+created = app.audiobooks.create_project_result(
+    source,
+    chapters="1-5",
+    output=Path("novel.readio"),
 )
-
-with TTSConverter(options=options) as converter:
-    result = converter.convert_epub(
-        epub_path=Path("book.epub"),
-        output_path=Path("book.m4b"),
-    )
-
-if result.success:
-    print(f"Created: {result.output_path}")
-else:
-    print(f"Error: {result.error_message}")
+status = app.projects.status(created.project)
+print(status.next_actions)
 ```
 
-### Paragraph units and ownership
+The local Readio checkout is required for this API until a compatible public release is
+published. See [Installation](../installation.md) for the development setup and
+compatibility gate.
 
-Paragraph conversion prepares a chapter once and renders each public PyKokoro unit
-sequentially. Persist or copy the current result before asking for the next one;
-iteration may release the previous result. TTSForge writes each WAV and marker sidecar
-before advancing, rebuilds the manifest and playlist atomically, and records source
-paragraph identity separately from chapter output-unit order. See
-`examples/paragraph_conversion.py`, `examples/paragraph_resume.py`,
-`examples/paragraph_manifest.py`, and `examples/pykokoro_paragraph_units.py`.
+## Audiobook export
 
-### Working with Phonemes
+Readio keeps M4B audiobook export distinct from generic audio export. A typical API
+integration creates a project, builds composition, then calls the audiobook service.
+Request types, defaults, output ownership, and build stages are documented by Readio; do
+not duplicate those contracts in TTSForge code or assume that generic export handles
+M4B.
 
-```python
-from pykokoro.tokenizer import Tokenizer
+See
+[Readio's API guide](https://github.com/buchwandler/readio/blob/main/docs/api.md#projects-and-audiobooks)
+and [project guide](https://github.com/buchwandler/readio/blob/main/docs/projects.md).
 
-# Initialize tokenizer
-tokenizer = Tokenizer()
+## TTSForge integration boundary
 
-# Convert text to phonemes
-text = "Hello, world!"
-phonemes = tokenizer.phonemize(text, lang="en-us")
-print(f"Phonemes: {phonemes}")
-
-# Get token IDs
-tokens = tokenizer.tokenize(phonemes)
-print(f"Tokens: {tokens}")
-
-# Human-readable format
-readable = tokenizer.format_readable(text, lang="en-us")
-print(f"Readable: {readable}")
-```
-
-### Loading Configuration
-
-```python
-from ttsforge.utils import load_config, save_config
-
-# Load current config
-config = load_config()
-print(f"Default voice: {config['default_voice']}")
-
-# Modify and save
-config['default_voice'] = 'am_adam'
-save_config(config)
-```
-
-## Auto-generated API Documentation
-
-```{eval-rst}
-.. automodule:: ttsforge
-   :members:
-   :undoc-members:
-   :show-inheritance:
-
-.. automodule:: ttsforge.constants
-   :members:
-   :undoc-members:
-   :show-inheritance:
-
-.. automodule:: ttsforge.utils
-   :members:
-   :undoc-members:
-   :show-inheritance:
-
-.. automodule:: ttsforge.conversion
-   :members:
-   :undoc-members:
-   :show-inheritance:
-
-.. automodule:: ttsforge.phoneme_conversion
-   :members:
-   :undoc-members:
-   :show-inheritance:
-
-.. automodule:: ttsforge.kokoro_runner
-   :members:
-   :undoc-members:
-   :show-inheritance:
-
-.. automodule:: ttsforge.kokoro_lang
-   :members:
-   :undoc-members:
-   :show-inheritance:
-
-.. automodule:: ttsforge.phonemes
-   :members:
-   :undoc-members:
-   :show-inheritance:
-
-.. automodule:: ttsforge.audio_merge
-   :members:
-   :undoc-members:
-   :show-inheritance:
-
-.. automodule:: ttsforge.chapter_selection
-   :members:
-   :undoc-members:
-   :show-inheritance:
-
-.. automodule:: ttsforge.ssmd_generator
-   :members:
-   :undoc-members:
-   :show-inheritance:
-
-.. automodule:: ttsforge.input_reader
-   :members:
-   :undoc-members:
-   :show-inheritance:
-
-.. automodule:: ttsforge.name_extractor
-   :members:
-   :undoc-members:
-   :show-inheritance:
-
-.. automodule:: ttsforge.vocab
-   :members:
-   :undoc-members:
-   :show-inheritance:
-```
+The implementation imports only `readio.api` for Readio integration. TTSForge's
+audiobook options are translated at that boundary into Readio request types; progress
+events are presented to CLI users without taking ownership of project state. The API
+contract test verifies the public API version and required symbols used by the current
+adapter.

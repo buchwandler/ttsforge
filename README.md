@@ -3,805 +3,103 @@
 ![PyPI - Downloads](https://img.shields.io/pypi/dm/ttsforge)
 [![codecov](https://codecov.io/gh/buchwandler/ttsforge/graph/badge.svg?token=iCHXwbjAXG)](https://codecov.io/gh/buchwandler/ttsforge)
 
-# ttsforge
+# TTSForge
 
-Convert EPUB files to audiobooks using Kokoro ONNX TTS.
+**TTSForge is an audiobook-focused command-line frontend for
+[Readio](https://github.com/buchwandler/readio).** It gives EPUB audiobook workflows a
+concise CLI; Readio owns the persistent project, speech planning, synthesis,
+composition, progress, and export.
 
-ttsforge is a command-line tool that transforms EPUB ebooks into high-quality audiobooks
-with support for neural voices across 10 languages.
+TTSForge does not implement or bundle a parallel speech engine. Use Readio's public
+application API and its engine integrations; TTSForge maps audiobook choices to those
+services.
 
-## Features
+> [!IMPORTANT] The Readio API required by this migration is not yet available in a
+> compatible PyPI release. The published Readio `v0.2.4` does not provide the required
+> audiobook API. For now, use the local Readio checkout as described in
+> [Installation](docs/installation.md). The published-version pin and clean PyPI install
+> check remain blocked; no minimum version is guessed.
 
-- **EPUB to Audiobook**: Convert EPUB files to M4B, MP3, WAV, FLAC, or OPUS
-- **Neural Voices**: High-quality TTS in 10 languages (German included)
-- **SSMD Editing**: Edit intermediate SSMD files to fine-tune pronunciation and pacing
-- **Custom Phoneme Dictionary**: Control pronunciation of names and technical terms
-- **Auto Name Extraction**: Automatically extract names from books for phoneme
-  customization
-- **Explicit Mixed-Language SSMD**: Annotate language changes with SSMD `lang` spans
-- **Resumable Conversions**: Interrupt and resume long audiobook conversions
-- **Phoneme Pre-tokenization**: Pre-process text for faster batch conversions
-- **Configurable Filenames**: Template-based output naming with book metadata
-- **Voice Blending**: Mix multiple voices for custom narration
-- **ONNX Runtime Providers**: CPU, CUDA, NNAPI, XNNPACK, and other PyKokoro providers
-- **Chapter Support**: M4B files include chapter markers from EPUB
-- **EPUB Structure Preservation**: Markdown extraction keeps chapter headings,
-  paragraphs, scene breaks, and inline emphasis in generated SSMD
-- **Streaming Read**: Listen to EPUB/text directly with the `read` command
-- **Bounded Paragraph Rendering**: Retain ordered paragraph/title render units for
-  low-memory resume
+## What it does
 
-## Installation
+- Inspect EPUB metadata and chapter structure.
+- Create or reuse a persistent Readio project for an audiobook.
+- Select chapters, preview speech, plan a project, and check authoritative project
+  status.
+- Export M4B audiobooks or formats supported by Readio's generic export service.
+- Discover voices, models, engines, and formats through Readio.
+- Use Readio's configuration and SSMD authoring/checking services.
 
-```bash
-pip install ttsforge
-```
+## Quick start
 
-The base installation includes the CPU ONNX Runtime provider. Provider-dependent modules
-are loaded only when rendering audio, so `import ttsforge` and `ttsforge --help` remain
-usable for configuration and inspection operations.
-
-Optional extras:
+Once a compatible Readio release is available, install TTSForge and an engine through
+Readio's optional extras. During development, install the sibling Readio checkout; see
+[Installation](docs/installation.md).
 
 ```bash
-# Audio playback (required for --play and read)
-pip install "ttsforge[audio]"
-
-# Bundled ffmpeg (if you cannot install system ffmpeg)
-pip install "ttsforge[static_ffmpeg]"
-
-# CUDA provider support (use a fresh environment when replacing the CPU provider)
-pip install "ttsforge[gpu]"
+ttsforge convert novel.epub
 ```
 
-TTSForge targets `pykokoro[cpu]>=0.9.4,<0.10`, `kokorog2p[espeak,en]>=0.9.5,<1.0`,
-`phrasplit>=0.3.7,<0.4`, and `ssmd>=0.8.7,<0.9`. The standard pipeline forwards the
-document language and ONNX provider through PyKokoro 0.9. Omitted model and voice values
-are resolved from PyKokoro metadata. Explicit model profiles, custom model paths, and
-custom voice databases remain supported.
-
-Mixed-language text must use explicit SSMD spans, for example `[Welt]{lang="de"}`.
-TTSForge does not automatically detect language changes. The legacy
-`use_mixed_language=true` setting is rejected with migration guidance.
-
-It uses compact segment results and releases completed chapter audio before the next
-chapter starts. Chapter conversion remains chapter-buffered. Paragraph conversion
-prepares each chapter once, renders bounded units sequentially, and retains each unit
-immediately for low-memory resume.
-
-To log opt-in process-memory snapshots during conversion:
+Useful follow-up commands:
 
 ```bash
-TTSFORGE_MEMORY_DEBUG=1 ttsforge convert book.epub
-```
-
-Diagnostics report RSS, peak RSS, available memory, and the effective ONNX provider at
-runner, chapter, merge, and cleanup phases. A stable high RSS after release can reflect
-native allocator high-water behavior and does not by itself prove a provider leak.
-
-### Dependencies
-
-- **ffmpeg**: Required for MP3/FLAC/OPUS/M4B output and chapter merging
-- **espeak-ng**: Required for phonemization
-- **spaCy (optional)**: Automatic mode uses the highest compatible installed local model
-  and falls back when none is available; strict requests require a model
-- **sounddevice (optional)**: Required for audio playback (`--play`, `read`)
-
-**Ubuntu/Debian:**
-
-```bash
-sudo apt-get install ffmpeg espeak-ng
-```
-
-**macOS:**
-
-```bash
-brew install ffmpeg espeak-ng
-```
-
-**spaCy models (optional):**
-
-```bash
-pip install spacy
-python -m spacy download en_core_web_sm
-python -m spacy download en_core_web_md
-```
-
-## Quick Start
-
-```bash
-# Convert an EPUB to audiobook (M4B with chapters)
-ttsforge convert book.epub
-
-# Use a specific voice
-ttsforge convert book.epub -v am_adam
-
-# Convert specific chapters
-ttsforge convert book.epub --chapters 1-5
-
-# List available voices
-ttsforge voices
-
-# Generate a voice demo
-ttsforge demo
-
-# Read an EPUB aloud (streaming playback)
-ttsforge read book.epub
-```
-
-## Usage
-
-### Paragraph-wise conversion
-
-Chapter output remains the default. Use `--conversion-unit paragraph` for
-paragraph-level resume and one retained WAV per render unit:
-
-```bash
-ttsforge convert book.epub --conversion-unit paragraph
-ttsforge convert book.epub --conversion-unit paragraph --yes
-ttsforge convert book.epub --fresh --conversion-unit paragraph
-```
-
-`--split-mode paragraph` controls internal splitting and batching; it does not choose
-output files or resume granularity. The conversion unit is saved when the workspace is
-created, restored on resume, and cannot be changed without `--fresh`. `--fresh` is a
-workspace lifecycle command, not a generation setting.
-
-Paragraph WAVs remain in `<output-stem>_paragraphs/` with `manifest.json`, marker
-sidecars, and `playlist.m3u8`. A render unit is an optional announced chapter-title unit
-followed by spoken paragraph units. Fixed-width global sequence prefixes make lexical
-order playback order. PyKokoro owns paragraph and boundary pauses; TTSForge-owned
-interchapter silence is stored only in the final unit of each non-final selected
-chapter. A complete workspace can be merged without initializing ONNX. See
-[`examples/README.md`](examples/README.md) and the conversion, resume, and manifest
-examples.
-
-Paragraph mode saves progress after every finalized unit. To start and resume a
-paragraph conversion, use:
-
-```bash
-ttsforge convert "Platform Decay - Martha Wells.epub" --fresh --conversion-unit paragraph
-# Interrupt the conversion, then run the normal command:
-ttsforge convert "Platform Decay - Martha Wells.epub"
-```
-
-The second command restores the saved paragraph mode, chapter selection, output path,
-and omitted audio-affecting settings. When `--seed` is omitted, TTSForge creates and
-persists a hidden non-negative preparation seed for each chapter before stochastic
-short-sentence processing begins, then reuses it across processes. Fresh conversions
-receive new automatic seeds; `--seed 42` supplies the same explicit seed to every
-chapter. An explicitly changed audio-affecting option rejects resume and reports the
-changed field; remove the override to use the saved value or use `--fresh` to
-deliberately start a new workspace. TTSForge owns the durable paragraph-unit content
-identity as a SHA-256 of each exact prepared text; provider-internal descriptor hashes
-are diagnostic only. Verifiable schema-6 workspaces migrate to schema 7, and compatible
-schema-7 paragraph workspaces can migrate their provider-hash identity to schema 8 in
-place without re-rendering completed WAVs. Unverifiable or incompatible legacy
-workspaces and their artifacts are preserved. Paragraph workspaces created with older
-than schema 6 cannot guarantee deterministic preparation and require a fresh run.
-
-### Basic Conversion
-
-```bash
-ttsforge convert book.epub
-```
-
-Creates `book.m4b` with PyKokoro metadata-selected voice and model defaults.
-
-### Voice Selection
-
-```bash
-# List all voices
-ttsforge voices
-
-# List voices for a language
-ttsforge voices -l b  # British English
-
-# Convert with specific voice
-ttsforge convert book.epub -v bf_emma
-```
-
-### Output Formats
-
-```bash
-ttsforge convert book.epub -f mp3    # MP3
-ttsforge convert book.epub -f wav    # WAV (uncompressed)
-ttsforge convert book.epub -f flac   # FLAC (lossless)
-ttsforge convert book.epub -f opus   # OPUS
-ttsforge convert book.epub -f m4b    # M4B audiobook (default)
-```
-
-### Chapter Selection
-
-```bash
-# Preview chapters
-ttsforge list book.epub
-
-# Convert range
-ttsforge convert book.epub --chapters 1-5
-
-# Convert specific chapters
-ttsforge convert book.epub --chapters 1,3,5,7
-
-# Mixed selection
-ttsforge convert book.epub --chapters 1-3,5,10-15
-```
-
-### Speed Control
-
-```bash
-ttsforge convert book.epub -s 1.2   # 20% faster
-ttsforge convert book.epub -s 0.9   # 10% slower
-```
-
-### Resumable Conversions
-
-Conversions are resumable by default. If interrupted, re-run the same command:
-
-```bash
-ttsforge convert book.epub  # Resumes from last chapter
-ttsforge convert book.epub --fresh  # Start over
-```
-
-For paragraph conversion, the resume summary reports completed units and the next
-chapter/paragraph. Valid WAV and marker artifacts are retained, while a damaged unit
-invalidates only its ordered suffix.
-
-### Phoneme Workflow
-
-For large books or batch processing, pre-tokenize to phonemes:
-
-```bash
-# Export to phonemes (fast, CPU-only)
-ttsforge phonemes export book.epub
-
-# Convert phonemes to audio (can run on different machine)
-ttsforge phonemes convert book.phonemes.json -v am_adam
-```
-
-### Configuration
-
-```bash
-# View settings
-ttsforge config --show
-
-# Set defaults
-ttsforge config --set default_voice am_adam
-ttsforge config --set default_format mp3
-ttsforge config --set onnx_provider nnapi
-
-# Reset to defaults
-ttsforge config --reset
-```
-
-The legacy two-token configuration option remains available and may be repeated. Values
-beginning with a dash are accepted as values rather than being interpreted as options:
-
-```bash
-ttsforge config --set default_speed 1.1 --set default_title -draft
-```
-
-Advanced short-sentence handling can be managed with a JSON config:
-
-```bash
-# Create and link the advanced short-sentence config
-ttsforge config short-sentence init
-
-# Show the advanced short-sentence config
-ttsforge config short-sentence show
-
-# Reset the advanced short-sentence config to defaults
-ttsforge config short-sentence reset
-```
-
-### Filename Templates
-
-Customize output filenames with metadata:
-
-```bash
-ttsforge config --set output_filename_template "{author} - {book_title}"
-```
-
-Available variables: `{book_title}`, `{author}`, `{chapter_title}`, `{chapter_num}`,
-`{input_stem}`, `{chapters_range}`
-
-## Voices
-
-`ttsforge voices` queries PyKokoro 0.9 metadata without initializing ONNX or downloading
-model assets. Use `--language` to filter the discovered voices. Omit `--voice` to let
-PyKokoro select the profile default for the document language. Explicit voice names and
-voice blends remain supported.
-
-Voice names are profile-provided identifiers. Legacy voices such as `af_heart` follow
-the `{lang}{gender}_{name}` convention, but modern profile voices may not (e.g.,
-`martin`, `Alice`). Run `ttsforge voices` for the current metadata-driven inventory.
-
-### Voice Demo
-
-```bash
-# Demo all voices
-ttsforge demo
-
-# Demo specific language
-ttsforge demo -l a
-
-# Save individual voice files
-ttsforge demo --separate -o ./voices/
-```
-
-### Voice Blending
-
-Mix multiple voices for custom narration:
-
-```bash
-# Using --voice parameter (auto-detects blend format)
-ttsforge convert book.epub --voice "af_nicole:50,am_michael:50"
-
-# Using --voice-blend parameter (traditional method)
-ttsforge convert book.epub --voice-blend "af_nicole:50,am_michael:50"
-
-# Weighted blends (70% Nicole, 30% Michael)
-ttsforge convert book.epub --voice "af_nicole:70,am_michael:30"
-
-# Works with all commands
-ttsforge sample "Hello world" --voice "af_sky:60,bf_emma:40" -p
-ttsforge phonemes preview "Test blend" --voice "am_adam:50,am_michael:50" --play
-```
-
-### Mixed-Language Support
-
-Mixed-language changes must be marked explicitly in SSMD. For example:
-
-```ssmd
-Das ist ein Satz. [This is an English sentence.]{lang="en-us"}
-```
-
-Generate or edit the SSMD chapter, then convert it with the document language supplied
-by the conversion command. TTSForge does not perform automatic mixed-language detection.
-The legacy `--use-mixed-language` and related primary, allowed, and confidence options
-are rejected with migration guidance.
-
-### SSMD Editing
-
-ttsforge uses SSMD (Speech Synthesis Markdown) as an intermediate format between your
-EPUB and the final audio. This allows you to fine-tune pronunciation, pacing, and
-emphasis before conversion.
-
-#### How It Works
-
-During conversion, ttsforge automatically generates `.ssmd` files for each chapter:
-
-```
-.{book_title}_chapters/
-├── chapter_001_intro.ssmd      # Editable text with speech markup
-├── chapter_001_intro.wav
-├── chapter_002_chapter1.ssmd
-├── chapter_002_chapter1.wav
-```
-
-When you resume a conversion, ttsforge detects if you've edited any SSMD files and
-automatically regenerates the audio.
-
-#### Basic Workflow
-
-```bash
-# 1. Start conversion
-ttsforge convert book.epub
-
-# 2. Pause conversion (Ctrl+C)
-
-# 3. Edit SSMD files to fix pronunciation or pacing
-vim .book_chapters/chapter_001_intro.ssmd
-
-# 4. Resume - automatically detects edits and regenerates audio
-ttsforge convert book.epub
-```
-
-#### SSMD Syntax
-
-SSMD files use a simple markdown-like syntax:
-
-**Structural Breaks** (control pauses):
-
-```
-...p    # Paragraph break (0.5-1.0s pause)
-...s    # Sentence break (0.1-0.3s pause)
-...c    # Clause break (shorter pause)
-```
-
-**Emphasis**:
-
-```
-*text*      # Moderate emphasis
-**text**    # Strong emphasis
-```
-
-EPUB processing has three independent layers:
-
-1. **Semantic extraction**: epub2text converts EPUB navigation, headings, paragraphs,
-   scene breaks, semantic emphasis, and CSS emphasis into chapter Markdown.
-2. **SSMD generation**: TTSForge preserves that controlled Markdown in `.ssmd` files;
-   `##` headings and `*`/`**` spans remain editable and parseable.
-3. **Audible rendering**: `--emphasis-level` controls gain-only audible strength while
-   `--ssmd-emphasis` remains available for advanced policy handling.
-
-Markdown extraction and emphasis preservation are enabled by default, while audible
-emphasis remains plain:
-
-```bash
-# Default: Markdown structure and emphasis are preserved; audio remains plain
-ttsforge convert book.epub
-
-# Unwrap emphasis while retaining headings and scene breaks
-ttsforge convert book.epub --no-detect-emphasis
-
-# Compare with the legacy flattened extraction path
-ttsforge convert book.epub --epub-content-mode plain
-
-# Light, normal, or strong gain-only audible emphasis
-ttsforge convert book.epub --emphasis-level 1
-ttsforge convert book.epub --emphasis-level 2
-ttsforge convert book.epub --emphasis-level 3
-
-# Persist the normal level for future conversions
-ttsforge config --set emphasis_level 2
-ttsforge convert book.epub
-
-# Choose the persisted/default policy explicitly
-ttsforge config --set ssmd_emphasis_mode plain
-ttsforge convert book.epub --ssmd-emphasis approximate
-
-# Select AudioSig prosody for explicit SSMD rate/pitch annotations
-ttsforge config --set prosody_method esola
-ttsforge convert book.epub --prosody-method psola
-```
-
-`epub_content_mode`, `detect_emphasis`, `emphasis_level`, `ssmd_emphasis_mode`, and
-`prosody_method` are separate settings. The first selects Markdown or explicit legacy
-plain extraction; the second preserves or unwraps inline emphasis without affecting
-headings; the third controls friendly audible strength; the fourth remains the advanced
-SSMD policy; and the fifth selects AudioSig processing for explicit rate and pitch
-annotations. The default preserves EPUB emphasis but leaves automatic audible emphasis
-The default preserves EPUB emphasis but leaves automatic audible emphasis off. Level 2
-is the normal emphasis approximation. `psola` is accepted as an alias for AudioSig's
-canonical `td_psola`.
-
-The user-friendly levels are `0=Off`, `1=Light`, `2=Normal`, and `3=Strong`. The
-advanced policies are `plain`, `approximate`, `warn`, and `error`. Explicit SSMD prosody
-such as `[fast words]{rate="fast"}` remains active in plain emphasis mode.
-
-### spaCy model policy
-
-TTSForge uses the released PyKokoro/phrasplit model policy for sentence segmentation and
-G2P. When no exact model or tier is configured, it selects the highest installed
-compatible local model for each effective language; model packages are never downloaded
-by this selection, and conversion falls back without a local model. `--spacy` (or
-`use_spacy=true`), an exact package, and an exact tier are strict; `--no-spacy` is
-disabled mode. The request is visible in the conversion summary and the concrete
-selection is frozen into conversion state and resume identity.
-
-```bash
-# Quality-first automatic behavior (omit both keys)
-ttsforge convert book.epub
-
-# Preserve a previous medium-tier workflow
-ttsforge config --set spacy_model_size md
-
-# Preserve a previous small-model workflow exactly
-ttsforge convert book.epub --spacy-model en_core_web_sm
-
-# Disable spaCy in the conversion pipeline
-ttsforge convert book.epub --no-spacy
-```
-
-Use `--spacy-model` for a strict package request or `--spacy-model-size` for a strict
-`sm`, `md`, `lg`, or `trf` tier request. Explicit packages take precedence over tiers.
-Changing the installed model set can change segmentation, phonemes, and audio; old
-resumable conversions may therefore require `--fresh`.
-
-**Custom Phonemes**:
-
-```
-[Hermione]{ph="hɝmˈIni"}    # Override pronunciation
-[API]{ph="ˌeɪpiˈaɪ"}        # Technical terms
-```
-
-**Language annotations** (supported):
-
-```
-[Bonjour]{lang="fr"}    # Mark text as French
-```
-
-#### Example SSMD File
-
-```ssmd
-Chapter One ...p
-
-[Harry]{ph="hæɹi"} Potter was a *highly unusual* boy in many ways. ...s
-For one thing, he **hated** the summer holidays more than any other
-time of year. ...s For another, he really wanted to do his homework,
-but was forced to do it in secret, in the dead of the night. ...p
-
-And he also happened to be a wizard. ...p
-```
-
-#### When to Use SSMD Editing
-
-- **Pronunciation issues**: Character names, technical terms, foreign words
-- **Pacing problems**: Adjust paragraph and sentence breaks
-- **Emphasis corrections**: Add or remove emphasis on specific words
-- **Combine with phoneme dictionary**: Phoneme dictionary applied automatically to SSMD
-
-For detailed SSMD 0.8.6 syntax, explicit language spans, validation, policy options, and
-PyKokoro 0.9 limitations, see [docs/ssmd.md](docs/ssmd.md).
-
-### Custom Phoneme Dictionary
-
-Control pronunciation of character names, technical terms, and foreign words with custom
-phoneme dictionaries.
-
-#### Quick Start
-
-```bash
-# 1. Extract names from your book (requires spacy)
-ttsforge extract-names mybook.epub
-
-# 2. Review the generated custom_phonemes.json file
-ttsforge list-names custom_phonemes.json
-
-# 3. Test pronunciation with sample
-ttsforge sample "Hermione loves Kubernetes" --phoneme-dict custom_phonemes.json -p
-
-# 4. Convert with custom pronunciations
-ttsforge convert mybook.epub --phoneme-dict custom_phonemes.json
-```
-
-#### Requirements
-
-For automatic name extraction (optional but recommended):
-
-```bash
-pip install spacy
-# Install the compatible package(s) you want to make available locally.
-python -m spacy download en_core_web_lg
-```
-
-Name extraction accepts `--spacy-model`, `--spacy-model-size`, and `--language`; it
-selects the highest installed model with the required NER capability and records the
-concrete package in dictionary metadata.
-
-#### Workflow
-
-**1. Extract names from your book:**
-
-```bash
-# Extract frequent names (≥3 occurrences)
-ttsforge extract-names mybook.epub
-
-# Preview without saving
-ttsforge extract-names mybook.epub --preview
-
-# Only very frequent names (≥10 occurrences)
-ttsforge extract-names mybook.epub --min-count 10 -o names.json
-
-# Include all proper nouns, not just detected person names
-ttsforge extract-names mybook.epub --include-all
-```
-
-This creates a `custom_phonemes.json` file with auto-generated phoneme suggestions.
-
-**2. Review and edit the dictionary:**
-
-```bash
-# List all entries
-ttsforge list-names custom_phonemes.json
-
-# Sort alphabetically
-ttsforge list-names custom_phonemes.json --sort-by alpha
-```
-
-Edit `custom_phonemes.json` to fix any incorrect phonemes. The file format is:
-
-```json
-{
-  "_metadata": {
-    "generated_from": "mybook.epub",
-    "language": "en-us"
-  },
-  "entries": {
-    "Hermione": {
-      "phoneme": "hɝmˈIni",
-      "occurrences": 847,
-      "verified": false
-    },
-    "Kubernetes": {
-      "phoneme": "kubɚnˈɛtɪs",
-      "occurrences": 12,
-      "verified": false
-    }
-  }
-}
-```
-
-Or use the simple format:
-
-```json
-{
-  "Hermione": "hɝmˈIni",
-  "Kubernetes": "kubɚnˈɛtɪs"
-}
-```
-
-**3. Test pronunciation:**
-
-```bash
-# Test specific names
-ttsforge sample "Hermione and Harry" --phoneme-dict custom_phonemes.json -p
-
-# Test and save to file
-ttsforge sample "Hermione and Harry" --phoneme-dict custom_phonemes.json -o test.wav
-```
-
-**4. Convert your book:**
-
-```bash
-# Use the dictionary for conversion
-ttsforge convert mybook.epub --phoneme-dict custom_phonemes.json
-
-# Case-sensitive matching (default is case-insensitive)
-ttsforge convert mybook.epub \
-  --phoneme-dict custom_phonemes.json \
-  --phoneme-dict-case-sensitive
-```
-
-#### Manual Dictionary Creation
-
-You can create a dictionary manually without extraction:
-
-```json
-{
-  "Katniss": "kætnɪs",
-  "Peeta": "pitə",
-  "Panem": "pænəm"
-}
-```
-
-#### Getting IPA Phonemes
-
-To find the correct IPA phonemes for a word:
-
-1. Use `ttsforge sample "word" -p` to hear the default pronunciation
-2. Look up IPA pronunciation online (e.g., Wiktionary, IPA dictionaries)
-3. Or use the auto-generated phonemes as a starting point
-
-**Note:** Phoneme matching is case-insensitive by default and respects word boundaries
-(e.g., "test" won't match "testing").
-
-## Commands
-
-The CLI is built from explicit typed Typer command wrappers. Help and version paths do
-not initialize the ONNX provider; only executing a backend-dependent command imports its
-implementation module.
-
-| Command            | Description                          |
-| ------------------ | ------------------------------------ |
-| `convert`          | Convert EPUB to audiobook            |
-| `list`             | List chapters in EPUB                |
-| `info`             | Show EPUB metadata                   |
-| `sample`           | Generate sample audio                |
-| `read`             | Stream playback from EPUB/text       |
-| `voices`           | List available voices                |
-| `demo`             | Generate voice demo                  |
-| `extract-names`    | Extract names for phoneme dictionary |
-| `list-names`       | List names in phoneme dictionary     |
-| `download`         | Download ONNX models                 |
-| `config`           | Manage configuration                 |
-| `phonemes export`  | Export EPUB to phonemes              |
-| `phonemes convert` | Convert phonemes to audio            |
-| `phonemes info`    | Show phoneme file info               |
-| `phonemes preview` | Preview text as phonemes             |
-
-## ONNX Runtime Providers
-
-Select an ONNX Runtime execution provider globally or per command. The value may be an
-alias (`auto`, `cpu`, `cuda`, `openvino`, `directml`/`dml`, `coreml`, `nnapi`, or
-`xnnpack`) or a full `*ExecutionProvider` name:
-
-```bash
-ttsforge config --set onnx_provider nnapi
-ttsforge sample "NNAPI test" --provider nnapi
-ttsforge sample "CPU test" --provider CPUExecutionProvider
-```
-
-For a desktop ONNX Runtime build exposing OpenVINO:
-
-```bash
-ttsforge config --set onnx_provider openvino
-ttsforge config --show
-ttsforge sample "OpenVINO test" --provider openvino
-```
-
-NNAPI and XNNPACK are execution providers, not GPU modes. PyKokoro applies its
-documented `ONNX_PROVIDER` environment override after TTSForge resolves configuration.
-
-```bash
-ttsforge convert book.epub --provider xnnpack
+ttsforge list novel.epub
+ttsforge convert novel.epub --chapters 5-17 --fresh
+ttsforge status novel.readio
+ttsforge preview novel.epub
+ttsforge voices --language en-us
 ttsforge doctor
 ```
 
-```bash
-ttsforge --version
-python -c "import importlib.metadata as m; print(m.version('ttsforge'))"
-python -c "import ttsforge; print(ttsforge.__file__)"
-ttsforge convert --help
-python -m ttsforge convert --help
-```
+By default, the project is `novel.readio` beside `novel.epub`; the default output is
+`novel.m4b`. Re-running the command reuses that Readio project and its persistent
+chapter selection. See [Projects and outputs](docs/projects.md) for reuse, fresh
+projects, and legacy workspaces.
 
-An older wheel, a different virtual environment, or an unrefreshed editable install can
-otherwise make an older CLI appear to be missing `--provider`.
+## Readio engines and configuration
 
-For Termux/Android, install an ONNX Runtime build compatible with the declared PyKokoro
-release, then configure the GitHub assets explicitly:
+Engine availability and voices depend on Readio's installed optional engine integrations
+and local configuration. Discover the active catalog and diagnose the environment with:
 
 ```bash
-ttsforge config \
-  --set model_source github \
-  --set model_variant v1.0 \
-  --set model_quality fp32 \
-  --set onnx_provider nnapi
-ttsforge config --show
-ttsforge download
-ttsforge sample "Termux provider test" --provider nnapi
+ttsforge engines
+ttsforge models
+ttsforge voices --engine kokoro
+ttsforge formats
+ttsforge doctor
 ```
 
-`config --show` reports the configured source/variant/quality. If that set is incomplete
-but the other supported source has a complete set, it reports the alternate without
-switching sources automatically. With the required patched PyKokoro release, GitHub
-`v1.0` uses the embedded standard vocabulary and does not download Hugging Face
-`config.json`. Provider availability depends on the installed Android ONNX Runtime
-build; use another available provider if NNAPI is not exposed.
+TTSForge reads and updates Readio configuration rather than keeping a separate TTSForge
+backend configuration:
 
-## Configuration Options
+```bash
+ttsforge config show
+ttsforge config set reader.voice af_heart
+ttsforge config set reader.speed 1.1
+```
 
-| Option                           | Default        | Description                         |
-| -------------------------------- | -------------- | ----------------------------------- |
-| `tts.voice`                      | `None`         | Metadata-selected voice             |
-| `tts.language`                   | `auto`         | Canonical BCP-47 language           |
-| `tts.speed`                      | `1.0`          | Speech speed (0.5-2.0)              |
-| `audio.format`                   | `m4b`          | Output format                       |
-| `runtime.provider`               | `cpu`          | ONNX Runtime provider               |
-| `model.quality`                  | `None`         | Automatic or explicit quality       |
-| `model.source`                   | `None`         | Automatic or explicit source        |
-| `model.id`                       | `None`         | Automatic or explicit model profile |
-| `audio.silence_between_chapters` | `2.0`          | Chapter gap in seconds              |
-| `text.short_sentence`            | `None`         | Short-sentence handling             |
-| `output_filename_template`       | `{book_title}` | Output filename template            |
+## Migration notes
+
+This is a breaking change from the former TTSForge-owned Kokoro conversion pipeline. Old
+renderer workspaces are not Readio projects and cannot be resumed by this frontend. They
+are left untouched; use `--fresh` or an explicit new `--project` path to start
+separately. Backend-specific commands such as `read`, `sample`, `demo`, `download`, and
+`phonemes` are no longer part of TTSForge. See the
+[migration guide](docs/migration-readio.md) before switching an existing setup.
 
 ## Documentation
 
-Full documentation: https://ttsforge.readthedocs.io/
+- [Installation and compatibility status](docs/installation.md)
+- [Quick start](docs/quickstart.md)
+- [CLI reference](docs/cli.md)
+- [Project and output lifecycle](docs/projects.md)
+- [Readio configuration](docs/configuration.md)
+- [Voices and discovery](docs/voices.md)
+- [SSMD tools](docs/ssmd.md)
+- [Migration guide](docs/migration-readio.md)
+- [Python API boundary](docs/api/index.md)
+- [Command-line examples](examples/README.md)
 
-Build locally:
-
-```bash
-pip install -r docs/requirements.txt
-make html
-```
-
-## Requirements
-
-- Python 3.10+
-- ffmpeg (for MP3/FLAC/OPUS/M4B output and chapter merging)
-- espeak-ng (for phonemization)
-- ~330MB disk space (ONNX models)
-- sounddevice (optional, for audio playback)
-
-## License
-
-MIT License
-
-## Credits
-
-- [Kokoro](https://github.com/hexgrad/kokoro) - TTS model
-- [espeak-ng](https://github.com/espeak-ng/espeak-ng) - Phonemization
-- [ONNX Runtime](https://onnxruntime.ai/) - Model inference
+Implementation details and the public service contracts are documented in
+[Readio's API guide](https://github.com/buchwandler/readio/blob/main/docs/api.md) and
+[project guide](https://github.com/buchwandler/readio/blob/main/docs/projects.md).

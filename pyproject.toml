@@ -8,7 +8,7 @@ include = ["ttsforge*"]
 
 [project]
 name = "ttsforge"
-description = "Generate audiobooks from EPUB files using Kokoro ONNX TTS."
+description = "User-friendly audiobook conversion powered by Readio."
 readme = "README.md"
 requires-python = ">=3.10"
 license = {file = "LICENSE"}
@@ -17,24 +17,9 @@ authors = [
 ]
 urls = { Homepage = "https://github.com/buchwandler/ttsforge" }
 dependencies = [
-    # Typer 0.27.0 omits some Annotated options from help on Python 3.10.
-    "typer>=0.20.0",
-    "click>=8.0.0",
+    "readio",
     "rich>=13.0.0",
-    "epub2text>=0.2.8,<0.3",
-    "numpy",
-    "audiosig>=0.1.2,<0.2",
-    "soundfile>=0.12.0",
-    "chardet",
-    "charset-normalizer",
-    "platformdirs>=3.0.0",
-    # CPU is the supported default provider; backend modules remain lazy.
-    # Provider-neutral core; install exactly one provider extra for rendering.
-    "pykokoro>=0.9.4,<0.10",
-    "kokorog2p[espeak,en]>=0.9.5,<1.0",
-    "phrasplit>=0.3.7,<0.4",
-    "ssmd>=0.8.7,<0.9",
-    "typing_extensions>=4.0.0",
+    "typer>=0.20.0",
 ]
 classifiers=[
     'Intended Audience :: End Users/Desktop',
@@ -53,33 +38,11 @@ classifiers=[
 dynamic=["version"]
 
 [project.optional-dependencies]
-audio = [
-    "sounddevice>=0.4.6",
-]
 dev = [
     "pytest>=7.0.0",
     "pytest-cov>=4.0.0",
-    "diff-cover>=9.0.0",
     "ruff>=0.1.0",
     "mypy>=1.8.0",
-]
-static_ffmpeg = [
-    "static-ffmpeg>=3.0",
-]
-cpu = [
-    "pykokoro[cpu]>=0.9.4,<0.10",
-]
-gpu = [
-    "pykokoro[gpu]>=0.9.4,<0.10",
-]
-openvino = [
-    "pykokoro[openvino]>=0.9.4,<0.10",
-]
-directml = [
-    "pykokoro[directml]>=0.9.4,<0.10",
-]
-coreml = [
-    "pykokoro[coreml]>=0.9.4,<0.10",
 ]
 
 [project.scripts]
@@ -95,12 +58,9 @@ legacy_tox_ini = """
 [testenv]
 deps =
     pytest
-    pytest-cov[all]
+    pytest-cov
 commands =
-    pytest --cov=ttsforge --cov-branch --cov-report=term-missing --cov-report=xml --cov-fail-under=55
-    pytest tests/test_audio_player.py --cov=ttsforge.audio_player --cov-branch --cov-fail-under=80
-    pytest tests/test_audio_merge.py --cov=ttsforge.audio_merge --cov-branch --cov-fail-under=75
-    diff-cover coverage.xml --compare-branch=origin/main --fail-under=85
+    pytest
 """
 
 [tool.mypy]

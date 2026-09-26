@@ -11,6 +11,8 @@ def test_docs_use_markdown_sources_only() -> None:
     assert not list(DOCS.rglob("*.rst"))
     assert (DOCS / "index.md").is_file()
     assert (DOCS / "api" / "index.md").is_file()
+    assert (DOCS / "projects.md").is_file()
+    assert (ROOT / "examples" / "README.md").is_file()
 
 
 def test_sphinx_enables_myst_markdown() -> None:
@@ -21,21 +23,30 @@ def test_sphinx_enables_myst_markdown() -> None:
     assert "deflist" in config["myst_enable_extensions"]
 
 
-def test_readme_has_no_stale_documentation_rst_link() -> None:
-    readme = (ROOT / "README.md").read_text(encoding="utf-8")
-    assert "docs/ssmd.rst" not in readme
-    assert "docs/ssmd.md" in readme
-
-
-def test_release_docs_describe_current_paragraph_and_spacy_contracts() -> None:
+def test_readme_describes_readio_frontend_and_release_gate() -> None:
     readme = (ROOT / "README.md").read_text(encoding="utf-8")
     installation = (DOCS / "installation.md").read_text(encoding="utf-8")
-    configuration = (DOCS / "configuration.md").read_text(encoding="utf-8")
+    migration = (DOCS / "migration-readio.md").read_text(encoding="utf-8")
+
+    assert "audiobook-focused command-line frontend for [Readio]" in readme
+    assert "no minimum version is guessed" in readme
+    assert "compatible published pin" in installation
+    assert "A compatible release is not yet available on PyPI" in installation
+    assert "not Readio projects" in migration
+    assert "--fresh" in migration
+    assert (
+        "`read`, `sample`, `demo`, `download`, and `phonemes` are removed" in migration
+    )
+
+
+def test_user_docs_explain_project_reuse_and_removed_backend_examples() -> None:
+    projects = (DOCS / "projects.md").read_text(encoding="utf-8")
+    cli = (DOCS / "cli.md").read_text(encoding="utf-8")
+    examples = (ROOT / "examples" / "README.md").read_text(encoding="utf-8")
     api = (DOCS / "api" / "index.md").read_text(encoding="utf-8")
 
-    assert "retained WAV per render unit" in readme
-    assert "falls back" in readme
-    assert "AudioSig `>=0.1.2,<0.2`" in installation
-    assert "use_spacy=null" in installation
-    assert "use_spacy=false" in configuration
-    assert "examples/paragraph_manifest.py" in api
+    assert "chapter scope" in projects
+    assert "Former TTSForge workspaces" in projects
+    assert "are no longer registered" in cli
+    assert "no TTSForge examples that import PyKokoro" in examples
+    assert "from readio.api import Readio" in api
