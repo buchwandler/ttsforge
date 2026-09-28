@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import json
+import re
 from importlib import import_module
 from pathlib import Path
 from types import SimpleNamespace
@@ -33,6 +34,10 @@ cli_module = import_module("ttsforge.cli.app")
 
 
 runner = CliRunner()
+
+
+def _plain_output(output: str) -> str:
+    return re.sub(r"\x1b\[[0-?]*[ -/]*[@-~]", "", output)
 
 
 def _set_mode(
@@ -362,20 +367,23 @@ class _FakeConverter:
 
 def test_help_exposes_only_the_audiobook_frontend_commands() -> None:
     result = runner.invoke(cli_module.app, ["--help"])
+    help_text = _plain_output(result.output)
 
-    assert result.exit_code == 0, result.output
-    assert "convert" in result.output
-    assert "list" in result.output
-    assert "status" in result.output
-    assert "phonemes" not in result.output
-    assert "download" not in result.output
+    assert result.exit_code == 0, help_text
+    assert "convert" in help_text
+    assert "list" in help_text
+    assert "status" in help_text
+    assert "phonemes" not in help_text
+    assert "download" not in help_text
 
-    assert "engines" in result.output
-    assert "formats" in result.output
-    assert "doctor" in result.output
-    assert "config" in result.output
-    assert "ssmd" in result.output
-    convert_help = runner.invoke(cli_module.app, ["convert", "--help"]).output
+    assert "engines" in help_text
+    assert "formats" in help_text
+    assert "doctor" in help_text
+    assert "config" in help_text
+    assert "ssmd" in help_text
+    convert_help = _plain_output(
+        runner.invoke(cli_module.app, ["convert", "--help"]).output
+    )
     assert "--yes" in convert_help
     assert "--non-interactive" in convert_help
     assert "--model" in convert_help
