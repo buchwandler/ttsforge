@@ -14,9 +14,10 @@ TTSForge does not implement or bundle a parallel speech engine. Use Readio's pub
 application API and its engine integrations; TTSForge maps audiobook choices to those
 services.
 
-TTSForge requires Readio `>=0.3.1`, the first published release with the required public
-audiobook API. Install TTSForge normally, then add a Readio engine integration as
-needed; see [Installation](docs/installation.md) for setup and development instructions.
+TTSForge requires Readio `>=0.3.3`, which provides the public audiobook API and the
+expanded synthesis-resolution contract used by guided setup. Install TTSForge normally,
+then add a Readio engine integration as needed; see [Installation](docs/installation.md)
+for setup and development instructions.
 
 ## What it does
 
@@ -37,14 +38,16 @@ platform; see [Installation](docs/installation.md) for details. Then run:
 ttsforge convert novel.epub
 ```
 
-In an interactive terminal, a new project shows the detected chapters, prompts for a
-selection, then displays Readio's effective audiobook settings before confirmation.
-Build progress updates live by chapter. Reusing a project uses its saved chapter scope
-without prompting again. For automation, specify `--chapters` and use `--yes` to skip
-confirmation, or use `--non-interactive` to disable all prompts; without an explicit
-selection, non-interactive runs include all chapters.
+In an interactive terminal, a new project shows the detected chapters and prompts for a
+selection, then guides you through any synthesis settings you have not supplied.
+Readio's model and voice catalogs are displayed for selection, and the resolved
+audiobook settings appear before confirmation. Reusing a project uses its saved chapter
+scope. Build progress updates live by chapter.
 
-Useful follow-up commands:
+For automation, specify `--chapters` and pass any desired synthesis options explicitly.
+`--yes` skips only final confirmation; `--non-interactive` and `--json` remain
+prompt-free. Without an explicit chapter selection, non-interactive runs include all
+chapters. Useful follow-up commands:
 
 ```bash
 ttsforge list novel.epub

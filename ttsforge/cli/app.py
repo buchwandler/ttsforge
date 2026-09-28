@@ -20,8 +20,10 @@ from readio.api import (
     PreviewResult,
     ProjectBuildResult,
     Readio,
+    ReadioConfig,
     ReadioError,
     SSMDAnalysis,
+    SSMDMaterializeResult,
     VoiceQuery,
 )
 from rich.console import Console
@@ -38,9 +40,11 @@ from ..progress import (
     RichReadioProgress,
 )
 from ..readio_backend import create_readio, synthesis_request
+from ..synthesis_setup import CliPins
 from ..ui.chapters import chapter_table, choose_chapters
 from ..ui.interaction import InteractionMode, resolve_interaction_mode
 from ..ui.preflight import render_completion, render_preflight
+from ..ui.synthesis import configure_synthesis_interactively
 
 T = TypeVar("T")
 _output = Console(stderr=False, highlight=False)
@@ -131,6 +135,16 @@ def _validate_output_format(output_format: str) -> None:
         )
 
 
+def _validate_lexicon_modes(
+    lexicons: list[str] | None, *, no_lexicons: bool, auto_lexicons: bool
+) -> None:
+    selected_modes = sum((bool(lexicons), no_lexicons, auto_lexicons))
+    if selected_modes > 1:
+        raise typer.BadParameter(
+            "--lexicon, --no-lexicons, and --auto-lexicons are mutually exclusive."
+        )
+
+
 def _options(
     source: Path,
     *,
@@ -154,6 +168,17 @@ def _options(
     title: str | None = None,
     author: str | None = None,
     cover: Path | None = None,
+    lexicons: tuple[str, ...] | None = None,
+    no_lexicons: bool = False,
+    auto_lexicons: bool = False,
+    spacy: str | None = None,
+    short_sentence: str | None = None,
+    g2p_fallback: str | None = None,
+    lexicon_data_policy: str | None = None,
+    allow_experimental: bool = False,
+    voice_level: str | None = None,
+    pause_mode: str | None = None,
+    unit: str | None = None,
 ) -> AudiobookOptions:
     resolved_output = output or source.with_suffix(f".{output_format}")
     return AudiobookOptions(
@@ -178,6 +203,17 @@ def _options(
         title=title,
         author=author,
         cover=cover,
+        lexicons=lexicons,
+        clear_lexicons=no_lexicons,
+        auto_lexicons=auto_lexicons,
+        spacy=spacy,
+        short_sentence=short_sentence,
+        g2p_fallback=g2p_fallback,
+        lexicon_data_policy=lexicon_data_policy,
+        allow_experimental=allow_experimental,
+        voice_level=voice_level,
+        pause_mode=pause_mode,
+        unit=unit,
     )
 
 
@@ -261,6 +297,22 @@ def convert(
     model_source: Annotated[str | None, typer.Option("--model-source")] = None,
     quality: Annotated[str | None, typer.Option("--quality")] = None,
     speed: Annotated[float | None, typer.Option("--speed", min=0.5, max=2.0)] = None,
+    spacy: Annotated[str | None, typer.Option("--spacy")] = None,
+    short_sentence: Annotated[str | None, typer.Option("--short-sentence")] = None,
+    lexicon: Annotated[
+        list[str] | None,
+        typer.Option("--lexicon", help="Lexicon selector; repeatable."),
+    ] = None,
+    no_lexicons: Annotated[bool, typer.Option("--no-lexicons")] = False,
+    auto_lexicons: Annotated[bool, typer.Option("--auto-lexicons")] = False,
+    g2p_fallback: Annotated[str | None, typer.Option("--g2p-fallback")] = None,
+    lexicon_data_policy: Annotated[
+        str | None, typer.Option("--lexicon-data-policy")
+    ] = None,
+    allow_experimental: Annotated[bool, typer.Option("--allow-experimental")] = False,
+    voice_level: Annotated[str | None, typer.Option("--voice-level")] = None,
+    pause_mode: Annotated[str | None, typer.Option("--pause-mode")] = None,
+    unit: Annotated[str | None, typer.Option("--unit", "--synthesis-unit")] = None,
     bitrate: Annotated[str | None, typer.Option("--bitrate")] = None,
     target_lufs: Annotated[float | None, typer.Option("--target-lufs")] = None,
     offline: Annotated[bool, typer.Option("--offline")] = False,
@@ -297,10 +349,33 @@ def convert(
     del (
         interactive_chapters
     )  # Kept as a compatibility alias for automatic TTY behavior.
+    _validate_lexicon_modes(
+        lexicon, no_lexicons=no_lexicons, auto_lexicons=auto_lexicons
+    )
     interaction = resolve_interaction_mode(
         json_mode=json_mode,
         assume_yes=yes,
         force_non_interactive=non_interactive,
+    )
+    _pins = CliPins.from_cli_values(
+        language=language,
+        engine=engine,
+        model=model,
+        model_source=model_source,
+        quality=quality,
+        voice=voice,
+        speed=speed,
+        spacy=spacy,
+        short_sentence=short_sentence,
+        lexicons=bool(lexicon) or no_lexicons or auto_lexicons,
+        g2p_fallback=g2p_fallback,
+        lexicon_data_policy=lexicon_data_policy,
+        allow_experimental=allow_experimental,
+        voice_level=voice_level,
+        pause_mode=pause_mode,
+        unit=unit,
+        bitrate=bitrate,
+        target_lufs=target_lufs,
     )
 
     def action() -> tuple[
@@ -327,6 +402,17 @@ def convert(
                 model_source=model_source,
                 quality=quality,
                 speed=speed,
+                lexicons=tuple(lexicon) if lexicon else None,
+                no_lexicons=no_lexicons,
+                auto_lexicons=auto_lexicons,
+                spacy=spacy,
+                short_sentence=short_sentence,
+                g2p_fallback=g2p_fallback,
+                lexicon_data_policy=lexicon_data_policy,
+                allow_experimental=allow_experimental,
+                voice_level=voice_level,
+                pause_mode=pause_mode,
+                unit=unit,
                 bitrate=bitrate,
                 target_lufs=target_lufs,
                 offline=offline,
@@ -359,6 +445,14 @@ def convert(
                 )
 
             progress.set_chapters(setup.chapters)
+            if interaction.interactive:
+                options = configure_synthesis_interactively(
+                    converter=converter,
+                    project=setup.project,
+                    options=options,
+                    pins=_pins,
+                    console=_output,
+                )
             request = synthesis_request(options)
             preflight = converter.preflight(
                 setup, inspection, options, synthesis=request
@@ -715,7 +809,7 @@ def config_show(
 ) -> None:
     """Show persisted Readio configuration (not a TTSForge shadow config)."""
 
-    def action():
+    def action() -> tuple[Path, ReadioConfig]:
         api = _readio()
         active_path = api.configuration.path() if path is None else path
         return active_path, api.configuration.load(path)
@@ -735,7 +829,7 @@ def config_set(
 ) -> None:
     """Set a persistent Readio key, e.g. reader.voice or languages.en.voice."""
 
-    def action():
+    def action() -> Path:
         api = _readio()
         try:
             parsed: object = json.loads(value)
@@ -898,7 +992,7 @@ def ssmd_materialize(
 ) -> None:
     """Materialize explicit SSMD voice bindings via Readio's authoring API."""
 
-    def action():
+    def action() -> SSMDMaterializeResult:
         try:
             parsed = json.loads(bindings)
         except json.JSONDecodeError as error:

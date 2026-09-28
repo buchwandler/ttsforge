@@ -5,9 +5,9 @@ persistent project lifecycle, synthesis engines, composition, reuse, and exports
 TTSForge presents an EPUB audiobook workflow and maps choices to Readio's public
 services.
 
-TTSForge requires Readio `>=0.3.1`, whose public API supplies its audiobook project,
-synthesis preflight, and export workflows. See [Installation](installation.md) for user
-and development setup.
+TTSForge requires Readio `>=0.3.3`, whose public API supplies its audiobook project and
+expanded synthesis resolution. See [Installation](installation.md) for user and
+development setup.
 
 ```{toctree}
 :maxdepth: 2

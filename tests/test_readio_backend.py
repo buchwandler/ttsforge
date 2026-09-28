@@ -41,6 +41,17 @@ def _options() -> AudiobookOptions:
         model_source="github",
         quality="fp32",
         speed=1.1,
+        lexicons=("crane", "beta"),
+        clear_lexicons=False,
+        auto_lexicons=False,
+        g2p_fallback="espeak",
+        lexicon_data_policy="installed-only",
+        spacy="lg",
+        short_sentence="phrase",
+        allow_experimental=True,
+        voice_level="calibrated",
+        pause_mode="manual",
+        unit="paragraph",
         bitrate="128k",
         target_lufs=-18.0,
         offline=True,
@@ -67,6 +78,17 @@ def test_synthesis_and_composition_options_map_to_public_readio_types() -> None:
     assert synthesis.speed == 1.1
     assert synthesis.offline is True
     assert synthesis.refresh is True
+    assert synthesis.lexicons == ("crane", "beta")
+    assert synthesis.clear_lexicons is False
+    assert synthesis.auto_lexicons is False
+    assert synthesis.g2p_fallback == "espeak"
+    assert synthesis.lexicon_data_policy == "installed-only"
+    assert synthesis.spacy == "lg"
+    assert synthesis.short_sentence == "phrase"
+    assert synthesis.allow_experimental is True
+    assert synthesis.voice_level == "calibrated"
+    assert synthesis.pause_mode == "manual"
+    assert synthesis.unit == "paragraph"
 
     composition = composition_options(options)
     assert composition.target_lufs == -18.0

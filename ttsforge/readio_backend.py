@@ -37,10 +37,21 @@ def synthesis_request(options: AudiobookOptions) -> SynthesisRequest:
         model_source=options.model_source,
         quality=options.quality,
         voice=options.voice,
-        engine=options.engine,
+        lexicons=options.lexicons,
+        clear_lexicons=options.clear_lexicons,
+        auto_lexicons=options.auto_lexicons,
+        spacy=options.spacy,
+        short_sentence=options.short_sentence,
+        g2p_fallback=options.g2p_fallback,
+        lexicon_data_policy=options.lexicon_data_policy,
+        allow_experimental=options.allow_experimental,
         speed=options.speed,
+        voice_level=options.voice_level,
+        pause_mode=options.pause_mode,
+        unit=options.unit,
         offline=options.offline,
         refresh=options.refresh,
+        engine=options.engine,
     )
 
 

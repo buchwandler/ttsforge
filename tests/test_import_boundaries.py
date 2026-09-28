@@ -76,17 +76,31 @@ def test_cli_help_and_version_are_available_without_backend_import() -> None:
     assert "ttsforge version" in version_result.stdout
 
 
-def test_convert_help_has_no_backend_specific_controls() -> None:
+def test_convert_help_exposes_public_synthesis_controls_not_backend_controls() -> None:
     result = _run_python(
         "-c", "from ttsforge.cli import main; main(['convert', '--help'])"
     )
     assert result.returncode == 0, result.stderr
     help_text = _semantic_output(result.stdout)
-    assert "--chapters" in help_text
-    assert "--voice" in help_text
-    assert "--fresh" in help_text
+    for option in (
+        "--chapters",
+        "--voice",
+        "--fresh",
+        "--spacy",
+        "--short-sentence",
+        "--lexicon",
+        "--no-lexicons",
+        "--auto-lexicons",
+        "--g2p-fallback",
+        "--lexicon-data-policy",
+        "--voice-level",
+        "--pause-mode",
+        "--unit",
+        "--synthesis-unit",
+        "--allow-experimental",
+    ):
+        assert option in help_text
     assert "--provider" not in help_text
-    assert "--spacy" not in help_text
 
 
 def test_phoneme_command_is_not_registered() -> None:

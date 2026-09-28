@@ -27,6 +27,17 @@ class AudiobookOptions:
     quality: str | None = None
     speed: float | None = None
     bitrate: str | None = None
+    lexicons: tuple[str, ...] | None = None
+    clear_lexicons: bool = False
+    auto_lexicons: bool = False
+    g2p_fallback: str | None = None
+    lexicon_data_policy: str | None = None
+    spacy: str | None = None
+    short_sentence: str | None = None
+    allow_experimental: bool = False
+    voice_level: str | None = None
+    pause_mode: str | None = None
+    unit: str | None = None
     target_lufs: float | None = None
     offline: bool = False
     refresh: bool = False

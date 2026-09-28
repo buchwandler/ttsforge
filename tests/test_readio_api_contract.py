@@ -13,6 +13,20 @@ def test_required_public_api_symbols_are_available() -> None:
         "Readio",
         "ReadioEvent",
         "AudiobookInspection",
+        "EngineInfo",
+        "EngineCapabilities",
+        "ModelInfo",
+        "VoiceInfo",
+        "LexiconInfo",
+        "DiscoveryOptions",
+        "ModelQuery",
+        "VoiceQuery",
+        "LexiconQuery",
+        "G2P_FALLBACKS",
+        "LEXICON_DATA_POLICIES",
+        "SHORT_SENTENCE_POLICIES",
+        "SPACY_POLICIES",
+        "VOICE_LEVEL_MODES",
         "AudiobookProjectDescription",
         "AudiobookProjectChapter",
         "SynthesisResolution",
@@ -29,10 +43,40 @@ def test_required_public_api_symbols_are_available() -> None:
     missing = sorted(name for name in required if not hasattr(readio_api, name))
     assert not missing, (
         "The installed Readio does not provide TTSForge's required public API: "
-        f"{', '.join(missing)}. Install Readio 0.3.1 or newer "
-        "with TTSForge's dependencies."
+        f"{', '.join(missing)}. Install Readio 0.3.3 or newer "
     )
     assert readio_api.PUBLIC_API_VERSION == 1
+
+
+def test_expanded_synthesis_resolution_and_request_fields_are_public() -> None:
+    request_fields = {field.name for field in fields(readio_api.SynthesisRequest)}
+    resolution_fields = {field.name for field in fields(readio_api.SynthesisResolution)}
+    assert {
+        "lexicons",
+        "clear_lexicons",
+        "auto_lexicons",
+        "spacy",
+        "short_sentence",
+        "g2p_fallback",
+        "lexicon_data_policy",
+        "allow_experimental",
+        "speed",
+        "voice_level",
+        "pause_mode",
+        "unit",
+        "engine",
+    } <= request_fields
+    assert {
+        "lexicons",
+        "g2p_fallback",
+        "lexicon_data_policy",
+        "allow_experimental",
+        "short_sentence",
+        "voice_level",
+        "pause_mode",
+        "unit",
+        "spacy",
+    } <= resolution_fields
 
 
 def test_m4b_is_a_distinct_public_audiobook_export_contract() -> None:

@@ -6,7 +6,7 @@ owns projects, planning, synthesis, composition, resumability, invalidation, and
 
 ## Compatibility and installation
 
-TTSForge requires Readio `>=0.3.1`. Install the published package with:
+TTSForge requires Readio `>=0.3.3`. Install the published package with:
 
 ```bash
 python -m pip install ttsforge
@@ -67,6 +67,15 @@ equivalent values using Readio's current configuration keys and semantics.
 Engine-specific settings and optional engine installation are owned by Readio; consult
 its
 [configuration documentation](https://github.com/buchwandler/readio/blob/main/docs/index.md).
+
+## Guided audiobook setup
+
+In an interactive terminal, `convert` now guides you through synthesis values that were
+not specified on the command line, using Readio's catalogs and effective defaults.
+Explicit options such as `--language`, `--model`, `--voice`, `--spacy`, `--pause-mode`,
+and `--unit` pin their values and skip matching questions. `--yes` bypasses only final
+confirmation; `--non-interactive` and `--json` remain prompt-free. Preview retains its
+smaller option set and does not run the conversion wizard.
 
 ## Removed commands and ownership
 

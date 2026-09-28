@@ -22,6 +22,17 @@ planned, synthesized, composed, or exported again. Consult
 [Readio's project guide](https://github.com/buchwandler/readio/blob/main/docs/projects.md)
 for stage and invalidation details.
 
+## Guided synthesis setup
+
+Chapter selection remains persistent project scope. On an interactive `convert`,
+TTSForge then asks for synthesis values not explicitly supplied and uses Readio's
+effective defaults and discovery catalogs. Model and voice rows accept either a row
+number or an exact public identifier; capability-specific choices, such as voice-level
+calibration and lexicons, are offered only when the selected engine supports them. The
+resolved setup appears before confirmation. Explicit CLI options pin their corresponding
+values. `--yes` skips only that confirmation; `--non-interactive` and `--json` suppress
+all prompts.
+
 Use `--project` to choose an explicit project location. This is useful for multiple
 audiobook variants or when project files should live outside the source directory:
 

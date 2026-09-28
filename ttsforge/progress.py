@@ -155,9 +155,10 @@ class ReadioProgressState:
             required = details.get("required")
             reused_count = details.get("reused")
             missing_count = details.get("rendered")
-            if not all(
-                isinstance(value, int)
-                for value in (required, reused_count, missing_count)
+            if (
+                not isinstance(required, int)
+                or not isinstance(reused_count, int)
+                or not isinstance(missing_count, int)
             ):
                 continue
             scope = self.scopes.setdefault(scope_id, ScopeProgress(scope_id))

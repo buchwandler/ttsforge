@@ -44,6 +44,13 @@ ttsforge convert novel.epub --engine kokoro --voice af_heart
 ttsforge preview novel.epub --engine kokoro --voice af_heart
 ```
 
+## Guided selection during conversion
+
+`ttsforge convert` uses the same Readio discovery services interactively on a TTY. It
+displays filtered engine/model/voice catalog rows where selection is needed; enter a row
+number or an exact Readio identifier. The catalog is filtered by the chosen language and
+engine, and by model for voices. `ttsforge voices` remains available for independent
+discovery, while explicit `--model` and `--voice` options bypass the matching prompts.
 Voice and model details are engine-specific. TTSForge does not implement voice blending,
 maintain voice recommendations, or promise that a voice selector will be available for
 every engine. See

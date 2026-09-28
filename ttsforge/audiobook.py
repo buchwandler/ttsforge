@@ -5,6 +5,7 @@ from __future__ import annotations
 from collections.abc import Callable
 from dataclasses import dataclass
 from pathlib import Path
+from typing import cast
 
 from readio.api import (
     AUDIOBOOK_EXPORT_FORMAT,
@@ -13,6 +14,13 @@ from readio.api import (
     AudiobookExportResult,
     AudiobookInspection,
     AudiobookProjectChapter,
+    CatalogListing,
+    DiscoveryOptions,
+    EngineInfo,
+    LexiconInfo,
+    LexiconQuery,
+    ModelInfo,
+    ModelQuery,
     PreviewRequest,
     PreviewResult,
     ProjectBuildRequest,
@@ -25,6 +33,8 @@ from readio.api import (
     ReadioEvent,
     SynthesisRequest,
     SynthesisResolution,
+    VoiceInfo,
+    VoiceQuery,
 )
 
 from .chapter_selection import parse_chapter_selection
@@ -93,6 +103,56 @@ class AudiobookConverter:
     def inspect(self, source: Path) -> AudiobookInspection:
         """Inspect an EPUB using Readio's audiobook service."""
         return self._app.audiobooks.inspect(source)
+
+    def resolve_synthesis(
+        self, project: ProjectRef | Path, request: SynthesisRequest
+    ) -> SynthesisResolution:
+        """Resolve request defaults through Readio's project service."""
+        return self._app.projects.resolve_synthesis(project, request)
+
+    def engines(self) -> tuple[EngineInfo, ...]:
+        """List engines known to this converter's Readio application."""
+        return cast(tuple[EngineInfo, ...], self._app.catalog.engines())
+
+    def models(
+        self,
+        *,
+        language: str | None,
+        engine: str | None,
+        discovery: DiscoveryOptions,
+    ) -> CatalogListing[ModelInfo]:
+        """List models through the shared Readio catalog."""
+        return self._app.catalog.models_listing(
+            ModelQuery(language=language, engine=engine), discovery=discovery
+        )
+
+    def voices(
+        self,
+        *,
+        language: str | None,
+        engine: str | None,
+        model: str | None,
+        discovery: DiscoveryOptions,
+    ) -> CatalogListing[VoiceInfo]:
+        """List voices through the shared Readio catalog."""
+        return self._app.catalog.voices_listing(
+            VoiceQuery(language=language, engine=engine, model=model),
+            discovery=discovery,
+        )
+
+    def lexicons(
+        self,
+        *,
+        language: str | None,
+        engine: str | None,
+        model: str | None,
+        discovery: DiscoveryOptions,
+    ) -> CatalogListing[LexiconInfo]:
+        """List lexicons through the shared Readio catalog."""
+        return self._app.catalog.lexicons_listing(
+            LexiconQuery(language=language, engine=engine, model=model),
+            discovery=discovery,
+        )
 
     @staticmethod
     def default_project_path(source: Path) -> Path:
@@ -182,6 +242,7 @@ class AudiobookConverter:
         title_value = inspection.metadata.get("title")
         title = title_value if isinstance(title_value, str) else None
         authors_value = inspection.metadata.get("authors")
+        author: str | None
         if isinstance(authors_value, str):
             author = authors_value
         elif isinstance(authors_value, (tuple, list)):

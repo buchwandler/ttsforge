@@ -9,6 +9,18 @@ from ..audiobook import ConversionPreflight
 from ..chapter_selection import format_chapter_numbers
 
 
+def _effective(value: str | None) -> str:
+    return value if value is not None else "auto / engine default"
+
+
+def _lexicon_value(value: tuple[str, ...] | None) -> str:
+    if value is None:
+        return "auto"
+    if not value:
+        return "disabled"
+    return ", ".join(value)
+
+
 def render_preflight(preflight: ConversionPreflight, console: Console) -> None:
     table = Table(title="Audiobook Setup", show_header=False)
     table.add_column("Setting", style="bold")
@@ -29,21 +41,24 @@ def render_preflight(preflight: ConversionPreflight, console: Console) -> None:
     table.add_row("Format", preflight.format.upper())
 
     resolution = preflight.synthesis
-    table.add_row("Language", resolution.language)
-    table.add_row("Engine", resolution.engine)
-    if resolution.voice is not None:
-        table.add_row("Voice", resolution.voice)
-    if resolution.model is not None:
-        table.add_row("Model", resolution.model)
-    if resolution.model_source is not None:
-        table.add_row("Model source", resolution.model_source)
-    if resolution.quality is not None:
-        table.add_row("Quality", resolution.quality)
+    table.add_row("Language", _effective(resolution.language))
+    table.add_row("Engine", _effective(resolution.engine))
+    table.add_row("Voice", _effective(resolution.voice))
+    table.add_row("Model", _effective(resolution.model))
+    table.add_row("Model source", _effective(resolution.model_source))
+    table.add_row("Quality", _effective(resolution.quality))
     table.add_row("Speed", f"{resolution.speed:g}x")
-    table.add_row("Synthesis unit", resolution.unit)
-    if resolution.spacy is not None:
-        table.add_row("spaCy", resolution.spacy)
-    table.add_row("Pause mode", resolution.pause_mode)
+    table.add_row("spaCy", _effective(resolution.spacy))
+    table.add_row("Short sentences", _effective(resolution.short_sentence))
+    table.add_row("Lexicons", _lexicon_value(resolution.lexicons))
+    table.add_row("G2P fallback", _effective(resolution.g2p_fallback))
+    table.add_row("Lexicon data", _effective(resolution.lexicon_data_policy))
+    table.add_row("Voice level", _effective(resolution.voice_level))
+    table.add_row("Pause mode", _effective(resolution.pause_mode))
+    table.add_row("Synthesis unit", _effective(resolution.unit))
+    table.add_row(
+        "Experimental", "enabled" if resolution.allow_experimental else "disabled"
+    )
     table.add_row(
         "Loudness target",
         str(preflight.target_lufs) if preflight.target_lufs is not None else "default",

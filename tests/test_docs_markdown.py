@@ -30,7 +30,7 @@ def test_install_docs_describe_released_readio_floor() -> None:
     testing = (DOCS / "testing.md").read_text(encoding="utf-8")
 
     for document in (readme, installation, index, testing):
-        assert "Readio `>=0.3.1`" in document
+        assert "Readio `>=0.3.3`" in document
         assert "not yet available" not in document
     assert "Readio checkout is not required for a normal installation" in " ".join(
         installation.split()
@@ -51,7 +51,9 @@ def test_user_docs_cover_interaction_progress_and_persisted_chapter_scope() -> N
     assert "--yes" in quickstart and "--non-interactive" in quickstart
     assert "--model-source" in quickstart and "--quality" in quickstart
     assert "--model MODEL" in cli and "--model-source SOURCE" in cli
-    assert "--non-interactive" in cli and "chapter-aware progress" in cli
+    assert "## Guided synthesis setup" in quickstart
+    assert "--spacy POLICY" in cli and "--unit UNIT" in cli
+    assert "does not run the guided" in cli
     assert "`--chapters` when reusing a project" in projects
     assert "no TTSForge examples that import PyKokoro" in examples
     assert "from readio.api import Readio" in api

@@ -30,8 +30,9 @@ status = app.projects.status(created.project)
 print(status.next_actions)
 ```
 
-Readio `>=0.3.1` provides this public API. See [Installation](../installation.md) for
-the standard package install and optional source-development setup.
+Readio `>=0.3.3` provides this public API, including the expanded synthesis-resolution
+contract. See [Installation](../installation.md) for the standard package install and
+optional source-development setup.
 
 ## Audiobook export
 

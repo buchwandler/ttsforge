@@ -48,20 +48,31 @@ project-local behavior—use
 
 ## Command-line overrides and projects
 
-`convert` and `preview` accept per-operation options such as `--voice`, `--language`,
-`--engine`, `--model`, `--model-source`, `--quality`, `--speed`, and `--target-lufs`.
-These are mapped to Readio public request types; they do not create a second TTSForge
-config schema. Persistent project state and Readio's rules for effective settings
-determine reuse. Refer to the
+`convert` accepts per-operation options such as `--voice`, `--language`, `--engine`,
+`--model`, `--model-source`, `--quality`, `--speed`, `--spacy`, `--short-sentence`,
+`--lexicon`/`--no-lexicons`/`--auto-lexicons`, `--g2p-fallback`,
+`--lexicon-data-policy`, `--voice-level`, `--pause-mode`, and `--unit`. These stable
+audiobook choices map to Readio's public request and discovery APIs; they do not create
+a second TTSForge configuration schema. `preview` retains a smaller set of explicit
+options and does not run the guided setup wizard. Persistent project state and Readio's
+rules for effective settings determine reuse. See the
 [Readio project guide](https://github.com/buchwandler/readio/blob/main/docs/projects.md)
 before relying on project/global setting precedence.
+
+The guided `convert` setup exposes stable Readio audiobook controls such as spaCy and
+short-sentence policy, lexicon/G2P behavior, pause handling, and synthesis unit as
+command options and interactive choices. These are not backend-private settings.
+TTSForge still does not expose engine internals, renderer-only pause controls, or output
+templates.
 
 ## Migrating old settings
 
 Former TTSForge-specific keys and config files are not automatically imported. Review
-the old values and set only their current Readio equivalents. TTSForge no longer accepts
-backend controls for PyKokoro internals, phoneme dictionaries, renderer pause settings,
-or TTSForge-specific output filename templates. See the
+the old values and check `ttsforge convert --help` for currently supported public
+options. The interactive setup and its matching flags expose Readio's stable audiobook
+controls; they do not translate obsolete settings. TTSForge no longer accepts backend
+controls for PyKokoro internals, private phoneme dictionaries, renderer-internal pause
+tuning, or TTSForge-specific output filename templates. See the
 [migration guide](migration-readio.md).
 
 ## Diagnose configuration and engine setup

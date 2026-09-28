@@ -1,6 +1,6 @@
 # Quick start
 
-Install TTSForge with Readio `>=0.3.1`, then install a supported Readio engine extra if
+Install TTSForge with Readio `>=0.3.3`, then install a supported Readio engine extra if
 you want to synthesize speech. See [Installation](installation.md) for platform and
 development instructions.
 
@@ -21,7 +21,8 @@ ttsforge convert novel.epub
 
 The default project is `novel.readio` beside the source EPUB, and the default output is
 `novel.m4b`. Re-running the command uses the existing project's saved chapter scope and
-reusable work.
+reusable work. In an interactive terminal, TTSForge then guides you through synthesis
+choices and displays the resolved Readio settings before confirmation.
 
 ## Select chapters
 
@@ -38,9 +39,29 @@ again, and a conflicting `--chapters` value is rejected rather than silently ign
 Use `--project` or `--fresh` to create another project with a different selection.
 `--interactive-chapters` is deprecated; normal TTY behavior is automatic.
 
+## Guided synthesis setup
+
+On a TTY, `ttsforge convert novel.epub` continues after chapter selection with a guided
+setup for omitted synthesis values. Readio catalogs are shown for available models and
+voices; choose a row number or enter its exact identifier. The prompts include language,
+runnable engine selection when needed, model and voice, speed and supported quality,
+spaCy and short-sentence policies, lexicon/G2P choices, capability-gated voice level,
+pause handling, and sentence-versus-paragraph units. The final setup displays Readio's
+effective resolution before confirmation.
+
+Use explicit options to pin settings and skip matching questions, for example:
+
+```bash
+ttsforge convert novel.epub --language en-us --model MODEL_ID --voice VOICE_ID --unit paragraph
+```
+
+`--yes` skips only the final confirmation. `--non-interactive` and `--json` disable all
+prompts; supply desired synthesis values as CLI options in those modes.
+
 When stdin, stdout, and stderr are not all terminals, or when `--non-interactive` is
-supplied, and selects all chapters unless `--chapters` was provided. `--yes` skips only
-the final confirmation; `--json` disables all prompts and human-readable progress. See
+supplied, no chapter or synthesis setup prompts appear. A new project selects all
+chapters unless `--chapters` was provided. `--json` also disables human-readable
+progress. TTY build progress updates live by chapter. See
 [Projects and outputs](projects.md) for project scope and reuse details.
 
 ## Preview, plan, and status

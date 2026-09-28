@@ -13,39 +13,60 @@ Inspect an EPUB, create or reuse its Readio project, and build/export an audiobo
 ttsforge convert novel.epub
 ```
 
-| Option                          | Meaning                                                                        |
-| ------------------------------- | ------------------------------------------------------------------------------ |
-| `-o, --output PATH`             | Output file path; defaults to the source stem and selected format.             |
-| `-f, --format FORMAT`           | Output format; default `m4b`. Use `ttsforge formats` for available formats.    |
-| `--project PATH`                | Project directory; default is `<source-stem>.readio` beside the EPUB.          |
-| `--chapters SELECTION`          | Chapter scope for a new project, such as `1-5`, `1,3,5`, or `all`.             |
-| `--interactive-chapters`        | Deprecated compatibility flag; interactive terminals now prompt automatically. |
-| `--voice VOICE`                 | Engine voice/selector supported by Readio.                                     |
-| `--language LANG`               | Synthesis language/profile override.                                           |
-| `--engine ENGINE`               | Readio synthesis engine.                                                       |
-| `--model MODEL`                 | Model selector forwarded to Readio.                                            |
-| `--model-source SOURCE`         | Model-source selector forwarded to Readio.                                     |
-| `--quality QUALITY`             | Quality value forwarded to Readio.                                             |
-| `--speed FLOAT`                 | Synthesis speed from `0.5` to `2.0`.                                           |
-| `--bitrate VALUE`               | Export bitrate where the selected format supports it.                          |
-| `--target-lufs FLOAT`           | Composition loudness target.                                                   |
-| `--offline` / `--refresh`       | Control Readio's offline/resource-refresh behavior for this request.           |
-| `--title TEXT`, `--author TEXT` | Audiobook metadata overrides.                                                  |
-| `--cover PATH`                  | Explicit cover image for audiobook export.                                     |
-| `--force`                       | Ask Readio to replace an existing output it owns.                              |
-| `--fresh`                       | Create a separate project and preserve the existing one.                       |
-| `-y, --yes`                     | Skip final confirmation; does not disable chapter selection prompts.           |
-| `--non-interactive`             | Disable all prompts.                                                           |
-| `--json`                        | Emit one JSON result without prompts or human-readable progress.               |
+| Option                                 | Meaning                                                                        |
+| -------------------------------------- | ------------------------------------------------------------------------------ |
+| `-o, --output PATH`                    | Output file path; defaults to the source stem and selected format.             |
+| `-f, --format FORMAT`                  | Output format; default `m4b`. Use `ttsforge formats` for available formats.    |
+| `--project PATH`                       | Project directory; default is `<source-stem>.readio` beside the EPUB.          |
+| `--chapters SELECTION`                 | Chapter scope for a new project, such as `1-5`, `1,3,5`, or `all`.             |
+| `--interactive-chapters`               | Deprecated compatibility flag; interactive terminals now prompt automatically. |
+| `--voice VOICE`                        | Engine voice/selector supported by Readio.                                     |
+| `--language LANG`                      | Synthesis language/profile override.                                           |
+| `--engine ENGINE`                      | Readio synthesis engine.                                                       |
+| `--model MODEL`                        | Model selector forwarded to Readio.                                            |
+| `--model-source SOURCE`                | Model-source selector forwarded to Readio.                                     |
+| `--quality QUALITY`                    | Quality value forwarded to Readio.                                             |
+| `--speed FLOAT`                        | Synthesis speed from `0.5` to `2.0`.                                           |
+| `--spacy POLICY`                       | Readio spaCy policy for text processing.                                       |
+| `--short-sentence POLICY`              | Readio short-sentence handling policy.                                         |
+| `--lexicon SELECTOR`                   | Select a lexicon; repeatable for multiple selectors.                           |
+| `--no-lexicons`                        | Disable lexicons; mutually exclusive with `--lexicon` and `--auto-lexicons`.   |
+| `--auto-lexicons`                      | Let Readio select lexicons; mutually exclusive with explicit/disabled modes.   |
+| `--g2p-fallback POLICY`                | Readio grapheme-to-phoneme fallback policy.                                    |
+| `--lexicon-data-policy POLICY`         | Readio lexicon data selection policy.                                          |
+| `--allow-experimental`                 | Permit experimental catalog choices where Readio supports them.                |
+| `--voice-level MODE`                   | Voice-level calibration, when supported by the selected engine.                |
+| `--pause-mode MODE`                    | Readio pause-handling policy.                                                  |
+| `--unit UNIT`, `--synthesis-unit UNIT` | Choose sentence or paragraph synthesis units.                                  |
+| `--bitrate VALUE`                      | Export bitrate where the selected format supports it.                          |
+| `--target-lufs FLOAT`                  | Composition loudness target.                                                   |
+| `--offline` / `--refresh`              | Control Readio's offline/resource-refresh behavior for this request.           |
+| `--title TEXT`, `--author TEXT`        | Audiobook metadata overrides.                                                  |
+| `--cover PATH`                         | Explicit cover image for audiobook export.                                     |
+| `--force`                              | Ask Readio to replace an existing output it owns.                              |
+| `--fresh`                              | Create a separate project and preserve the existing one.                       |
+| `-y, --yes`                            | Skip final confirmation; does not disable chapter or synthesis setup prompts.  |
+| `--non-interactive`                    | Disable all prompts.                                                           |
+| `--json`                               | Emit one JSON result without prompts or human-readable progress.               |
 
 ## Conversion interaction and progress
 
 When stdin, stdout, and stderr are terminals, conversion is interactive unless `--json`
 or `--non-interactive` is selected. A new project without `--chapters` shows the
 detected chapter table and prompts for a selection. An existing project uses its saved
-chapter scope and does not prompt again. TTSForge displays a preflight summary with
-Readio's effective synthesis resolution, then asks for confirmation (default yes).
-`--yes` skips this confirmation only; it does not skip automatic chapter selection.
+chapter scope and does not prompt again.
+
+Before preflight, `convert` guides you through synthesis values not pinned by CLI
+options. It asks for a language, chooses among runnable engines when there is more than
+one, and shows Readio model and voice catalogs. Select catalog rows by number or enter
+exact identifiers. The remaining questions cover supported quality, speed, spaCy and
+short-sentence policies, lexicons, G2P fallback and lexicon data, supported voice-level
+calibration, pause mode, and synthesis unit. Readio supplies defaults and owns the
+catalogs, capabilities, and resolution rules; the `Audiobook Setup` table shows the
+effective values that will be used.
+
+Each explicitly supplied option suppresses its corresponding question. `--yes` skips
+only the final confirmation; it does not skip chapter or synthesis setup prompts.
 
 For a new project in non-interactive mode, chapter selection defaults to `all` unless
 `--chapters` is explicit. JSON mode never prompts or emits progress prose on stdout; it
@@ -91,7 +112,8 @@ ttsforge preview novel.epub --selection first:3
 Options include `--project`, `--chapters`, `--selection`, `--voice`, `--language`,
 `--engine`, `--speed`, `--target-lufs`, and `--json`. The default selection is
 `first:3`. If no project exists, preview creates the default project; subsequent
-conversion reuses it.
+conversion reuses it. `preview` has a smaller option set and does not run the guided
+`convert` setup wizard.
 
 ## Readio discovery
 
