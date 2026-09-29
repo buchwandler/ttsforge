@@ -39,11 +39,13 @@ def test_required_public_api_symbols_are_available() -> None:
         "CompositionOptions",
         "ExportOptions",
         "ProjectBuildRequest",
+        "ProjectSettings",
+        "ProjectSynthesisSettings",
     }
     missing = sorted(name for name in required if not hasattr(readio_api, name))
     assert not missing, (
         "The installed Readio does not provide TTSForge's required public API: "
-        f"{', '.join(missing)}. Install Readio 0.3.3 or newer "
+        f"{', '.join(missing)}. Install Readio 0.3.4 or newer "
     )
     assert readio_api.PUBLIC_API_VERSION == 1
 
@@ -132,3 +134,5 @@ def test_public_services_support_composition_then_audiobook_export() -> None:
     assert callable(app.audiobooks.describe_project)
     assert callable(app.projects.resolve_synthesis)
     assert callable(app.projects.preview)
+    assert callable(app.projects.settings)
+    assert callable(app.projects.configure)

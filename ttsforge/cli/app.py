@@ -39,8 +39,15 @@ from ..progress import (
     ProgressRenderer,
     RichReadioProgress,
 )
-from ..readio_backend import create_readio, synthesis_request
-from ..synthesis_setup import CliPins
+from ..readio_backend import (
+    apply_project_settings,
+    create_readio,
+    has_synthesis_setup,
+    project_setting_sources,
+    project_settings,
+    synthesis_request,
+)
+from ..synthesis_setup import CliPins, SetupSources, merge_saved_setup
 from ..ui.chapters import chapter_table, choose_chapters
 from ..ui.interaction import InteractionMode, resolve_interaction_mode
 from ..ui.preflight import render_completion, render_preflight
@@ -275,9 +282,9 @@ def convert(
     source: Annotated[Path, typer.Argument(exists=True, dir_okay=False, readable=True)],
     output: Annotated[Path | None, typer.Option("-o", "--output")] = None,
     output_format: Annotated[
-        str,
+        str | None,
         typer.Option("-f", "--format", help="Output format; defaults to m4b."),
-    ] = "m4b",
+    ] = None,
     project: Annotated[Path | None, typer.Option("--project")] = None,
     chapters: Annotated[
         str | None,
@@ -342,6 +349,9 @@ def convert(
         bool,
         typer.Option("--non-interactive", help="Disable all prompts."),
     ] = False,
+    reconfigure: Annotated[
+        bool, typer.Option("--reconfigure", help="Edit saved project setup.")
+    ] = False,
     json_mode: Annotated[bool, typer.Option("--json")] = False,
     debug: Annotated[bool, typer.Option("--debug")] = False,
 ) -> None:
@@ -374,8 +384,14 @@ def convert(
         voice_level=voice_level,
         pause_mode=pause_mode,
         unit=unit,
+        format=output_format,
+        output=output,
         bitrate=bitrate,
         target_lufs=target_lufs,
+        offline=offline,
+        title=title,
+        author=author,
+        cover=cover,
     )
 
     def action() -> tuple[
@@ -386,7 +402,8 @@ def convert(
     ]:
         progress = _progress_renderer(interaction)
         try:
-            _validate_output_format(output_format)
+            requested_format = output_format or "m4b"
+            _validate_output_format(requested_format)
             converter = _converter(interaction.json, progress=progress)
             inspection = converter.inspect(source)
             options = _options(
@@ -394,7 +411,7 @@ def convert(
                 project=project,
                 chapters=chapters if chapters is not None else "all",
                 output=output,
-                output_format=output_format.lower(),
+                output_format=requested_format.lower(),
                 voice=voice,
                 language=language,
                 engine=engine,
@@ -445,17 +462,65 @@ def convert(
                 )
 
             progress.set_chapters(setup.chapters)
+            stored_settings = converter.project_settings(setup.project)
+            saved_synthesis = has_synthesis_setup(stored_settings)
+            project_sources = project_setting_sources(stored_settings)
+            saved_options = apply_project_settings(options, stored_settings)
+            options = merge_saved_setup(
+                options,
+                saved_options,
+                _pins,
+                interactive=interaction.interactive,
+            )
+            _validate_output_format(options.format)
+            sources = SetupSources(cli=_pins.fields, project=project_sources)
+            reconfigure_active = bool(
+                reconfigure and not setup.created and saved_synthesis
+            )
             if interaction.interactive:
                 options = configure_synthesis_interactively(
                     converter=converter,
                     project=setup.project,
                     options=options,
-                    pins=_pins,
+                    sources=sources,
+                    reconfigure=reconfigure_active,
                     console=_output,
                 )
+
             request = synthesis_request(options)
-            preflight = converter.preflight(
-                setup, inspection, options, synthesis=request
+            resolution = converter.resolve_synthesis(setup.project, request)
+            materialized_settings = project_settings(options, resolution)
+            persisted_settings = converter.save_project_settings(
+                setup.project, materialized_settings
+            )
+            options = apply_project_settings(options, persisted_settings)
+
+            if setup.created:
+                settings_source = "new"
+            elif saved_synthesis:
+                settings_source = "project+cli" if _pins.fields else "project"
+            elif project_sources and _pins.fields:
+                settings_source = "project+cli"
+            elif project_sources:
+                settings_source = "project"
+            else:
+                settings_source = "defaults"
+
+            if not interaction.json:
+                if setup.created or not saved_synthesis:
+                    message = "Audiobook setup saved"
+                elif reconfigure_active or _pins.fields:
+                    message = "Updating saved audiobook setup"
+                else:
+                    message = "Using saved audiobook setup"
+                _output.print(message)
+                _output.print(f"Project  {setup.project.root}")
+
+            preflight = converter.preflight(setup, inspection, options)
+            preflight = replace(
+                preflight,
+                settings_source=settings_source,
+                settings_saved=True,
             )
             progress.set_synthesis(preflight.synthesis)
             if not interaction.json:
@@ -463,14 +528,13 @@ def convert(
             if interaction.confirm and not typer.confirm(
                 "Create this audiobook?", default=True
             ):
-                _output.print("Cancelled; the Readio project remains available.")
+                _output.print(
+                    "Cancelled before synthesis; the Readio project and "
+                    "audiobook setup were saved."
+                )
                 return inspection, setup, preflight, None
 
-            result = converter.build_and_export(
-                setup.project,
-                options,
-                synthesis=preflight.synthesis_request,
-            )
+            result = converter.build_and_export(setup.project, options)
             return inspection, setup, preflight, result
         finally:
             progress.close()
@@ -485,12 +549,14 @@ def convert(
                 "project": str(setup.project.root),
                 "created": setup.created,
                 "selected_chapters": list(setup.selected_chapters),
+                "settings_source": preflight.settings_source,
+                "settings_saved": preflight.settings_saved,
                 "synthesis": asdict(preflight.synthesis),
                 "output": str(result.output_path) if result.output_path else None,
                 "format": (
                     result.format
                     if isinstance(result, AudiobookExportResult)
-                    else output_format.lower()
+                    else preflight.format
                 ),
                 "result": asdict(result),
             }

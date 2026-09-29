@@ -4,7 +4,7 @@ from __future__ import annotations
 
 from collections.abc import Callable, Collection, Sequence
 from dataclasses import dataclass, replace
-from typing import TypeVar
+from typing import Any, TypeVar
 
 from readio.api import LexiconInfo
 
@@ -33,6 +33,161 @@ class CliPins:
                 if value is not None and value is not False
             )
         )
+
+
+@dataclass(frozen=True, slots=True)
+class SetupSources:
+    """Field provenance used to decide whether guided setup must ask a question."""
+
+    cli: frozenset[str] = frozenset()
+    project: frozenset[str] = frozenset()
+
+    def prompt_required(self, field: str, *, reconfigure: bool = False) -> bool:
+        if field in self.cli:
+            return False
+        return not (field in self.project and not reconfigure)
+
+
+_SETUP_FIELDS = (
+    "language",
+    "engine",
+    "model",
+    "model_source",
+    "quality",
+    "voice",
+    "speed",
+    "spacy",
+    "short_sentence",
+    "lexicons",
+    "clear_lexicons",
+    "auto_lexicons",
+    "g2p_fallback",
+    "lexicon_data_policy",
+    "allow_experimental",
+    "voice_level",
+    "pause_mode",
+    "unit",
+    "offline",
+    "target_lufs",
+    "format",
+    "output",
+    "bitrate",
+    "title",
+    "author",
+    "cover",
+)
+
+_DEPENDENT_FIELDS = {
+    "language": (
+        "engine",
+        "model",
+        "model_source",
+        "quality",
+        "voice",
+        "lexicons",
+        "clear_lexicons",
+        "auto_lexicons",
+        "g2p_fallback",
+        "lexicon_data_policy",
+    ),
+    "engine": (
+        "model",
+        "model_source",
+        "quality",
+        "voice",
+        "lexicons",
+        "clear_lexicons",
+        "auto_lexicons",
+        "g2p_fallback",
+        "lexicon_data_policy",
+    ),
+    "model": (
+        "quality",
+        "voice",
+        "lexicons",
+        "clear_lexicons",
+        "auto_lexicons",
+        "g2p_fallback",
+        "lexicon_data_policy",
+    ),
+}
+
+_RESET_VALUES: dict[str, object] = {
+    "engine": None,
+    "model": None,
+    "model_source": None,
+    "quality": None,
+    "voice": None,
+    "lexicons": None,
+    "clear_lexicons": False,
+    "auto_lexicons": False,
+    "g2p_fallback": None,
+    "lexicon_data_policy": None,
+}
+
+
+def invalidate_dependency_sources(
+    sources: SetupSources, changed_field: str
+) -> SetupSources:
+    """Treat saved dependent fields as unresolved after a selector changes."""
+    invalidated = frozenset(_DEPENDENT_FIELDS.get(changed_field, ()))
+    return replace(sources, project=sources.project - invalidated)
+
+
+def reset_dependency_choices(
+    options: AudiobookOptions, changed_field: str, pins: CliPins
+) -> AudiobookOptions:
+    """Clear choices invalidated by a selector change, except explicit CLI pins."""
+    updates: dict[str, Any] = {
+        field: value
+        for field, value in _RESET_VALUES.items()
+        if field in _DEPENDENT_FIELDS.get(changed_field, ()) and not pins.pinned(field)
+    }
+    return replace(options, **updates)
+
+
+def _has_saved_value(options: AudiobookOptions, field: str) -> bool:
+    value = getattr(options, field)
+    if field in {"clear_lexicons", "auto_lexicons", "allow_experimental", "offline"}:
+        return bool(value)
+    if field == "lexicons":
+        return value is not None or options.clear_lexicons or options.auto_lexicons
+    return value is not None
+
+
+def merge_saved_setup(
+    cli_options: AudiobookOptions,
+    saved_options: AudiobookOptions,
+    pins: CliPins,
+    *,
+    interactive: bool = True,
+) -> AudiobookOptions:
+    """Merge saved project values with CLI pins and invalidate stale dependents."""
+    updates = {
+        field: getattr(saved_options, field)
+        for field in _SETUP_FIELDS
+        if not pins.pinned(field)
+    }
+    merged = replace(cli_options, **updates)
+    for changed_field in ("language", "engine", "model"):
+        if not pins.pinned(changed_field) or getattr(
+            cli_options, changed_field
+        ) == getattr(saved_options, changed_field):
+            continue
+        dependent = tuple(
+            field
+            for field in _DEPENDENT_FIELDS[changed_field]
+            if not pins.pinned(field) and _has_saved_value(saved_options, field)
+        )
+        if dependent and not interactive:
+            conflicts = ", ".join(f"--{field.replace('_', '-')}" for field in dependent)
+            raise ValueError(
+                f"Changing --{changed_field.replace('_', '-')} conflicts with saved "
+                f"project settings {conflicts}. Use --reconfigure or pass compatible "
+                "values explicitly."
+            )
+        merged = reset_dependency_choices(merged, changed_field, pins)
+    return merged
 
 
 class CatalogSelectionError(ValueError):

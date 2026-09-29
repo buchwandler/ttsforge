@@ -2,20 +2,30 @@
 
 from __future__ import annotations
 
-from dataclasses import dataclass
+from dataclasses import dataclass, replace
 from pathlib import Path
 from types import SimpleNamespace
 
 import pytest
-from readio.api import DiscoveryOptions, LexiconInfo
+from readio.api import (
+    DiscoveryOptions,
+    LexiconInfo,
+    ProjectRef,
+    SynthesisResolution,
+)
+from rich.console import Console
 
+import ttsforge.ui.synthesis as synthesis_ui
 from ttsforge.audiobook import AudiobookConverter
 from ttsforge.options import AudiobookOptions
 from ttsforge.synthesis_setup import (
     CatalogSelectionError,
     CliPins,
+    SetupSources,
     apply_lexicon_selection,
     choose_catalog_item,
+    merge_saved_setup,
+    reset_dependency_choices,
 )
 
 
@@ -175,3 +185,206 @@ def test_converter_catalog_delegates_use_the_same_readio_services() -> None:
     assert calls[1][1].model == "v1.0"
     assert calls[2][1].model == "v1.0"
     assert all(call[2] is discovery for call in calls[:3])
+
+
+def _saved_options() -> AudiobookOptions:
+    return replace(
+        _options(),
+        language="en-us",
+        engine="pykokoro",
+        model="v1.0",
+        model_source="github",
+        quality="fp32",
+        voice="af_sarah",
+        speed=1.0,
+        lexicons=("crane",),
+        g2p_fallback="espeak",
+        lexicon_data_policy="auto",
+        spacy="auto",
+        short_sentence="phrase",
+        target_lufs=-18.0,
+        bitrate="128k",
+        title="Saved title",
+    )
+
+
+def test_setup_sources_distinguish_cli_project_and_unresolved_fields() -> None:
+    sources = SetupSources(
+        cli=frozenset({"voice"}),
+        project=frozenset({"engine", "model"}),
+    )
+
+    assert not sources.prompt_required("voice")
+    assert not sources.prompt_required("engine")
+    assert sources.prompt_required("engine", reconfigure=True)
+    assert sources.prompt_required("quality")
+
+
+def test_merge_saved_setup_uses_project_values_except_cli_pins() -> None:
+    cli_options = replace(_options(), voice="af_bella", refresh=True, force=True)
+    merged = merge_saved_setup(
+        cli_options,
+        _saved_options(),
+        CliPins(frozenset({"voice"})),
+    )
+
+    assert merged.language == "en-us"
+    assert merged.engine == "pykokoro"
+    assert merged.model == "v1.0"
+    assert merged.voice == "af_bella"
+    assert merged.target_lufs == -18.0
+    assert merged.title == "Saved title"
+    assert merged.refresh is True
+    assert merged.force is True
+
+
+def test_engine_change_resets_unpinned_dependent_saved_values() -> None:
+    cli_options = replace(_options(), engine="piper", voice="af_bella")
+    merged = merge_saved_setup(
+        cli_options,
+        _saved_options(),
+        CliPins(frozenset({"engine", "voice"})),
+    )
+
+    assert merged.engine == "piper"
+    assert merged.model is None
+    assert merged.model_source is None
+    assert merged.quality is None
+    assert merged.voice == "af_bella"
+    assert merged.lexicons is None
+    assert merged.g2p_fallback is None
+    assert merged.lexicon_data_policy is None
+
+
+def test_language_change_resets_engine_and_model_but_keeps_cli_pins() -> None:
+    cli_options = replace(
+        _options(), language="fr-fr", engine="piper", model="voice-v2"
+    )
+    pins = CliPins(frozenset({"language", "engine", "model"}))
+    merged = merge_saved_setup(cli_options, _saved_options(), pins)
+
+    assert merged.language == "fr-fr"
+    assert merged.engine == "piper"
+    assert merged.model == "voice-v2"
+    assert merged.quality is None
+    assert merged.voice is None
+
+
+def test_non_interactive_invalid_saved_dependency_is_actionable() -> None:
+    cli_options = replace(_options(), engine="piper")
+    with pytest.raises(ValueError, match=r"--engine.*--model.*--quality.*--voice"):
+        merge_saved_setup(
+            cli_options,
+            _saved_options(),
+            CliPins(frozenset({"engine"})),
+            interactive=False,
+        )
+
+
+def test_dependency_reset_preserves_explicit_dependent_cli_pins() -> None:
+    pins = CliPins(frozenset({"model", "voice"}))
+    reset = reset_dependency_choices(_saved_options(), "engine", pins)
+
+    assert reset.model == "v1.0"
+    assert reset.voice == "af_sarah"
+    assert reset.quality is None
+    assert reset.lexicons is None
+
+
+def _baseline() -> SynthesisResolution:
+    return SynthesisResolution(
+        engine="pykokoro",
+        language="en-us",
+        voice="af_sarah",
+        model="v1.0",
+        model_source="github",
+        quality="q8",
+        speed=1.0,
+        unit="sentence",
+        pause_mode="auto",
+        voice_level="off",
+    )
+
+
+def test_ui_skips_a_complete_saved_setup_without_catalogs_or_prompts() -> None:
+    fields = frozenset(
+        {
+            "language",
+            "engine",
+            "model",
+            "model_source",
+            "quality",
+            "voice",
+            "speed",
+            "spacy",
+            "short_sentence",
+            "lexicons",
+            "g2p_fallback",
+            "lexicon_data_policy",
+            "voice_level",
+            "pause_mode",
+            "unit",
+        }
+    )
+    options = _options()
+
+    result = synthesis_ui.configure_synthesis_interactively(
+        converter=object(),
+        project=ProjectRef(Path("book.readio"), "id", "book", "audiobook", "epub"),
+        options=options,
+        sources=SetupSources(project=fields),
+        console=Console(),
+    )
+
+    assert result is options
+
+
+def test_ui_suppresses_saved_quality_normally_and_uses_it_as_reconfigure_default(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    options = _options()
+    sources = SetupSources(project=frozenset({"quality"}))
+    observed: list[tuple[str, str, tuple[str, ...]]] = []
+
+    def choose(prompt, default, choices, console):  # type: ignore[no-untyped-def]
+        observed.append((prompt, default, tuple(choices)))
+        return default
+
+    monkeypatch.setattr(synthesis_ui, "_choice", choose)
+    model_info = SimpleNamespace(qualities=("fp32", "q8"))
+
+    unchanged = synthesis_ui._choose_quality(
+        options, sources, _baseline(), model_info, Console()
+    )
+    assert unchanged is options
+    assert observed == []
+
+    configured = synthesis_ui._choose_quality(
+        options, sources, _baseline(), model_info, Console(), reconfigure=True
+    )
+    assert configured.quality == "q8"
+    assert observed == [("Quality", "q8", ("fp32", "q8"))]
+
+
+def test_ui_prompts_only_missing_fields_from_project_sources(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    options = _options()
+    observed: list[str] = []
+
+    def choose(prompt, default, choices, console):  # type: ignore[no-untyped-def]
+        observed.append(prompt)
+        return default
+
+    monkeypatch.setattr(synthesis_ui, "_choice", choose)
+    model_info = SimpleNamespace(qualities=("fp32", "q8"))
+    result = synthesis_ui._choose_quality(
+        options,
+        SetupSources(project=frozenset({"voice"})),
+        _baseline(),
+        model_info,
+        Console(),
+    )
+
+    assert result.quality == "q8"
+    assert observed == ["Quality"]

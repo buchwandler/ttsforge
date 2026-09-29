@@ -17,7 +17,7 @@ authors = [
 ]
 urls = { Homepage = "https://github.com/buchwandler/ttsforge" }
 dependencies = [
-    "readio>=0.3.3",
+    "readio>=0.3.4",
     "rich>=13.0.0",
     "typer>=0.20.0",
 ]

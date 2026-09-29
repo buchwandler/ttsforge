@@ -14,15 +14,20 @@ from readio.api import (
     ProjectBuildRequest,
     ProjectBuildResult,
     ProjectRef,
+    ProjectSettings,
+    ProjectSynthesisSettings,
+    SynthesisResolution,
 )
 
 from ttsforge.audiobook import AudiobookConverter
 from ttsforge.options import AudiobookOptions
 from ttsforge.readio_backend import (
+    apply_project_settings,
     audiobook_export_options,
     composition_options,
     generic_export_options,
     project_build_request,
+    project_settings,
     synthesis_request,
 )
 
@@ -61,6 +66,129 @@ def _options() -> AudiobookOptions:
         cover=Path("cover.jpg"),
         force=True,
     )
+
+
+def _resolution() -> SynthesisResolution:
+    return SynthesisResolution(
+        engine="pykokoro",
+        language="en-us",
+        voice="af_heart",
+        model="v1.0",
+        model_source="github",
+        quality="fp32",
+        speed=1.0,
+        unit="sentence",
+        pause_mode="auto",
+        voice_level="calibrated",
+        spacy="auto",
+        short_sentence="phrase",
+        lexicons=("crane", "beta"),
+        g2p_fallback="espeak",
+        lexicon_data_policy="installed-only",
+        allow_experimental=True,
+    )
+
+
+def test_project_settings_materialize_synthesis_and_m4b_choices() -> None:
+    options = _options()
+    settings = project_settings(options, _resolution())
+
+    assert isinstance(settings, ProjectSettings)
+    assert isinstance(settings.synthesis, ProjectSynthesisSettings)
+    assert settings.synthesis is not None
+    assert (
+        settings.synthesis.engine,
+        settings.synthesis.model,
+        settings.synthesis.voice,
+        settings.synthesis.quality,
+        settings.synthesis.speed,
+    ) == ("pykokoro", "v1.0", "af_heart", "fp32", 1.0)
+    assert settings.synthesis.language == "en-us"
+    assert settings.synthesis.lexicons == ("crane", "beta")
+    assert settings.synthesis.g2p_fallback == "espeak"
+    assert settings.synthesis.lexicon_data_policy == "installed-only"
+    assert settings.synthesis.spacy == "auto"
+    assert settings.synthesis.short_sentence == "phrase"
+    assert settings.synthesis.allow_experimental is True
+    assert settings.synthesis.voice_level == "calibrated"
+    assert settings.synthesis.pause_mode == "auto"
+    assert settings.synthesis.unit == "sentence"
+    assert settings.synthesis.offline is True
+    assert settings.composition is not None
+    assert settings.composition.target_lufs == -18.0
+    assert settings.audiobook_export is not None
+    assert settings.audiobook_export.format == "m4b"
+    assert settings.audiobook_export.output == Path("book.m4b")
+    assert settings.audiobook_export.bitrate == "128k"
+    assert settings.audiobook_export.title == "Book title"
+    assert settings.audiobook_export.author == "Book author"
+    assert settings.audiobook_export.cover == Path("cover.jpg")
+
+
+def test_project_settings_do_not_persist_refresh_or_force() -> None:
+    settings = project_settings(_options(), _resolution())
+
+    assert settings.synthesis is not None
+    assert not hasattr(settings.synthesis, "refresh")
+    assert settings.audiobook_export is not None
+    assert settings.audiobook_export.force is False
+
+    generic = project_settings(
+        replace(_options(), format="flac", output=Path("book.flac")), _resolution()
+    )
+    assert generic.export is not None
+    assert generic.export.force is False
+
+
+def test_apply_project_settings_restores_durable_values_only() -> None:
+    options = _options()
+    settings = project_settings(options, _resolution())
+    restored = apply_project_settings(
+        replace(
+            options,
+            language=None,
+            engine=None,
+            model=None,
+            voice=None,
+            target_lufs=None,
+            output=None,
+            title=None,
+            author=None,
+            cover=None,
+            refresh=False,
+            force=False,
+        ),
+        settings,
+    )
+
+    assert restored.language == "en-us"
+    assert restored.engine == "pykokoro"
+    assert restored.model == "v1.0"
+    assert restored.model_source == "github"
+    assert restored.voice == "af_heart"
+    assert restored.speed == 1.0
+    assert restored.lexicons == ("crane", "beta")
+    assert restored.target_lufs == -18.0
+    assert restored.output == Path("book.m4b")
+    assert restored.title == "Book title"
+    assert restored.author == "Book author"
+    assert restored.cover == Path("cover.jpg")
+    assert restored.refresh is False
+    assert restored.force is False
+
+
+def test_project_settings_preserve_auto_lexicon_mode() -> None:
+    options = replace(
+        _options(), lexicons=None, clear_lexicons=False, auto_lexicons=True
+    )
+    settings = project_settings(options, _resolution())
+
+    assert settings.synthesis is not None
+    assert settings.synthesis.auto_lexicons is True
+    assert settings.synthesis.lexicons is None
+    restored = apply_project_settings(_options(), settings)
+    assert restored.auto_lexicons is True
+    assert restored.lexicons is None
 
 
 def test_synthesis_and_composition_options_map_to_public_readio_types() -> None:
@@ -151,7 +279,7 @@ def test_audiobook_converter_inspects_through_the_public_service() -> None:
     assert calls == [source]
 
 
-def test_m4b_builds_composition_then_calls_audiobook_export() -> None:
+def test_m4b_uses_persisted_settings_for_build_and_export() -> None:
     project = ProjectRef(Path("book.readio"), "id", "book", "audiobook", "epub")
     composition_result = ProjectBuildResult(project, operations=())
     export_result = AudiobookExportResult(
@@ -162,13 +290,13 @@ def test_m4b_builds_composition_then_calls_audiobook_export() -> None:
         export_id="export-1",
         chapter_count=2,
     )
-    calls: list[tuple[str, object]] = []
+    calls: list[tuple[str, object | None]] = []
 
-    def build(project_ref, request):  # type: ignore[no-untyped-def]
+    def build(project_ref, request=None):  # type: ignore[no-untyped-def]
         calls.append(("build", request))
         return composition_result
 
-    def export(project_ref, options):  # type: ignore[no-untyped-def]
+    def export(project_ref, options=None):  # type: ignore[no-untyped-def]
         calls.append(("export", options))
         return export_result
 
@@ -178,27 +306,61 @@ def test_m4b_builds_composition_then_calls_audiobook_export() -> None:
     )
     converter = AudiobookConverter(app=app)  # type: ignore[arg-type]
 
-    result = converter.build_and_export(project, _options())
+    result = converter.build_and_export(project, replace(_options(), force=False))
 
     assert result is export_result
-    assert [name for name, _ in calls] == ["build", "export"]
-    request = calls[0][1]
-    assert isinstance(request, ProjectBuildRequest)
-    assert request.target == "composition"
-    export_options = calls[1][1]
-    assert isinstance(export_options, AudiobookExportOptions)
-    assert export_options.title == "Book title"
-    assert export_options.cover == Path("cover.jpg")
+    assert calls == [("build", None), ("export", None)]
 
 
-def test_generic_formats_use_the_generic_project_export_branch() -> None:
+def test_m4b_force_is_an_invocation_override_not_a_saved_setting() -> None:
+    project = ProjectRef(Path("book.readio"), "id", "book", "audiobook", "epub")
+    saved = AudiobookExportOptions(
+        output=Path("book.m4b"),
+        title="Book title",
+        author="Book author",
+        cover=Path("cover.jpg"),
+        bitrate="128k",
+        force=False,
+    )
+    export_result = AudiobookExportResult(
+        project=project,
+        output_path=Path("book.m4b"),
+        format="m4b",
+        output_sha256="digest",
+        export_id="export-1",
+        chapter_count=2,
+    )
+    calls: list[object] = []
+
+    def export(project_ref, options=None):  # type: ignore[no-untyped-def]
+        calls.append(options)
+        return export_result
+
+    app = SimpleNamespace(
+        projects=SimpleNamespace(
+            build=lambda project_ref: ProjectBuildResult(project, operations=()),
+            settings=lambda project_ref: ProjectSettings(audiobook_export=saved),
+        ),
+        audiobooks=SimpleNamespace(export=export),
+    )
+    converter = AudiobookConverter(app=app)  # type: ignore[arg-type]
+
+    converter.build_and_export(project, _options())
+
+    assert len(calls) == 1
+    assert isinstance(calls[0], AudiobookExportOptions)
+    assert calls[0].force is True
+    assert saved.force is False
+
+
+def test_generic_formats_use_persisted_project_export_settings() -> None:
     project = ProjectRef(Path("book.readio"), "id", "book", "audiobook", "epub")
     build_result = ProjectBuildResult(
         project, operations=(), output_path=Path("book.flac")
     )
-    calls: list[ProjectBuildRequest] = []
+    calls: list[object | None] = []
 
-    def build(project_ref, request):  # type: ignore[no-untyped-def]
+    def build(project_ref, request=None):  # type: ignore[no-untyped-def]
         calls.append(request)
         return build_result
 
@@ -211,11 +373,9 @@ def test_generic_formats_use_the_generic_project_export_branch() -> None:
     converter = AudiobookConverter(app=app)  # type: ignore[arg-type]
 
     result = converter.build_and_export(
-        project, replace(_options(), format="flac", output=Path("book.flac"))
+        project,
+        replace(_options(), format="flac", output=Path("book.flac"), force=False),
     )
 
     assert result is build_result
-    assert len(calls) == 1
-    assert calls[0].target == "export"
-    assert calls[0].export is not None
-    assert calls[0].export.format == "flac"
+    assert calls == [None]

@@ -14,10 +14,10 @@ TTSForge does not implement or bundle a parallel speech engine. Use Readio's pub
 application API and its engine integrations; TTSForge maps audiobook choices to those
 services.
 
-TTSForge requires Readio `>=0.3.3`, which provides the public audiobook API and the
-expanded synthesis-resolution contract used by guided setup. Install TTSForge normally,
-then add a Readio engine integration as needed; see [Installation](docs/installation.md)
-for setup and development instructions.
+TTSForge requires Readio `>=0.3.4`, which provides the public audiobook API, expanded
+synthesis-resolution contract, and persisted project settings used by guided setup.
+Install TTSForge normally, then add a Readio engine integration as needed; see
+[Installation](docs/installation.md) for setup and development instructions.
 
 ## What it does
 
@@ -39,15 +39,18 @@ ttsforge convert novel.epub
 ```
 
 In an interactive terminal, a new project shows the detected chapters and prompts for a
-selection, then guides you through any synthesis settings you have not supplied.
-Readio's model and voice catalogs are displayed for selection, and the resolved
-audiobook settings appear before confirmation. Reusing a project uses its saved chapter
-scope. Build progress updates live by chapter.
+selection, then guides you through synthesis settings not supplied by CLI or already
+saved in the project. Readio's model and voice catalogs appear only when a choice is
+needed. The resolved setup is saved to the Readio project before confirmation or build.
+Later runs reuse those values, so a failed build can be retried without repeating setup
+prompts. Use `--reconfigure` to review saved choices with their current values as
+defaults; explicit CLI options pin and update their corresponding settings. Build
+progress updates live by chapter.
 
-For automation, specify `--chapters` and pass any desired synthesis options explicitly.
-`--yes` skips only final confirmation; `--non-interactive` and `--json` remain
-prompt-free. Without an explicit chapter selection, non-interactive runs include all
-chapters. Useful follow-up commands:
+For automation, specify `--chapters` and any synthesis options that should override the
+project. `--yes` skips only final confirmation; `--non-interactive` and `--json` never
+prompt and reuse saved setup when available. Without an explicit chapter selection,
+non-interactive runs include all chapters for a new project. Useful follow-up commands:
 
 ```bash
 ttsforge list novel.epub
@@ -59,8 +62,8 @@ ttsforge doctor
 ```
 
 By default, the project is `novel.readio` beside `novel.epub`; the default output is
-`novel.m4b`. Re-running the command reuses that Readio project and its persistent
-chapter selection. See [Projects and outputs](docs/projects.md) for reuse, fresh
+`novel.m4b`. Re-running the command reuses that Readio project's chapter scope and saved
+synthesis/export settings. See [Projects and outputs](docs/projects.md) for reuse, fresh
 projects, and legacy workspaces.
 
 ## Readio engines and configuration

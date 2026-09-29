@@ -30,8 +30,11 @@ from ..readio_backend import synthesis_request
 from ..synthesis_setup import (
     CatalogSelectionError,
     CliPins,
+    SetupSources,
     apply_lexicon_selection,
     choose_catalog_item,
+    invalidate_dependency_sources,
+    reset_dependency_choices,
 )
 
 T = TypeVar("T")
@@ -239,13 +242,14 @@ def _discovery_options(options: AudiobookOptions) -> DiscoveryOptions:
 def _choose_engine(
     converter: AudiobookConverter,
     options: AudiobookOptions,
-    pins: CliPins,
+    sources: SetupSources,
     baseline: SynthesisResolution,
     console: Console,
+    reconfigure: bool = False,
 ) -> tuple[AudiobookOptions, str, EngineInfo | None]:
     all_engines = converter.engines()
     runnable_engines = tuple(engine for engine in all_engines if engine.runnable)
-    if not pins.pinned("engine"):
+    if sources.prompt_required("engine", reconfigure=reconfigure):
         if len(runnable_engines) > 1:
             _show_engines(runnable_engines, console)
             selected = _catalog_choice(
@@ -270,12 +274,13 @@ def _choose_engine(
 def _choose_model(
     converter: AudiobookConverter,
     options: AudiobookOptions,
-    pins: CliPins,
+    sources: SetupSources,
     baseline: SynthesisResolution,
     language: str,
     engine: str,
     discovery: DiscoveryOptions,
     console: Console,
+    reconfigure: bool = False,
 ) -> tuple[AudiobookOptions, ModelInfo | None]:
     models = converter.models(
         language=language, engine=engine, discovery=discovery
@@ -283,7 +288,11 @@ def _choose_model(
     selected_model_info = next(
         (item for item in models if item.id == options.model), None
     )
-    if pins.pinned("model"):
+    if not sources.prompt_required("model", reconfigure=reconfigure):
+        if selected_model_info is not None and sources.prompt_required(
+            "model_source", reconfigure=reconfigure
+        ):
+            options = replace(options, model_source=selected_model_info.source)
         return options, selected_model_info
 
     if models:
@@ -303,7 +312,9 @@ def _choose_model(
     selected_model_info = (
         selected_model if isinstance(selected_model, ModelInfo) else None
     )
-    if selected_model_info is not None and not pins.pinned("model_source"):
+    if selected_model_info is not None and sources.prompt_required(
+        "model_source", reconfigure=reconfigure
+    ):
         options = replace(options, model=model, model_source=selected_model_info.source)
     else:
         options = replace(options, model=model)
@@ -312,13 +323,14 @@ def _choose_model(
 
 def _choose_quality(
     options: AudiobookOptions,
-    pins: CliPins,
+    sources: SetupSources,
     baseline: SynthesisResolution,
     model_info: ModelInfo | None,
     console: Console,
+    reconfigure: bool = False,
 ) -> AudiobookOptions:
     qualities = model_info.qualities if model_info is not None else ()
-    if pins.pinned("quality") or not qualities:
+    if not sources.prompt_required("quality", reconfigure=reconfigure) or not qualities:
         return options
     if len(qualities) == 1:
         return replace(options, quality=qualities[0])
@@ -329,32 +341,36 @@ def _choose_quality(
 def _choose_voice(
     converter: AudiobookConverter,
     options: AudiobookOptions,
-    pins: CliPins,
+    sources: SetupSources,
     baseline: SynthesisResolution,
     model_info: ModelInfo | None,
     language: str,
     engine: str,
     discovery: DiscoveryOptions,
     console: Console,
+    reconfigure: bool = False,
 ) -> AudiobookOptions:
+    if not sources.prompt_required("voice", reconfigure=reconfigure):
+        return options
     voices = converter.voices(
         language=language,
         engine=engine,
         model=options.model,
         discovery=discovery,
     ).items
-    if pins.pinned("voice"):
-        return options
     if voices:
         _show_voices(voices, language, engine, options.model, console)
     else:
         model = options.model or "default"
         console.print(f"No catalog voices matched {language} / {engine} / {model}.")
-    default_voice = (
-        model_info.default_voice
-        if model_info is not None and model_info.default_voice
-        else baseline.voice
-    )
+    if baseline.voice and any(baseline.voice in _voice_keys(voice) for voice in voices):
+        default_voice = baseline.voice
+    else:
+        default_voice = (
+            model_info.default_voice
+            if model_info is not None and model_info.default_voice
+            else baseline.voice
+        )
     selected = _catalog_choice(
         "Voice",
         voices,
@@ -372,19 +388,20 @@ def _choose_voice(
 
 def _prompt_text_policies(
     options: AudiobookOptions,
-    pins: CliPins,
+    sources: SetupSources,
     baseline: SynthesisResolution,
     console: Console,
+    reconfigure: bool = False,
 ) -> AudiobookOptions:
-    if not pins.pinned("speed"):
+    if sources.prompt_required("speed", reconfigure=reconfigure):
         options = replace(options, speed=_prompt_speed(baseline.speed, console))
-    if not pins.pinned("spacy"):
+    if sources.prompt_required("spacy", reconfigure=reconfigure):
         default_spacy = baseline.spacy if baseline.spacy in SPACY_POLICIES else "auto"
         options = replace(
             options,
             spacy=_choice("spaCy", default_spacy, SPACY_POLICIES, console),
         )
-    if not pins.pinned("short_sentence"):
+    if sources.prompt_required("short_sentence", reconfigure=reconfigure):
         default_short = (
             baseline.short_sentence
             if baseline.short_sentence in SHORT_SENTENCE_POLICIES
@@ -405,7 +422,7 @@ def _prompt_text_policies(
 def _prompt_lexicon_options(
     converter: AudiobookConverter,
     options: AudiobookOptions,
-    pins: CliPins,
+    sources: SetupSources,
     baseline: SynthesisResolution,
     model_info: ModelInfo | None,
     language: str,
@@ -413,6 +430,7 @@ def _prompt_lexicon_options(
     discovery: DiscoveryOptions,
     engine_info: EngineInfo | None,
     console: Console,
+    reconfigure: bool = False,
 ) -> AudiobookOptions:
     capabilities = engine_info.capabilities if engine_info is not None else None
     supports_lexicons = bool(
@@ -421,7 +439,9 @@ def _prompt_lexicon_options(
     g2p_relevant = bool(
         (model_info is not None and model_info.g2p_backend) or supports_lexicons
     )
-    if supports_lexicons and not pins.pinned("lexicons"):
+    if supports_lexicons and sources.prompt_required(
+        "lexicons", reconfigure=reconfigure
+    ):
         lexicons = converter.lexicons(
             language=language,
             engine=engine,
@@ -432,7 +452,14 @@ def _prompt_lexicon_options(
             _show_lexicons(lexicons, console)
         else:
             console.print("No catalog lexicons matched this synthesis setup.")
-        default = _default_lexicon_input(baseline.lexicons)
+        if options.auto_lexicons:
+            default = "auto"
+        elif options.clear_lexicons:
+            default = "none"
+        elif options.lexicons is not None:
+            default = ",".join(options.lexicons) if options.lexicons else "none"
+        else:
+            default = _default_lexicon_input(baseline.lexicons)
         while True:
             value = typer.prompt("Lexicons", default=default).strip()
             try:
@@ -442,7 +469,9 @@ def _prompt_lexicon_options(
                 console.print(str(exc), style="red")
         options = return_options
 
-    if g2p_relevant and not pins.pinned("g2p_fallback"):
+    if g2p_relevant and sources.prompt_required(
+        "g2p_fallback", reconfigure=reconfigure
+    ):
         default_g2p = (
             baseline.g2p_fallback
             if baseline.g2p_fallback in G2P_FALLBACKS
@@ -452,7 +481,9 @@ def _prompt_lexicon_options(
             options,
             g2p_fallback=_choice("G2P fallback", default_g2p, G2P_FALLBACKS, console),
         )
-    if (supports_lexicons or g2p_relevant) and not pins.pinned("lexicon_data_policy"):
+    if (supports_lexicons or g2p_relevant) and sources.prompt_required(
+        "lexicon_data_policy", reconfigure=reconfigure
+    ):
         default_policy = (
             baseline.lexicon_data_policy
             if baseline.lexicon_data_policy in LEXICON_DATA_POLICIES
@@ -472,16 +503,17 @@ def _prompt_lexicon_options(
 
 def _prompt_voice_level(
     options: AudiobookOptions,
-    pins: CliPins,
+    sources: SetupSources,
     baseline: SynthesisResolution,
     engine_info: EngineInfo | None,
     console: Console,
+    reconfigure: bool = False,
 ) -> AudiobookOptions:
     capabilities = engine_info.capabilities if engine_info is not None else None
     if (
         capabilities is None
         or not capabilities.supports_voice_level_calibration
-        or pins.pinned("voice_level")
+        or not sources.prompt_required("voice_level", reconfigure=reconfigure)
     ):
         return options
     default = (
@@ -495,11 +527,12 @@ def _prompt_voice_level(
 
 def _prompt_pause_and_unit(
     options: AudiobookOptions,
-    pins: CliPins,
+    sources: SetupSources,
     baseline: SynthesisResolution,
     console: Console,
+    reconfigure: bool = False,
 ) -> AudiobookOptions:
-    if not pins.pinned("pause_mode"):
+    if sources.prompt_required("pause_mode", reconfigure=reconfigure):
         default_pause = (
             baseline.pause_mode if baseline.pause_mode in PAUSE_MODES else "auto"
         )
@@ -507,7 +540,7 @@ def _prompt_pause_and_unit(
             options,
             pause_mode=_choice("Pause mode", default_pause, PAUSE_MODES, console),
         )
-    if not pins.pinned("unit"):
+    if sources.prompt_required("unit", reconfigure=reconfigure):
         default_unit = baseline.unit if baseline.unit in SYNTHESIS_UNITS else "sentence"
         options = replace(
             options,
@@ -521,47 +554,100 @@ def configure_synthesis_interactively(
     converter: AudiobookConverter,
     project: ProjectRef,
     options: AudiobookOptions,
-    pins: CliPins,
+    sources: SetupSources | None = None,
+    reconfigure: bool = False,
+    pins: CliPins | None = None,
     console: Console,
 ) -> AudiobookOptions:
-    """Ask for unpinned synthesis values, using Readio defaults and catalogs."""
+    """Prompt for unresolved or explicitly reconfigured setup fields."""
+    if sources is None:
+        sources = SetupSources(cli=pins.fields if pins is not None else frozenset())
+    prompt_fields = (
+        "language",
+        "engine",
+        "model",
+        "model_source",
+        "quality",
+        "voice",
+        "speed",
+        "spacy",
+        "short_sentence",
+        "lexicons",
+        "g2p_fallback",
+        "lexicon_data_policy",
+        "voice_level",
+        "pause_mode",
+        "unit",
+    )
+    if not any(
+        sources.prompt_required(field, reconfigure=reconfigure)
+        for field in prompt_fields
+    ):
+        return options
+
     baseline = converter.resolve_synthesis(project, synthesis_request(options))
-    if not pins.pinned("language"):
+    pins = CliPins(sources.cli)
+    previous_language = options.language or baseline.language
+    if sources.prompt_required("language", reconfigure=reconfigure):
         options = replace(options, language=_free_text("Language", baseline.language))
+        if options.language != previous_language:
+            options = reset_dependency_choices(options, "language", pins)
+            sources = invalidate_dependency_sources(sources, "language")
+            baseline = converter.resolve_synthesis(project, synthesis_request(options))
     language = options.language or baseline.language
 
+    previous_engine = options.engine or baseline.engine
     options, engine, engine_info = _choose_engine(
-        converter, options, pins, baseline, console
+        converter, options, sources, baseline, console, reconfigure=reconfigure
     )
+    if engine != previous_engine:
+        options = reset_dependency_choices(options, "engine", pins)
+        sources = invalidate_dependency_sources(sources, "engine")
+        baseline = converter.resolve_synthesis(project, synthesis_request(options))
+        engine = options.engine or baseline.engine
+
     discovery = _discovery_options(options)
+    previous_model = options.model or baseline.model
     options, model_info = _choose_model(
         converter,
         options,
-        pins,
+        sources,
         baseline,
         language,
         engine,
         discovery,
         console,
+        reconfigure=reconfigure,
     )
-    options = _choose_quality(options, pins, baseline, model_info, console)
+    selected_model = options.model or baseline.model
+    if selected_model != previous_model:
+        options = reset_dependency_choices(options, "model", pins)
+        sources = invalidate_dependency_sources(sources, "model")
+        baseline = converter.resolve_synthesis(project, synthesis_request(options))
+
+    options = _choose_quality(
+        options, sources, baseline, model_info, console, reconfigure=reconfigure
+    )
     discovery = _discovery_options(options)
     options = _choose_voice(
         converter,
         options,
-        pins,
+        sources,
         baseline,
         model_info,
         language,
         engine,
         discovery,
         console,
+        reconfigure=reconfigure,
     )
-    options = _prompt_text_policies(options, pins, baseline, console)
+    options = _prompt_text_policies(
+        options, sources, baseline, console, reconfigure=reconfigure
+    )
     options = _prompt_lexicon_options(
         converter,
         options,
-        pins,
+        sources,
         baseline,
         model_info,
         language,
@@ -569,6 +655,16 @@ def configure_synthesis_interactively(
         discovery,
         engine_info,
         console,
+        reconfigure=reconfigure,
     )
-    options = _prompt_voice_level(options, pins, baseline, engine_info, console)
-    return _prompt_pause_and_unit(options, pins, baseline, console)
+    options = _prompt_voice_level(
+        options,
+        sources,
+        baseline,
+        engine_info,
+        console,
+        reconfigure=reconfigure,
+    )
+    return _prompt_pause_and_unit(
+        options, sources, baseline, console, reconfigure=reconfigure
+    )

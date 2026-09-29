@@ -6,7 +6,7 @@ owns projects, planning, synthesis, composition, resumability, invalidation, and
 
 ## Compatibility and installation
 
-TTSForge requires Readio `>=0.3.3`. Install the published package with:
+TTSForge requires Readio `>=0.3.4`, which provides the persisted project-settings API.
 
 ```bash
 python -m pip install ttsforge

@@ -12,6 +12,7 @@ from readio.api import (
     AudiobookProjectChapter,
     AudiobookProjectResult,
     ProjectRef,
+    ProjectSettings,
     SynthesisRequest,
     SynthesisResolution,
 )
@@ -259,3 +260,28 @@ def test_preflight_resolves_and_retains_one_shared_synthesis_request(
     assert preflight.author == "A. Writer"
     assert preflight.chapters == chapters
     assert tuple(chapter.number for chapter in preflight.chapters) == (2,)
+
+
+def test_converter_reads_and_saves_settings_through_project_service() -> None:
+    project = _project(Path("book.readio"))
+    settings = ProjectSettings()
+    configured = ProjectSettings(composition=None)
+    calls: list[tuple[str, object, object | None]] = []
+
+    def read(target: object) -> ProjectSettings:
+        calls.append(("settings", target, None))
+        return settings
+
+    def configure(target: object, value: ProjectSettings) -> ProjectSettings:
+        calls.append(("configure", target, value))
+        return configured
+
+    app = SimpleNamespace(projects=SimpleNamespace(settings=read, configure=configure))
+    converter = AudiobookConverter(app=app)  # type: ignore[arg-type]
+
+    assert converter.project_settings(project) is settings
+    assert converter.save_project_settings(project, settings) is configured
+    assert calls == [
+        ("settings", project, None),
+        ("configure", project, settings),
+    ]

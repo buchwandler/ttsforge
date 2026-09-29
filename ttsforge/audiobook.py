@@ -3,7 +3,7 @@
 from __future__ import annotations
 
 from collections.abc import Callable
-from dataclasses import dataclass
+from dataclasses import dataclass, replace
 from pathlib import Path
 from typing import cast
 
@@ -28,6 +28,7 @@ from readio.api import (
     ProjectFormatError,
     ProjectPlanResult,
     ProjectRef,
+    ProjectSettings,
     ProjectStatus,
     Readio,
     ReadioEvent,
@@ -41,7 +42,6 @@ from .chapter_selection import parse_chapter_selection
 from .options import AudiobookOptions
 from .readio_backend import (
     BuildTarget,
-    audiobook_export_options,
     composition_options,
     create_readio,
     project_build_request,
@@ -75,12 +75,15 @@ class ConversionPreflight:
     chapters: tuple[AudiobookProjectChapter, ...]
     output: Path | None
     format: str
-    synthesis_request: SynthesisRequest
+    synthesis_request: SynthesisRequest | None
     synthesis: SynthesisResolution
     bitrate: str | None
     target_lufs: float | None
     offline: bool
     refresh: bool
+
+    settings_source: str = "defaults"
+    settings_saved: bool = False
 
 
 class LegacyWorkspaceError(ValueError):
@@ -109,6 +112,16 @@ class AudiobookConverter:
     ) -> SynthesisResolution:
         """Resolve request defaults through Readio's project service."""
         return self._app.projects.resolve_synthesis(project, request)
+
+    def project_settings(self, project: ProjectRef | Path) -> ProjectSettings:
+        """Read desired build settings through Readio's public project service."""
+        return self._app.projects.settings(project)
+
+    def save_project_settings(
+        self, project: ProjectRef | Path, settings: ProjectSettings
+    ) -> ProjectSettings:
+        """Persist desired build settings through Readio's public project service."""
+        return self._app.projects.configure(project, settings)
 
     def engines(self) -> tuple[EngineInfo, ...]:
         """List engines known to this converter's Readio application."""
@@ -237,7 +250,7 @@ class AudiobookConverter:
         synthesis: SynthesisRequest | None = None,
     ) -> ConversionPreflight:
         """Resolve and collect the exact settings planned for the build."""
-        request = synthesis if synthesis is not None else synthesis_request(options)
+        request = synthesis
         resolved = self._app.projects.resolve_synthesis(setup.project, request)
         title_value = inspection.metadata.get("title")
         title = title_value if isinstance(title_value, str) else None
@@ -277,36 +290,40 @@ class AudiobookConverter:
         return self._app.projects.plan(project)
 
     def build_and_export(
-        self,
-        project: ProjectRef | Path,
-        options: AudiobookOptions,
-        *,
-        synthesis: SynthesisRequest | None = None,
+        self, project: ProjectRef | Path, options: AudiobookOptions
     ) -> AudiobookExportResult | ProjectBuildResult:
-        """Build the project and export with the format-specific public API."""
+        """Build and export using Readio's persisted desired-state settings."""
         output_format = options.format.lower()
         if output_format in SUPPORTED_AUDIOBOOK_FORMATS:
             if output_format != AUDIOBOOK_EXPORT_FORMAT:
                 raise ValueError(f"Unsupported audiobook format: {output_format}")
-            self._app.projects.build(
-                project,
-                project_build_request(
-                    options, target="composition", synthesis=synthesis
-                ),
-            )
-            return self._app.audiobooks.export(
-                project, audiobook_export_options(options)
-            )
+            self._app.projects.build(project)
+            export_options = None
+            if options.force:
+                saved = self.project_settings(project).audiobook_export
+                if saved is None:
+                    raise ValueError(
+                        "No saved audiobook export settings are available."
+                    )
+                export_options = replace(saved, force=True)
+            return self._app.audiobooks.export(project, export_options)
         if output_format not in SUPPORTED_AUDIO_FORMATS:
             supported = (*SUPPORTED_AUDIO_FORMATS, *SUPPORTED_AUDIOBOOK_FORMATS)
             raise ValueError(
                 f"Unsupported audio format {output_format!r}; "
                 f"choose from {', '.join(supported)}."
             )
-        return self._app.projects.build(
-            project,
-            project_build_request(options, target="export", synthesis=synthesis),
-        )
+        if options.force:
+            saved = self.project_settings(project).export
+            if saved is None:
+                raise ValueError("No saved export settings are available.")
+            request = ProjectBuildRequest(
+                target="export",
+                selection="all",
+                export=replace(saved, force=True),
+            )
+            return self._app.projects.build(project, request)
+        return self._app.projects.build(project)
 
     def preview(
         self,

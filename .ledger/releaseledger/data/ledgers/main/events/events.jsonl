@@ -161,3 +161,4 @@
 {"data":{"released_at":"2026-09-12"},"event":"release.finalized","event_id":"event-0161","record_revisions":{"release:0.4.0":11},"release_version":"0.4.0","schema_version":2}
 {"data":{"status":"planned"},"event":"release.created","event_id":"event-0162","record_revisions":{"release:0.4.1":1},"release_version":"0.4.1","schema_version":2}
 {"data":{"kind":"added","status":"accepted"},"entry_id":"entry-0001","event":"entry.added","event_id":"event-0163","record_revisions":{"entry:0.4.1/entry-0001":1,"release:0.4.1":2},"release_version":"0.4.1","schema_version":2}
+{"data":{"added_source_refs":["tl:task-0042"],"fields":["body","source_refs","summary"],"reason":"Record the persisted setup behavior in the planned 0.4.1 release notes","removed_source_refs":[],"source_refs_mode":"merge"},"entry_id":"entry-0001","event":"entry.updated","event_id":"event-0164","record_revisions":{"entry:0.4.1/entry-0001":2},"release_version":"0.4.1","schema_version":2}

@@ -24,14 +24,24 @@ for stage and invalidation details.
 
 ## Guided synthesis setup
 
-Chapter selection remains persistent project scope. On an interactive `convert`,
-TTSForge then asks for synthesis values not explicitly supplied and uses Readio's
-effective defaults and discovery catalogs. Model and voice rows accept either a row
-number or an exact public identifier; capability-specific choices, such as voice-level
-calibration and lexicons, are offered only when the selected engine supports them. The
-resolved setup appears before confirmation. Explicit CLI options pin their corresponding
-values. `--yes` skips only that confirmation; `--non-interactive` and `--json` suppress
-all prompts.
+Chapter selection remains persistent project scope. TTSForge loads saved choices from
+Readio's public project-settings API. During initial setup, the resolved synthesis and
+export settings are saved to the Readio project before final confirmation or build;
+TTSForge does not create a parallel settings file.
+
+On normal reuse, valid saved choices suppress their setup questions, and model/voice
+catalogs appear only when a selection is needed. If an existing or legacy project has no
+saved setup, Readio resolves the defaults and TTSForge saves the resulting choices. A
+failed build can be retried with the saved setup and original chapter scope.
+
+Use `--reconfigure` to revisit unpinned synthesis choices with saved values as defaults.
+Explicit CLI options pin and update only their corresponding settings. When language,
+engine, or model changes, dependent unpinned choices are reconsidered; explicitly pinned
+dependent options remain unchanged.
+
+`--yes` skips only final confirmation, not setup questions. `--non-interactive` and
+`--json` never prompt: they use saved project setup and let Readio resolve unspecified
+values, with explicit CLI options taking precedence.
 
 Use `--project` to choose an explicit project location. This is useful for multiple
 audiobook variants or when project files should live outside the source directory:

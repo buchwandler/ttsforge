@@ -20,6 +20,7 @@ from readio.api import (
     ModelInfo,
     PreviewResult,
     ProjectRef,
+    ProjectSettings,
     ProjectStatus,
     SynthesisResolution,
     VoiceInfo,
@@ -120,8 +121,11 @@ class _FakeConverter:
         self.existing_chapters = (2, 3)
         self.setup: ProjectSetup | None = None
         self.calls: list[str] = []
+        self.settings = ProjectSettings()
         self.build_synthesis = None
         self.preflight_synthesis = None
+        self.fail_build: Exception | None = None
+        self.build_count = 0
 
         self.catalog_calls: list[tuple[str, object, DiscoveryOptions | None]] = []
         capabilities = EngineCapabilities(
@@ -226,24 +230,42 @@ class _FakeConverter:
 
     def resolve_synthesis(self, project, request):  # type: ignore[no-untyped-def]
         self.calls.append("resolve_synthesis")
+        saved = self.settings.synthesis
+
+        def value(name, default):  # type: ignore[no-untyped-def]
+            requested = getattr(request, name, None) if request is not None else None
+            if requested is not None:
+                return requested
+            persisted = getattr(saved, name, None) if saved is not None else None
+            return default if persisted is None else persisted
+
         return SynthesisResolution(
-            engine="pykokoro",
-            language="en-us",
-            voice="af_sarah",
-            model="v1.0",
-            model_source="github",
-            quality="fp32",
-            speed=1.0,
-            unit="sentence",
-            pause_mode="auto",
-            voice_level="off",
-            spacy="auto",
-            short_sentence="phrase",
-            lexicons=None,
-            g2p_fallback="espeak",
-            lexicon_data_policy="auto",
-            allow_experimental=False,
+            engine=value("engine", "pykokoro"),
+            language=value("language", "en-us"),
+            voice=value("voice", "af_sarah"),
+            model=value("model", "v1.0"),
+            model_source=value("model_source", "github"),
+            quality=value("quality", "fp32"),
+            speed=value("speed", 1.0),
+            unit=value("unit", "sentence"),
+            pause_mode=value("pause_mode", "auto"),
+            voice_level=value("voice_level", "off"),
+            spacy=value("spacy", "auto"),
+            short_sentence=value("short_sentence", "phrase"),
+            lexicons=value("lexicons", None),
+            g2p_fallback=value("g2p_fallback", "espeak"),
+            lexicon_data_policy=value("lexicon_data_policy", "auto"),
+            allow_experimental=value("allow_experimental", False),
         )
+
+    def project_settings(self, project):  # type: ignore[no-untyped-def]
+        self.calls.append("project_settings")
+        return self.settings
+
+    def save_project_settings(self, project, settings):  # type: ignore[no-untyped-def]
+        self.calls.append("save_project_settings")
+        self.settings = settings
+        return settings
 
     def engines(self):  # type: ignore[no-untyped-def]
         self.calls.append("engines")
@@ -281,6 +303,7 @@ class _FakeConverter:
         else:
             numbers = self.existing_chapters
             created = False
+        self.existing_project = self.project
         self.setup = ProjectSetup(
             project=self.project,
             created=created,
@@ -296,28 +319,11 @@ class _FakeConverter:
         )
         return self.setup
 
-    def preflight(self, setup, inspection, options, *, synthesis):  # type: ignore[no-untyped-def]
+    def preflight(self, setup, inspection, options, *, synthesis=None):  # type: ignore[no-untyped-def]
         self.calls.append("preflight")
         self.preflight_synthesis = synthesis
         self.options = options
-        resolution = SynthesisResolution(
-            engine=options.engine or "pykokoro",
-            language=options.language or "en-us",
-            voice=options.voice or "af_heart",
-            model=options.model or "kokoro-v1",
-            model_source=options.model_source or "github",
-            quality=options.quality or "fp32",
-            speed=options.speed or 1.0,
-            unit=options.unit or "sentence",
-            pause_mode=options.pause_mode or "auto",
-            voice_level=options.voice_level,
-            spacy=options.spacy,
-            short_sentence=options.short_sentence,
-            lexicons=() if options.clear_lexicons else options.lexicons,
-            g2p_fallback=options.g2p_fallback,
-            lexicon_data_policy=options.lexicon_data_policy,
-            allow_experimental=options.allow_experimental,
-        )
+        resolution = self.resolve_synthesis(setup.project, synthesis)
         return ConversionPreflight(
             source=options.source,
             title="A title",
@@ -336,13 +342,16 @@ class _FakeConverter:
             refresh=options.refresh,
         )
 
-    def build_and_export(self, project, options, *, synthesis=None):  # type: ignore[no-untyped-def]
+    def build_and_export(self, project, options):  # type: ignore[no-untyped-def]
         self.calls.append("build_and_export")
-        self.build_synthesis = synthesis
+        self.build_synthesis = None
+        self.build_count += 1
+        if self.fail_build is not None:
+            raise self.fail_build
         return AudiobookExportResult(
             project=self.project,
-            output_path=self.project.root.with_suffix(".m4b"),
-            format="m4b",
+            output_path=options.output or self.project.root.with_suffix(".m4b"),
+            format=options.format,
             output_sha256="digest",
             export_id="export-1",
             chapter_count=len(self.setup.chapters) if self.setup else 0,
@@ -386,6 +395,7 @@ def test_help_exposes_only_the_audiobook_frontend_commands() -> None:
     )
     assert "--yes" in convert_help
     assert "--non-interactive" in convert_help
+    assert "--reconfigure" in convert_help
     assert "--model" in convert_help
     assert "--model-source" in convert_help
     assert "--quality" in convert_help
@@ -467,6 +477,8 @@ def test_convert_initializes_readio_project_and_keeps_json_stdout_clean(
     payload = json.loads(result.stdout)
     assert payload["project"] == str(project.root)
     assert payload["created"] is True
+    assert payload["settings_source"] == "new"
+    assert payload["settings_saved"] is True
     assert payload["selected_chapters"] == [1]
     assert payload["format"] == "m4b"
     assert payload["output"] == str(project.root.with_suffix(".m4b"))
@@ -489,7 +501,11 @@ def test_convert_initializes_readio_project_and_keeps_json_stdout_clean(
         "inspect",
         "find_project",
         "create_or_open_project",
+        "project_settings",
+        "resolve_synthesis",
+        "save_project_settings",
         "preflight",
+        "resolve_synthesis",
         "build_and_export",
     ]
     assert result.stderr == ""
@@ -673,7 +689,7 @@ def test_capability_gates_skip_irrelevant_prompts_but_keep_explicit_pins(
     assert "Voice level [" not in result.output
     assert "G2P fallback (none/espeak/goruut) [espeak]" in result.output
     assert "Lexicon data (auto/installed-only) [auto]" in result.output
-    assert [call[0] for call in converter.catalog_calls] == ["models", "voices"]
+    assert [call[0] for call in converter.catalog_calls] == ["models"]
 
     args.extend(("--voice-level", "calibrated"))
     pinned_converter = _FakeConverter(source, project)
@@ -688,7 +704,8 @@ def test_capability_gates_skip_irrelevant_prompts_but_keep_explicit_pins(
     assert pinned_result.exit_code == 0, pinned_result.output
     assert "Voice level [" not in pinned_result.output
     assert pinned_converter.options.voice_level == "calibrated"
-    assert pinned_converter.build_synthesis.voice_level == "calibrated"
+    assert pinned_converter.settings.synthesis is not None
+    assert pinned_converter.settings.synthesis.voice_level == "calibrated"
 
 
 def test_non_interactive_uses_all_without_prompting(
@@ -713,7 +730,8 @@ def test_non_interactive_uses_all_without_prompting(
     assert converter.options.chapters == "all"
     assert converter.setup is not None
     assert converter.setup.selected_chapters == (1, 2, 3)
-    assert "resolve_synthesis" not in converter.calls
+    assert converter.calls.count("resolve_synthesis") == 2
+    assert "save_project_settings" in converter.calls
     assert converter.catalog_calls == []
 
 
@@ -739,6 +757,8 @@ def test_existing_project_shows_persisted_scope_without_prompt(
     assert "Chapters to include" not in result.output
     assert converter.setup is not None
     assert converter.setup.selected_chapters == (2, 3)
+    assert "save_project_settings" in converter.calls
+    assert converter.settings.synthesis is not None
 
 
 def test_existing_project_rejects_conflicting_chapters(
@@ -791,8 +811,10 @@ def test_declining_confirmation_does_not_start_build(
     )
 
     assert result.exit_code == 0, result.output
-    assert "Cancelled" in result.output
+    assert "Cancelled before synthesis" in result.output
     assert "build_and_export" not in converter.calls
+    assert "save_project_settings" in converter.calls
+    assert converter.settings.synthesis is not None
 
 
 def test_status_and_preview_are_project_service_workflows(
@@ -860,13 +882,14 @@ def test_convert_maps_new_synthesis_cli_flags_to_readio_request(
     assert converter.options.lexicons == ("crane", "custom")
     assert converter.options.spacy == "lg"
     assert converter.options.short_sentence == "randomized-phrase"
-    assert converter.build_synthesis.lexicons == ("crane", "custom")
-    assert converter.build_synthesis.g2p_fallback == "goruut"
-    assert converter.build_synthesis.lexicon_data_policy == "installed-only"
-    assert converter.build_synthesis.allow_experimental is True
-    assert converter.build_synthesis.voice_level == "calibrated"
-    assert converter.build_synthesis.pause_mode == "manual"
-    assert converter.build_synthesis.unit == "paragraph"
+    assert converter.settings.synthesis is not None
+    assert converter.settings.synthesis.lexicons == ("crane", "custom")
+    assert converter.settings.synthesis.g2p_fallback == "goruut"
+    assert converter.settings.synthesis.lexicon_data_policy == "installed-only"
+    assert converter.settings.synthesis.allow_experimental is True
+    assert converter.settings.synthesis.voice_level == "calibrated"
+    assert converter.settings.synthesis.pause_mode == "manual"
+    assert converter.settings.synthesis.unit == "paragraph"
 
 
 def test_convert_rejects_conflicting_lexicon_modes_before_project_work(
@@ -914,6 +937,149 @@ def test_convert_no_lexicons_and_auto_lexicons_flags_map_to_request(
             ["convert", str(source), "--non-interactive", flag],
         )
         assert result.exit_code == 0, result.output
-        assert converter.build_synthesis.clear_lexicons is clear
-        assert converter.build_synthesis.auto_lexicons is automatic
-        assert converter.build_synthesis.lexicons is None
+        assert converter.settings.synthesis is not None
+        assert converter.settings.synthesis.clear_lexicons is clear
+        assert converter.settings.synthesis.auto_lexicons is automatic
+        assert (
+            converter.settings.synthesis.lexicons is None
+            if automatic
+            else converter.settings.synthesis.lexicons == ()
+        )
+
+
+def test_failed_synthesis_saves_setup_for_prompt_free_retry(
+    tmp_path: Path, monkeypatch
+) -> None:
+    source = tmp_path / "book.epub"
+    source.touch()
+    project = ProjectRef(tmp_path / "book.readio", "id", "book", "audiobook", "epub")
+    converter = _FakeConverter(source, project)
+    converter.fail_build = ValueError("simulated synthesis failure")
+    _set_mode(monkeypatch, interactive=True, confirm=False)
+    monkeypatch.setattr(
+        cli_module, "_converter", lambda json_mode, progress=None: converter
+    )
+
+    failed = runner.invoke(
+        cli_module.app,
+        ["convert", str(source), "--chapters", "2-3", "--yes"],
+        input="\n" * 14,
+    )
+
+    assert failed.exit_code == 1, failed.output
+    assert "simulated synthesis failure" in failed.output
+    assert converter.settings.synthesis is not None
+    assert converter.build_count == 1
+    assert converter.setup is not None
+    assert converter.setup.selected_chapters == (2, 3)
+    assert (
+        converter.calls.index("save_project_settings")
+        < converter.calls.index("preflight")
+        < converter.calls.index("build_and_export")
+    )
+
+    converter.fail_build = None
+    call_start = len(converter.calls)
+    retried = runner.invoke(cli_module.app, ["convert", str(source), "--yes"])
+    retry_calls = converter.calls[call_start:]
+
+    assert retried.exit_code == 0, retried.output
+    assert "Using saved audiobook setup" in retried.output
+    assert "Language [" not in retried.output
+    assert "Engine [" not in retried.output
+    assert "Model [" not in retried.output
+    assert "Voice (" not in retried.output
+    assert converter.setup is not None
+    assert converter.setup.selected_chapters == (2, 3)
+    assert (
+        retry_calls.index("save_project_settings")
+        < retry_calls.index("preflight")
+        < retry_calls.index("build_and_export")
+    )
+    assert converter.build_count == 2
+
+
+def test_saved_setup_accepts_one_cli_pin_and_reconfigure_uses_it_as_default(
+    tmp_path: Path, monkeypatch
+) -> None:
+    source = tmp_path / "book.epub"
+    source.touch()
+    project = ProjectRef(tmp_path / "book.readio", "id", "book", "audiobook", "epub")
+    converter = _FakeConverter(source, project)
+    monkeypatch.setattr(
+        cli_module, "_converter", lambda json_mode, progress=None: converter
+    )
+    _set_mode(monkeypatch, interactive=False)
+
+    initial = runner.invoke(
+        cli_module.app,
+        ["convert", str(source), "--non-interactive", "--voice", "af_sarah"],
+    )
+    assert initial.exit_code == 0, initial.output
+    assert converter.settings.synthesis is not None
+    original_language = converter.settings.synthesis.language
+
+    _set_mode(monkeypatch, interactive=True, confirm=False)
+    pinned = runner.invoke(
+        cli_module.app,
+        ["convert", str(source), "--voice", "am_adam", "--yes"],
+    )
+    assert pinned.exit_code == 0, pinned.output
+    assert "Updating saved audiobook setup" in pinned.output
+    assert "Language [" not in pinned.output
+    assert "Engine [" not in pinned.output
+    assert "Model [" not in pinned.output
+    assert converter.settings.synthesis is not None
+    assert converter.settings.synthesis.voice == "am_adam"
+    assert converter.settings.synthesis.language == original_language
+
+    reconfigured = runner.invoke(
+        cli_module.app,
+        ["convert", str(source), "--reconfigure", "--yes"],
+        input="\n" * 14,
+    )
+    assert reconfigured.exit_code == 0, reconfigured.output
+    assert "Updating saved audiobook setup" in reconfigured.output
+    assert "Language [" in reconfigured.output
+    assert "Engine [" in reconfigured.output
+    assert "Model [" in reconfigured.output
+    assert "Voice [am_adam]" in reconfigured.output
+    assert "am_adam" in reconfigured.output
+    assert converter.settings.synthesis is not None
+    assert converter.settings.synthesis.voice == "am_adam"
+
+
+def test_non_interactive_resume_uses_saved_project_without_prompts(
+    tmp_path: Path, monkeypatch
+) -> None:
+    source = tmp_path / "book.epub"
+    source.touch()
+    project = ProjectRef(tmp_path / "book.readio", "id", "book", "audiobook", "epub")
+    converter = _FakeConverter(source, project)
+    monkeypatch.setattr(
+        cli_module, "_converter", lambda json_mode, progress=None: converter
+    )
+    _set_mode(monkeypatch, interactive=False)
+
+    first = runner.invoke(
+        cli_module.app,
+        ["convert", str(source), "--non-interactive"],
+    )
+    assert first.exit_code == 0, first.output
+    call_start = len(converter.calls)
+
+    resumed = runner.invoke(
+        cli_module.app,
+        ["convert", str(source), "--non-interactive"],
+    )
+    resume_calls = converter.calls[call_start:]
+
+    assert resumed.exit_code == 0, resumed.output
+    assert "Using saved audiobook setup" in resumed.output
+    assert "Language [" not in resumed.output
+    assert "Engine [" not in resumed.output
+    assert "Model [" not in resumed.output
+    assert "create_or_open_project" in resume_calls
+    assert resume_calls.index("save_project_settings") < resume_calls.index(
+        "build_and_export"
+    )

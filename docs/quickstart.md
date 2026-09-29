@@ -1,6 +1,6 @@
 # Quick start
 
-Install TTSForge with Readio `>=0.3.3`, then install a supported Readio engine extra if
+Install TTSForge with Readio `>=0.3.4`, then install a supported Readio engine extra if
 you want to synthesize speech. See [Installation](installation.md) for platform and
 development instructions.
 
@@ -47,7 +47,11 @@ voices; choose a row number or enter its exact identifier. The prompts include l
 runnable engine selection when needed, model and voice, speed and supported quality,
 spaCy and short-sentence policies, lexicon/G2P choices, capability-gated voice level,
 pause handling, and sentence-versus-paragraph units. The final setup displays Readio's
-effective resolution before confirmation.
+effective resolution before confirmation. The resolved setup is saved through Readio's
+public project-settings API before confirmation or build, so a failed build can be
+retried and later runs do not repeat the same questions. Use `--reconfigure` to revisit
+saved choices with their saved values as defaults. Explicit CLI options pin and update
+only their corresponding settings.
 
 Use explicit options to pin settings and skip matching questions, for example:
 
@@ -55,8 +59,10 @@ Use explicit options to pin settings and skip matching questions, for example:
 ttsforge convert novel.epub --language en-us --model MODEL_ID --voice VOICE_ID --unit paragraph
 ```
 
-`--yes` skips only the final confirmation. `--non-interactive` and `--json` disable all
-prompts; supply desired synthesis values as CLI options in those modes.
+`--yes` skips only the final confirmation. `--non-interactive` and `--json` disable
+prompts and reuse settings already saved on the project. For a new or unconfigured
+project, Readio resolves unspecified values from its defaults; CLI options override
+them.
 
 When stdin, stdout, and stderr are not all terminals, or when `--non-interactive` is
 supplied, no chapter or synthesis setup prompts appear. A new project selects all
