@@ -5,9 +5,11 @@ from __future__ import annotations
 import json
 import re
 from importlib import import_module
+from io import StringIO
 from pathlib import Path
 from types import SimpleNamespace
 
+import pytest
 from readio.api import (
     AudiobookChapter,
     AudiobookExportResult,
@@ -25,13 +27,17 @@ from readio.api import (
     SynthesisResolution,
     VoiceInfo,
 )
+from rich.console import Console
 from typer.testing import CliRunner
 
 from ttsforge.audiobook import ConversionPreflight, ProjectSetup
 from ttsforge.chapter_selection import parse_chapter_selection
+from ttsforge.options import AudiobookOptions
+from ttsforge.synthesis_setup import SetupSources
 from ttsforge.ui.interaction import InteractionMode
 
 cli_module = import_module("ttsforge.cli.app")
+synthesis_ui = import_module("ttsforge.ui.synthesis")
 
 
 runner = CliRunner()
@@ -161,8 +167,8 @@ class _FakeConverter:
                 id="v1.0",
                 source="github",
                 languages=("en-us",),
-                voices=("af_sarah", "am_adam"),
-                default_voice="af_sarah",
+                voices=("af_sarah", "am_adam", "af_bella", "af_heart"),
+                default_voice="af_heart",
                 qualities=("fp32", "q8"),
                 g2p_backend="kokorog2p",
                 lexicons=("crane",),
@@ -176,7 +182,7 @@ class _FakeConverter:
         )
         self.voice_rows = (
             VoiceInfo(
-                selector="af_sarah",
+                selector="en_us-ko-10",
                 id="af_sarah",
                 gender="female",
                 language="en",
@@ -184,14 +190,14 @@ class _FakeConverter:
                 language_label="American English",
                 model="v1.0",
                 source="github",
-                default=True,
+                default=False,
                 status="ready",
                 experimental=False,
                 runtime_available=True,
                 engine="pykokoro",
             ),
             VoiceInfo(
-                selector="am_adam",
+                selector="en_us-ko-12",
                 id="am_adam",
                 gender="male",
                 language="en",
@@ -200,6 +206,36 @@ class _FakeConverter:
                 model="v1.0",
                 source="github",
                 default=False,
+                status="ready",
+                experimental=False,
+                runtime_available=True,
+                engine="pykokoro",
+            ),
+            VoiceInfo(
+                selector="en_us-ko-3",
+                id="af_bella",
+                gender="female",
+                language="en",
+                locale="en-us",
+                language_label="American English",
+                model="v1.0",
+                source="github",
+                default=False,
+                status="ready",
+                experimental=False,
+                runtime_available=True,
+                engine="pykokoro",
+            ),
+            VoiceInfo(
+                selector="en_us-ko-4",
+                id="af_heart",
+                gender="female",
+                language="en",
+                locale="en-us",
+                language_label="American English",
+                model="v1.0",
+                source="github",
+                default=True,
                 status="ready",
                 experimental=False,
                 runtime_available=True,
@@ -374,6 +410,114 @@ class _FakeConverter:
         )
 
 
+@pytest.mark.parametrize(
+    ("selection", "expected_voice"),
+    (
+        ("4", "af_heart"),
+        ("af_heart", "af_heart"),
+        ("en_us-ko-4", "af_heart"),
+        ("pykokoro:v1.0:af_heart", "af_heart"),
+    ),
+)
+def test_guided_voice_selection_normalizes_catalog_identity(
+    tmp_path: Path, monkeypatch, selection: str, expected_voice: str
+) -> None:
+    source = tmp_path / "book.epub"
+    source.touch()
+    project = ProjectRef(tmp_path / "book.readio", "id", "book", "audiobook", "epub")
+    converter = _FakeConverter(source, project)
+    baseline = converter.resolve_synthesis(project, None)
+    prompt_defaults: list[object] = []
+
+    def prompt(_message: str, **kwargs: object) -> str:
+        prompt_defaults.append(kwargs.get("default"))
+        return selection
+
+    monkeypatch.setattr(synthesis_ui.typer, "prompt", prompt)
+    options = synthesis_ui._choose_voice(
+        converter,
+        AudiobookOptions(source=source, model="v1.0"),
+        SetupSources(),
+        baseline,
+        converter.model_rows[0],
+        "en-us",
+        "pykokoro",
+        DiscoveryOptions(),
+        Console(file=StringIO(), width=40, force_terminal=False, color_system=None),
+    )
+
+    assert prompt_defaults == ["af_sarah"]
+    assert converter.model_rows[0].default_voice == "af_heart"
+    assert options.voice == expected_voice
+
+
+def test_guided_voice_selection_preserves_text_when_catalog_is_empty(
+    tmp_path: Path, monkeypatch
+) -> None:
+    source = tmp_path / "book.epub"
+    source.touch()
+    project = ProjectRef(tmp_path / "book.readio", "id", "book", "audiobook", "epub")
+    converter = _FakeConverter(source, project)
+    converter.voice_rows = ()
+    baseline = converter.resolve_synthesis(project, None)
+    monkeypatch.setattr(
+        synthesis_ui.typer,
+        "prompt",
+        lambda _message, **kwargs: "custom-provider-voice",
+    )
+    options = synthesis_ui._choose_voice(
+        converter,
+        AudiobookOptions(source=source, model="v1.0"),
+        SetupSources(),
+        baseline,
+        converter.model_rows[0],
+        "en-us",
+        "pykokoro",
+        DiscoveryOptions(),
+        Console(file=StringIO(), width=40, force_terminal=False, color_system=None),
+    )
+
+    assert options.voice == "custom-provider-voice"
+
+
+def test_guided_catalog_lists_wrap_at_narrow_width(tmp_path: Path) -> None:
+    project = ProjectRef(tmp_path / "book.readio", "id", "book", "audiobook", "epub")
+    converter = _FakeConverter(tmp_path / "book.epub", project)
+    output = StringIO()
+    console = Console(file=output, width=40, force_terminal=False, color_system=None)
+
+    synthesis_ui._show_engines(converter.engine_rows, console)
+    synthesis_ui._show_models(converter.model_rows, "en-us", "pykokoro", console)
+    synthesis_ui._show_voices(
+        converter.voice_rows, "en-us", "pykokoro", "v1.0", console
+    )
+    synthesis_ui._show_lexicons(converter.lexicon_rows, console)
+
+    rendered = output.getvalue()
+    assert all(
+        heading in rendered
+        for heading in (
+            "Runnable Readio engines",
+            "Available models",
+            "Available voices",
+            "Available lexicons",
+        )
+    )
+    assert all(
+        value in rendered
+        for value in (
+            "pykokoro",
+            "v1.0",
+            "af_heart",
+            "en_us-ko-4",
+            "Crane",
+            "selector: crane",
+        )
+    )
+    assert rendered.index("af_heart") < rendered.index("selector: en_us-ko-4")
+    assert not any(border in rendered for border in ("┏", "┓", "┃", "┡", "└"))
+
+
 def test_help_exposes_only_the_audiobook_frontend_commands() -> None:
     result = runner.invoke(cli_module.app, ["--help"])
     help_text = _plain_output(result.output)
@@ -532,7 +676,7 @@ def test_interactive_new_project_prompts_retries_and_preflights_before_build(
         "1",
         "",
         "wrong-voice",
-        "1",
+        "en_us-ko-10",
         "",
         "lg",
         "",

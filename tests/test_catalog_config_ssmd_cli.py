@@ -11,6 +11,7 @@ from readio.api import (
     CatalogDiscovery,
     CatalogListing,
     DiscoveryOptions,
+    EngineInfo,
     ModelInfo,
     ModelQuery,
     SSMDMaterializeResult,
@@ -53,6 +54,15 @@ def test_voices_and_models_delegate_queries_to_catalog(monkeypatch) -> None:
         runtime_available=True,
         redistribution_allowed=True,
     )
+    engine = EngineInfo(
+        id="piper",
+        version="2.0",
+        registered=True,
+        installed=False,
+        runnable=False,
+        capabilities=None,
+        missing_dependency="piper runtime",
+    )
     discovery = CatalogDiscovery(registry_source="test")
     calls: list[tuple[str, object, DiscoveryOptions]] = []
 
@@ -68,6 +78,7 @@ def test_voices_and_models_delegate_queries_to_catalog(monkeypatch) -> None:
         catalog=SimpleNamespace(
             voices_listing=voices_listing,
             models_listing=models_listing,
+            engines=lambda: (engine,),
         )
     )
     monkeypatch.setattr(cli_module, "_readio", lambda: api)
@@ -81,10 +92,34 @@ def test_voices_and_models_delegate_queries_to_catalog(monkeypatch) -> None:
         ["models", "--engine", "piper", "--status", "ready", "--refresh", "--json"],
     )
 
+    engines_json = runner.invoke(cli_module.app, ["engines", "--json"])
+    human_voices = runner.invoke(cli_module.app, ["voices"])
+    human_models = runner.invoke(cli_module.app, ["models"])
+    human_engines = runner.invoke(cli_module.app, ["engines"])
     assert voices.exit_code == 0, voices.output
     assert models.exit_code == 0, models.output
     assert json.loads(voices.stdout)["items"][0]["id"] == "af_heart"
     assert json.loads(models.stdout)["items"][0]["id"] == "kokoro-v1"
+    assert json.loads(voices.stdout)["items"][0]["selector"] == "en-us:af_heart"
+    assert engines_json.exit_code == 0, engines_json.output
+    assert json.loads(engines_json.stdout)[0]["runnable"] is False
+    assert all(
+        result.exit_code == 0 for result in (human_voices, human_models, human_engines)
+    )
+    assert "Voices (1)" in human_voices.output
+    assert human_voices.output.index("af_heart") < human_voices.output.index(
+        "selector: en-us:af_heart"
+    )
+    assert "Models (1)" in human_models.output
+    assert "kokoro-v1" in human_models.output
+    assert "Engines (1)" in human_engines.output
+    assert "not runnable" in human_engines.output
+    assert "missing dependency: piper runtime" in human_engines.output
+    assert not any(
+        border in result.output
+        for result in (human_voices, human_models, human_engines)
+        for border in ("┏", "┓", "┃", "┡", "└")
+    )
     assert calls[0] == (
         "voices",
         VoiceQuery(language="en-US", engine="kokoro"),

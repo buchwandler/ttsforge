@@ -17,10 +17,12 @@ Filters include `--engine`, `--language`, `--model`, and `--gender`. Use `--offl
 avoid network discovery and `--refresh` to refresh cached catalog data. `--json` returns
 catalog items together with discovery information.
 
-A voice row may include a selector, language/locale, model, engine, status, and whether
-the runtime is available. Select a voice value that Readio reports for the engine/model
-you plan to use; do not assume legacy Kokoro IDs or language-prefix conventions apply to
-every engine.
+Human-readable output shows the canonical Readio voice ID (`VoiceInfo.id`) as the primary
+name, with the stable selector as a secondary alias when available. If a selector is not
+available, the qualified voice ID is shown instead. Voice listings may also include
+language/locale, model, engine, status, and runtime availability. Readio owns these
+identities; do not assume legacy Kokoro IDs or language-prefix conventions apply to every
+engine.
 
 ## Inspect models and engines
 
@@ -37,7 +39,7 @@ missing runtime dependencies and format availability.
 
 ## Use a discovered voice
 
-Pass the reported selector or voice ID to the audiobook command:
+For explicit `--voice` values, use the canonical voice ID or selector reported by Readio:
 
 ```bash
 ttsforge convert novel.epub --engine kokoro --voice af_heart
@@ -47,10 +49,13 @@ ttsforge preview novel.epub --engine kokoro --voice af_heart
 ## Guided selection during conversion
 
 `ttsforge convert` uses the same Readio discovery services interactively on a TTY. It
-displays filtered engine/model/voice catalog rows where selection is needed; enter a row
-number or an exact Readio identifier. The catalog is filtered by the chosen language and
-engine, and by model for voices. `ttsforge voices` remains available for independent
-discovery, while explicit `--model` and `--voice` options bypass the matching prompts.
+displays filtered engine, model, voice, and lexicon choices as compact vertical lists where
+selection is needed. Enter a row number or exact identifier. Voice entries show the canonical
+Readio voice ID first and the stable selector as an alias. Guided voice prompts accept a row
+number, canonical voice ID, selector, or qualified ID, then keep the selected row's canonical
+ID. The catalog is filtered by the chosen language and engine, and by model for voices.
+`ttsforge voices` remains available for independent discovery, while explicit `--model` and
+`--voice` options bypass the matching prompts.
 Voice and model details are engine-specific. TTSForge does not implement voice blending,
 maintain voice recommendations, or promise that a voice selector will be available for
 every engine. See

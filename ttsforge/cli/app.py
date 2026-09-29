@@ -48,6 +48,7 @@ from ..readio_backend import (
     synthesis_request,
 )
 from ..synthesis_setup import CliPins, SetupSources, merge_saved_setup
+from ..ui.catalog import engine_item, model_item, render_catalog_list, voice_item
 from ..ui.chapters import chapter_table, choose_chapters
 from ..ui.interaction import InteractionMode, resolve_interaction_mode
 from ..ui.preflight import render_completion, render_preflight
@@ -716,17 +717,13 @@ def voices(
     if json_mode:
         _json_dump(_catalog_payload(result))
         return
-    table = Table("Selector", "Language", "Model", "Engine", "Status", "Runtime")
-    for voice in result.items:
-        table.add_row(
-            voice.selector or voice.qualified_id,
-            voice.locale,
-            voice.model,
-            voice.engine,
-            voice.status,
-            "yes" if voice.runtime_available else "no",
-        )
-    _output.print(table)
+    render_catalog_list(
+        _output,
+        title="Voices",
+        items=tuple(
+            voice_item(voice, engine=engine, model=model) for voice in result.items
+        ),
+    )
 
 
 @app.command()
@@ -750,16 +747,13 @@ def models(
     if json_mode:
         _json_dump(_catalog_payload(result))
         return
-    table = Table("Model/target", "Engine", "Status", "Runtime", "Default voice")
-    for model_info in result.items:
-        table.add_row(
-            model_info.id,
-            model_info.backend,
-            model_info.status,
-            "yes" if model_info.runtime_available else "no",
-            model_info.default_voice or "",
-        )
-    _output.print(table)
+    render_catalog_list(
+        _output,
+        title="Models",
+        items=tuple(
+            model_item(model_info, engine=engine) for model_info in result.items
+        ),
+    )
 
 
 @app.command()
@@ -772,16 +766,11 @@ def engines(
     if json_mode:
         _json_dump([asdict(item) for item in result])
         return
-    table = Table("Engine", "Version", "Installed", "Runnable", "Missing dependency")
-    for engine in result:
-        table.add_row(
-            engine.id,
-            engine.version or "—",
-            "yes" if engine.installed else "no",
-            "yes" if engine.runnable else "no",
-            engine.missing_dependency or "",
-        )
-    _output.print(table)
+    render_catalog_list(
+        _output,
+        title="Engines",
+        items=tuple(engine_item(engine, show_status=True) for engine in result),
+    )
 
 
 @app.command()

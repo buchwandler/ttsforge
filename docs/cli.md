@@ -71,9 +71,12 @@ engine, or model causes dependent unpinned choices to be selected again; CLI-pin
 dependents remain.
 
 TTSForge asks for language, runnable engine selection where applicable, and model/voice
-catalog choices when needed. Remaining questions cover supported quality, speed, spaCy
-and short-sentence policies, lexicons, G2P fallback and lexicon data, supported
-voice-level calibration, pause mode, and synthesis unit. Readio owns catalogs,
+catalog choices when needed. These catalogs render as compact vertical lists. Voice choices
+show canonical Readio voice IDs first and stable selectors as aliases; guided voice prompts
+accept a row number, canonical ID, selector, or qualified ID and store the selected catalog
+row's canonical ID. Remaining questions cover supported quality, speed, spaCy and
+short-sentence policies, lexicons, G2P fallback and lexicon data, supported voice-level
+calibration, pause mode, and synthesis unit. Readio owns catalogs,
 capabilities, and resolution rules; the `Audiobook Setup` table shows the effective
 values used.
 

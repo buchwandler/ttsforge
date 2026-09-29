@@ -22,7 +22,6 @@ from readio.api import (
     VoiceInfo,
 )
 from rich.console import Console
-from rich.table import Table
 
 from ..audiobook import AudiobookConverter
 from ..options import AudiobookOptions
@@ -35,6 +34,13 @@ from ..synthesis_setup import (
     choose_catalog_item,
     invalidate_dependency_sources,
     reset_dependency_choices,
+)
+from .catalog import (
+    engine_item,
+    lexicon_item,
+    model_item,
+    render_catalog_list,
+    voice_item,
 )
 
 T = TypeVar("T")
@@ -89,71 +95,22 @@ def _prompt_speed(default: float, console: Console) -> float:
         console.print("Speed must be between 0.5 and 2.0.", style="red")
 
 
-def _engine_features(engine: EngineInfo) -> str:
-    capabilities = engine.capabilities
-    if capabilities is None:
-        return ""
-    features = []
-    if capabilities.supports_named_voices:
-        features.append("voices")
-    if capabilities.supports_lexicons:
-        features.append("lexicons")
-    if capabilities.supports_model_sources:
-        features.append("model sources")
-    if capabilities.supports_qualities:
-        features.append("qualities")
-    if capabilities.supports_voice_level_calibration:
-        features.append("voice level")
-    return ", ".join(features)
-
-
 def _show_engines(rows: Sequence[EngineInfo], console: Console) -> None:
-    table = Table(title="Runnable Readio engines")
-    table.add_column("#", no_wrap=True)
-    table.add_column("Engine")
-    table.add_column("Version")
-    table.add_column("Runnable")
-    table.add_column("Features", overflow="fold")
-    for index, engine in enumerate(rows, 1):
-        table.add_row(
-            str(index),
-            engine.id,
-            engine.version or "—",
-            "yes" if engine.runnable else "no",
-            _engine_features(engine),
-        )
-    console.print(table)
+    render_catalog_list(
+        console,
+        title="Runnable Readio engines",
+        items=tuple(engine_item(engine) for engine in rows),
+    )
 
 
 def _show_models(
     rows: Sequence[ModelInfo], language: str, engine: str, console: Console
 ) -> None:
-    table = Table(title=f"Available models for {language} / {engine}")
-    table.add_column("#", no_wrap=True)
-    table.add_column("Model", overflow="fold")
-    table.add_column("Engine")
-    table.add_column("Source")
-    table.add_column("Status")
-    table.add_column("Runtime")
-    table.add_column("Qualities", overflow="fold")
-    table.add_column("Default voice", overflow="fold")
-    table.add_column("G2P / lexicons", overflow="fold")
-    for index, model in enumerate(rows, 1):
-        resources = [model.g2p_backend or "—"]
-        if model.lexicons:
-            resources.append(", ".join(model.lexicons))
-        table.add_row(
-            str(index),
-            model.id,
-            model.backend,
-            model.source or "—",
-            model.status,
-            "yes" if model.runtime_available else "no",
-            ", ".join(model.qualities) or "—",
-            model.default_voice or "—",
-            " / ".join(resources),
-        )
-    console.print(table)
+    render_catalog_list(
+        console,
+        title=f"Available models for {language} / {engine}",
+        items=tuple(model_item(model, engine=engine) for model in rows),
+    )
 
 
 def _voice_keys(voice: VoiceInfo) -> tuple[str, ...]:
@@ -172,55 +129,19 @@ def _show_voices(
     title = f"Available voices for {language} / {engine}"
     if model:
         title += f" / {model}"
-    table = Table(title=title)
-    table.add_column("#", no_wrap=True)
-    table.add_column("Voice", overflow="fold")
-    table.add_column("Locale")
-    table.add_column("Gender")
-    table.add_column("Model", overflow="fold")
-    table.add_column("Engine")
-    table.add_column("Status")
-    table.add_column("Runtime")
-    table.add_column("Default")
-    for index, voice in enumerate(rows, 1):
-        table.add_row(
-            str(index),
-            voice.selector or voice.qualified_id,
-            voice.locale,
-            voice.gender or "—",
-            voice.model or "—",
-            voice.engine,
-            voice.status,
-            "yes" if voice.runtime_available else "no",
-            "yes" if voice.default else "no",
-        )
-    console.print(table)
+    render_catalog_list(
+        console,
+        title=title,
+        items=tuple(voice_item(voice, engine=engine, model=model) for voice in rows),
+    )
 
 
 def _show_lexicons(rows: Sequence[LexiconInfo], console: Console) -> None:
-    table = Table(title="Available lexicons")
-    table.add_column("#", no_wrap=True)
-    table.add_column("Selector", overflow="fold")
-    table.add_column("Name", overflow="fold")
-    table.add_column("Backend", overflow="fold")
-    table.add_column("Installed")
-    table.add_column("Default")
-    table.add_column("Model support", overflow="fold")
-    table.add_column("Encoding", overflow="fold")
-    table.add_column("Version", overflow="fold")
-    for index, lexicon in enumerate(rows, 1):
-        table.add_row(
-            str(index),
-            lexicon.selector,
-            lexicon.display_name or lexicon.selector,
-            lexicon.data_backend,
-            "yes" if lexicon.installed else "no",
-            "yes" if lexicon.default else "no",
-            lexicon.model_support,
-            lexicon.phoneme_encoding or "—",
-            lexicon.data_version or "—",
-        )
-    console.print(table)
+    render_catalog_list(
+        console,
+        title="Available lexicons",
+        items=tuple(lexicon_item(lexicon) for lexicon in rows),
+    )
 
 
 def _default_lexicon_input(value: tuple[str, ...] | None) -> str:
@@ -378,11 +299,7 @@ def _choose_voice(
         keys=_voice_keys,
         console=console,
     )
-    voice = (
-        selected.selector or selected.qualified_id
-        if isinstance(selected, VoiceInfo)
-        else selected
-    )
+    voice = selected.id if isinstance(selected, VoiceInfo) else selected
     return replace(options, voice=voice)
 
 

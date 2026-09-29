@@ -40,7 +40,7 @@ ttsforge convert novel.epub
 
 In an interactive terminal, a new project shows the detected chapters and prompts for a
 selection, then guides you through synthesis settings not supplied by CLI or already
-saved in the project. Readio's model and voice catalogs appear only when a choice is
+saved in the project. Readio's model and voice choices appear only when a choice is
 needed. The resolved setup is saved to the Readio project before confirmation or build.
 Later runs reuse those values, so a failed build can be retried without repeating setup
 prompts. Use `--reconfigure` to review saved choices with their current values as
