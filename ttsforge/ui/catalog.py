@@ -116,13 +116,9 @@ def voice_item(
     )
     if identity:
         details.append(identity)
-    if engine is None:
+    if engine is None or voice.engine != engine:
         details.append(f"engine: {voice.engine}")
-    elif voice.engine != engine:
-        details.append(f"engine: {voice.engine}")
-    if voice.model and model is None:
-        details.append(f"model: {voice.model}")
-    elif model and voice.model != model and voice.model:
+    if voice.model and (model is None or voice.model != model):
         details.append(f"model: {voice.model}")
     if voice.selector:
         details.append(f"selector: {voice.selector}")
