@@ -1,0 +1,472 @@
+schema_version: 1
+object_type: commit_audit_sheet
+versioning:
+  schema_version: 1
+  revision: 5
+release_version: 0.4.1
+git_base_ref: v0.4.0
+git_base_sha: e21a1a28ee3c70c8b25329795c6bd2deaecbf104
+git_head_ref: HEAD
+git_head_sha: 20bb74b9e537be4954cabbf081ea5c833a23a16f
+git_range: e21a1a28ee3c70c8b25329795c6bd2deaecbf104..20bb74b9e537be4954cabbf081ea5c833a23a16f
+commit_count: 8
+rows:
+  - sha: c465fbf5560d677a3f71939fee033daa1b666e9e
+    source_ref: git:c465fbf5560d677a3f71939fee033daa1b666e9e
+    short_sha: c465fbf
+    changed_paths:
+      - .ledger/releaseledger/data/ledgers/main/events/events.jsonl
+      - .ledger/releaseledger/data/ledgers/main/releases/0.4.0/release.md
+      - docs/changelog.md
+    stats:
+      files_changed: 3
+      insertions: 59
+      deletions: 92
+    inspected: true
+    inspected_paths:
+      - docs/changelog.md
+      - .ledger/releaseledger/data/ledgers/main/releases/0.4.0/release.md
+    observed_behavior:
+      Finalized the existing 0.4.0 record and replaced its unreleased changelog state
+      with the dated published section; this adds no 0.4.1 product behavior.
+    public_impact: docs
+    decision: rejected
+    stale: false
+    evidence_subject: "doc: changelog"
+    target_entry_id: entry-0006
+    notes:
+      Prior-release-only changelog and metadata reconciliation; excluded from 0.4.1.
+  - sha: 8832d319b935712b5734979304b81a98a31c6cbf
+    source_ref: git:8832d319b935712b5734979304b81a98a31c6cbf
+    short_sha: 8832d31
+    changed_paths:
+      - .github/workflows/codecov.yml
+      - .github/workflows/docs.yml
+      - .github/workflows/python-publish.yml
+      - .github/workflows/tests.yml
+      - README.md
+      - docs/api/index.md
+      - docs/cli.md
+      - docs/configuration.md
+      - docs/filename_templates.md
+      - docs/index.md
+      - docs/installation.md
+      - docs/migration-readio.md
+      - docs/migration-v0.4.md
+      - docs/projects.md
+      - docs/quickstart.md
+      - docs/ssmd.md
+      - docs/testing.md
+      - docs/voices.md
+      - examples/README.md
+      - examples/__init__.py
+      - examples/paragraph_conversion.py
+      - examples/paragraph_manifest.py
+      - examples/paragraph_resume.py
+      - examples/phoneme_export.py
+      - examples/pykokoro_paragraph_units.py
+      - pyproject.toml
+      - requirements-test.txt
+      - tests/conftest.py
+      - tests/fixtures/prosody_rate_pitch.ssmd
+      - tests/fixtures/readio_ssmd09_minimal.ssmd
+      - tests/fixtures/ssmd_080_complete.ssmd
+      - tests/fixtures/ssmd_080_extension_unsupported.ssmd
+      - tests/test_audio_merge.py
+      - tests/test_audio_player.py
+      - tests/test_audiobook_public_integration.py
+      - tests/test_audiobook_workflow.py
+      - tests/test_audiosig_contract.py
+      - tests/test_backend_config.py
+      - tests/test_catalog_config_ssmd_cli.py
+      - tests/test_chapter_announcement.py
+      - tests/test_chapter_marker_leading_space.py
+      - tests/test_ci_configuration.py
+      - tests/test_cli.py
+      - tests/test_cli_contract.py
+      - tests/test_cli_smoke.py
+      - tests/test_cli_terminal_determinism.py
+      - tests/test_config_cli.py
+      - tests/test_constants.py
+      - tests/test_conversion.py
+      - tests/test_conversion_markers.py
+      - tests/test_conversion_plan.py
+      - tests/test_conversion_state.py
+      - tests/test_conversion_unit_cli.py
+      - tests/test_convert_resume_cli.py
+      - tests/test_dependency_contract.py
+      - tests/test_docs_markdown.py
+      - tests/test_download_command_assets.py
+      - tests/test_emphasis_levels.py
+      - tests/test_epub_chapter_markers.py
+      - tests/test_epub_markdown.py
+      - tests/test_epub_markdown_integration.py
+      - tests/test_examples.py
+      - tests/test_import_boundaries.py
+      - tests/test_input_reader.py
+      - tests/test_kokoro_runner.py
+      - tests/test_memory_diagnostics.py
+      - tests/test_name_extractor.py
+      - tests/test_numeric_ranges.py
+      - tests/test_onnx_backend.py
+      - tests/test_packaging.py
+      - tests/test_paragraph_audio_parity.py
+      - tests/test_paragraph_filenames.py
+      - tests/test_paragraph_manifest.py
+      - tests/test_paragraph_merge.py
+      - tests/test_paragraph_rendering.py
+      - tests/test_paragraph_state.py
+      - tests/test_phoneme_conversion.py
+      - tests/test_phoneme_dictionary.py
+      - tests/test_phonemes.py
+      - tests/test_phonemes_cli_smoke.py
+      - tests/test_plan_no_tts_load.py
+      - tests/test_prosody_cli.py
+      - tests/test_prosody_config.py
+      - tests/test_provider_selection.py
+      - tests/test_pykokoro_resolution.py
+      - tests/test_pykokoro_unit_contract.py
+      - tests/test_read_runtime.py
+      - tests/test_readio_api_contract.py
+      - tests/test_readio_backend.py
+      - tests/test_readio_cli.py
+      - tests/test_readio_progress.py
+      - tests/test_render_manifest.py
+      - tests/test_render_runtime.py
+      - tests/test_resume_identity.py
+      - tests/test_resume_integrity.py
+      - tests/test_short_sentence_config.py
+      - tests/test_spacy_model_policy.py
+      - tests/test_ssmd_080_conformance.py
+      - tests/test_ssmd_audio.py
+      - tests/test_ssmd_backend_boundary.py
+      - tests/test_ssmd_cli.py
+      - tests/test_ssmd_generator.py
+      - tests/test_ssmd_input_reader.py
+      - tests/test_ssmd_markers.py
+      - tests/test_ssmd_plain_default.py
+      - tests/test_ssmd_support.py
+      - tests/test_text_postprocessing.py
+      - tests/test_tokenizer.py
+      - tests/test_typer_cli_migration.py
+      - tests/test_utility_light.py
+      - tests/test_utils.py
+      - ttsforge/__init__.py
+      - ttsforge/audio_merge.py
+      - ttsforge/audio_player.py
+      - ttsforge/audiobook.py
+      - ttsforge/cli/__init__.py
+      - ttsforge/cli/app.py
+      - ttsforge/cli/backend_config.py
+      - ttsforge/cli/commands_conversion.py
+      - ttsforge/cli/commands_phonemes.py
+      - ttsforge/cli/commands_ssmd.py
+      - ttsforge/cli/commands_utility.py
+      - ttsforge/cli/helpers.py
+      - ttsforge/cli/typer_conversion.py
+      - ttsforge/cli/typer_phonemes.py
+      - ttsforge/cli/typer_ssmd.py
+      - ttsforge/cli/typer_utility.py
+      - ttsforge/cli/utility_light.py
+      - ttsforge/constants.py
+      - ttsforge/conversion.py
+      - ttsforge/conversion_plan.py
+      - ttsforge/epub_markdown.py
+      - ttsforge/input_reader.py
+      - ttsforge/kokoro_lang.py
+      - ttsforge/kokoro_runner.py
+      - ttsforge/memory_diagnostics.py
+      - ttsforge/name_extractor.py
+      - ttsforge/options.py
+      - ttsforge/paragraph_output.py
+      - ttsforge/paths.py
+      - ttsforge/phoneme_conversion.py
+      - ttsforge/phonemes.py
+      - ttsforge/progress.py
+      - ttsforge/prosody_support.py
+      - ttsforge/pykokoro_adapter.py
+      - ttsforge/readio_backend.py
+      - ttsforge/render_manifest.py
+      - ttsforge/render_runtime.py
+      - ttsforge/render_units.py
+      - ttsforge/resume_identity.py
+      - ttsforge/short_sentence_config.py
+      - ttsforge/short_sentence_stats.py
+      - ttsforge/spacy_policy.py
+      - ttsforge/ssmd_audio.py
+      - ttsforge/ssmd_generator.py
+      - ttsforge/ssmd_support.py
+      - ttsforge/text_postprocessing.py
+      - ttsforge/utils.py
+      - ttsforge/vocab/__init__.py
+    stats:
+      files_changed: 159
+      insertions: 3247
+      deletions: 38378
+    inspected: true
+    inspected_paths:
+      - pyproject.toml
+      - ttsforge/__init__.py
+      - ttsforge/audiobook.py
+      - ttsforge/readio_backend.py
+      - ttsforge/cli/__init__.py
+      - docs/migration-readio.md
+      - docs/migration-v0.4.md
+    observed_behavior:
+      Replaced TTSForge-owned EPUB rendering and resume services with an audiobook
+      frontend using Readio public APIs for project inspection, setup, synthesis, build,
+      and export. Removed the former direct synthesis and phoneme command surfaces and
+      made Readio a required dependency.
+    public_impact: public
+    decision: accepted
+    stale: false
+    evidence_subject: "feat: move to readio integration"
+    target_entry_id: entry-0002
+    notes: Breaking architecture and CLI migration documented in migration-readio.md.
+  - sha: 8d25d2e006f226b0c98fe5704587c0e59081d30e
+    source_ref: git:8d25d2e006f226b0c98fe5704587c0e59081d30e
+    short_sha: 8d25d2e
+    changed_paths:
+      - README.md
+      - docs/api/index.md
+      - docs/cli.md
+      - docs/configuration.md
+      - docs/index.md
+      - docs/installation.md
+      - docs/migration-readio.md
+      - docs/projects.md
+      - docs/quickstart.md
+      - docs/testing.md
+      - pyproject.toml
+      - tests/test_audiobook_public_integration.py
+      - tests/test_audiobook_workflow.py
+      - tests/test_chapter_selection.py
+      - tests/test_dependency_contract.py
+      - tests/test_docs_markdown.py
+      - tests/test_interaction.py
+      - tests/test_packaging.py
+      - tests/test_readio_api_contract.py
+      - tests/test_readio_backend.py
+      - tests/test_readio_cli.py
+      - tests/test_readio_progress.py
+      - ttsforge/audiobook.py
+      - ttsforge/chapter_selection.py
+      - ttsforge/cli/app.py
+      - ttsforge/options.py
+      - ttsforge/progress.py
+      - ttsforge/readio_backend.py
+      - ttsforge/ui/__init__.py
+      - ttsforge/ui/chapters.py
+      - ttsforge/ui/interaction.py
+      - ttsforge/ui/preflight.py
+    stats:
+      files_changed: 32
+      insertions: 1685
+      deletions: 312
+    inspected: true
+    inspected_paths:
+      - ttsforge/audiobook.py
+      - ttsforge/chapter_selection.py
+      - ttsforge/ui/chapters.py
+      - ttsforge/ui/preflight.py
+      - docs/projects.md
+    observed_behavior:
+      A new project in an interactive terminal now presents a chapter list and asks for
+      its initial scope; the chosen chapter scope persists with the project. Reused
+      projects retain that scope, and conflicting chapter overrides are rejected.
+    public_impact: public
+    decision: accepted
+    stale: false
+    evidence_subject: "feat: chapter selection fixed"
+    target_entry_id: entry-0003
+    notes:
+      Non-interactive new projects default to all chapters unless a selection is
+      supplied.
+  - sha: 7977a59b58f28e575c60d942ad9830b50172a2cb
+    source_ref: git:7977a59b58f28e575c60d942ad9830b50172a2cb
+    short_sha: 7977a59
+    changed_paths:
+      - .ledger/releaseledger/data/ledgers/main/events/events.jsonl
+      - .ledger/releaseledger/data/ledgers/main/releases/0.4.1/entries/entry-0001.md
+      - .ledger/releaseledger/data/ledgers/main/releases/0.4.1/release.md
+      - README.md
+      - docs/api/index.md
+      - docs/cli.md
+      - docs/configuration.md
+      - docs/index.md
+      - docs/installation.md
+      - docs/migration-readio.md
+      - docs/projects.md
+      - docs/quickstart.md
+      - docs/testing.md
+      - docs/voices.md
+      - pyproject.toml
+      - tests/test_dependency_contract.py
+      - tests/test_docs_markdown.py
+      - tests/test_import_boundaries.py
+      - tests/test_packaging.py
+      - tests/test_readio_api_contract.py
+      - tests/test_readio_backend.py
+      - tests/test_readio_cli.py
+      - tests/test_synthesis_setup.py
+      - ttsforge/audiobook.py
+      - ttsforge/cli/app.py
+      - ttsforge/options.py
+      - ttsforge/progress.py
+      - ttsforge/readio_backend.py
+      - ttsforge/synthesis_setup.py
+      - ttsforge/ui/preflight.py
+      - ttsforge/ui/synthesis.py
+    stats:
+      files_changed: 31
+      insertions: 1854
+      deletions: 108
+    inspected: true
+    inspected_paths:
+      - ttsforge/synthesis_setup.py
+      - ttsforge/ui/synthesis.py
+      - ttsforge/cli/app.py
+      - docs/cli.md
+    observed_behavior:
+      Added guided synthesis setup that asks for missing language, engine, model, voice,
+      and related synthesis choices using Readio catalogs; explicitly pinned CLI values
+      bypass their corresponding prompts, and the effective configuration is shown
+      before building.
+    public_impact: public
+    decision: accepted
+    stale: false
+    evidence_subject: "feat: improved conversion setup flow"
+    target_entry_id: entry-0001
+    notes:
+      Persistent storage of these choices is accounted for by the related
+      project-settings change.
+  - sha: c3c8b37bd91361454e394deb1e6db552490aa2ae
+    source_ref: git:c3c8b37bd91361454e394deb1e6db552490aa2ae
+    short_sha: c3c8b37
+    changed_paths:
+      - tests/test_readio_cli.py
+    stats:
+      files_changed: 1
+      insertions: 22
+      deletions: 14
+    inspected: true
+    inspected_paths:
+      - tests/test_readio_cli.py
+    observed_behavior:
+      Updated CLI tests to normalize ANSI styling before checking help output; the patch
+      changes test assertions only and introduces no product behavior.
+    public_impact: internal
+    decision: internal
+    stale: false
+    evidence_subject: "fix: pytest"
+    target_entry_id: entry-0007
+    notes: Test-only change supporting the Readio-backed CLI.
+  - sha: c449ae96314bd3d6440c5aba80c63d51fd438390
+    source_ref: git:c449ae96314bd3d6440c5aba80c63d51fd438390
+    short_sha: c449ae9
+    changed_paths:
+      - .ledger/releaseledger/data/ledgers/main/events/events.jsonl
+      - .ledger/releaseledger/data/ledgers/main/releases/0.4.1/entries/entry-0001.md
+      - README.md
+      - docs/api/index.md
+      - docs/cli.md
+      - docs/index.md
+      - docs/installation.md
+      - docs/migration-readio.md
+      - docs/projects.md
+      - docs/quickstart.md
+      - docs/testing.md
+      - pyproject.toml
+      - tests/test_audiobook_workflow.py
+      - tests/test_dependency_contract.py
+      - tests/test_docs_markdown.py
+      - tests/test_packaging.py
+      - tests/test_readio_api_contract.py
+      - tests/test_readio_backend.py
+      - tests/test_readio_cli.py
+      - tests/test_synthesis_setup.py
+      - ttsforge/audiobook.py
+      - ttsforge/cli/app.py
+      - ttsforge/readio_backend.py
+      - ttsforge/synthesis_setup.py
+      - ttsforge/ui/synthesis.py
+    stats:
+      files_changed: 25
+      insertions: 1415
+      deletions: 266
+    inspected: true
+    inspected_paths:
+      - ttsforge/audiobook.py
+      - ttsforge/cli/app.py
+      - ttsforge/readio_backend.py
+      - ttsforge/synthesis_setup.py
+      - docs/cli.md
+    observed_behavior:
+      Resolved synthesis, composition, and export choices are persisted through Readio
+      project settings before confirmation or build. Resumes reuse saved settings,
+      explicit CLI options update the matching values, and reconfiguration revisits
+      saved choices.
+    public_impact: public
+    decision: accepted
+    stale: false
+    evidence_subject: "feat: consistant project configuration"
+    target_entry_id: entry-0001
+    notes: Supports the existing release entry describing persistent audiobook setup.
+  - sha: 00bb42787f11226592e20544296904001ae72a82
+    source_ref: git:00bb42787f11226592e20544296904001ae72a82
+    short_sha: 00bb427
+    changed_paths:
+      - README.md
+      - docs/cli.md
+      - docs/voices.md
+      - tests/test_catalog_config_ssmd_cli.py
+      - tests/test_readio_cli.py
+      - ttsforge/cli/app.py
+      - ttsforge/ui/catalog.py
+      - ttsforge/ui/synthesis.py
+    stats:
+      files_changed: 8
+      insertions: 429
+      deletions: 161
+    inspected: true
+    inspected_paths:
+      - ttsforge/ui/catalog.py
+      - ttsforge/ui/synthesis.py
+      - ttsforge/cli/app.py
+      - docs/voices.md
+    observed_behavior:
+      Added compact vertical catalog output for engines, models, and voices. Guided
+      voice selection now resolves to Readio canonical voice IDs, while catalogs show
+      stable selectors as aliases and include status details.
+    public_impact: public
+    decision: accepted
+    stale: false
+    evidence_subject: "feat: fix voice selection and tables"
+    target_entry_id: entry-0004
+    notes: User-facing CLI discovery and selection behavior.
+  - sha: 20bb74b9e537be4954cabbf081ea5c833a23a16f
+    source_ref: git:20bb74b9e537be4954cabbf081ea5c833a23a16f
+    short_sha: 20bb74b
+    changed_paths:
+      - docs/cli.md
+      - docs/voices.md
+      - ttsforge/ui/catalog.py
+    stats:
+      files_changed: 3
+      insertions: 23
+      deletions: 26
+    inspected: true
+    inspected_paths:
+      - ttsforge/ui/catalog.py
+      - docs/voices.md
+      - docs/cli.md
+    observed_behavior:
+      Refined catalog details so voice rows display a selector alias only when useful
+      and include engine or model identity when the current filters do not already
+      convey it; documentation now describes canonical IDs as the primary labels.
+    public_impact: public
+    decision: accepted
+    stale: false
+    evidence_subject: "fix: pytest"
+    target_entry_id: entry-0004
+    notes: Grouped with the related catalog identity and output change.
