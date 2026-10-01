@@ -126,6 +126,24 @@ def test_project_settings_materialize_synthesis_and_m4b_choices() -> None:
     assert settings.audiobook_export.cover == Path("cover.jpg")
 
 
+def test_has_synthesis_setup_requires_model_and_voice() -> None:
+    settings = project_settings(_options(), _resolution())
+    assert settings.synthesis is not None
+    assert has_synthesis_setup(settings)
+
+    without_model = replace(
+        settings,
+        synthesis=replace(settings.synthesis, model=None),
+    )
+    without_voice = replace(
+        settings,
+        synthesis=replace(settings.synthesis, voice=None),
+    )
+
+    assert not has_synthesis_setup(without_model)
+    assert not has_synthesis_setup(without_voice)
+
+
 def test_project_settings_do_not_persist_refresh_or_force() -> None:
     settings = project_settings(_options(), _resolution())
 

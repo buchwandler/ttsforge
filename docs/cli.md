@@ -26,7 +26,7 @@ ttsforge convert novel.epub
 | `--model MODEL`                        | Model selector forwarded to Readio.                                               |
 | `--model-source SOURCE`                | Model-source selector forwarded to Readio.                                        |
 | `--quality QUALITY`                    | Quality value forwarded to Readio.                                                |
-| `--speed FLOAT`                        | Synthesis speed from `0.5` to `2.0`.                                              |
+| `--speed FLOAT`                        | Synthesis speed from `0.5` to `2.0`; Pocket currently supports `1.0`.             |
 | `--spacy POLICY`                       | Readio spaCy policy for text processing.                                          |
 | `--short-sentence POLICY`              | Readio short-sentence handling policy.                                            |
 | `--lexicon SELECTOR`                   | Select a lexicon; repeatable for multiple selectors.                              |
@@ -58,27 +58,31 @@ detected chapter table and prompts for a selection. An existing project uses its
 chapter scope and does not prompt again.
 
 Before preflight, `convert` merges saved project settings with explicitly supplied CLI
-values and guides you through missing synthesis settings. Normal reuse skips valid saved
-choices and opens catalogs only when a choice is needed. A project without saved
-settings—including a legacy project—gets Readio's resolved defaults; TTSForge saves the
-complete resolved setup through Readio's public project-settings API before confirmation
-or build. A failed build can be retried without repeating setup. Readio remains the sole
-owner of persisted project state.
+values and guides users through missing synthesis settings. Catalog discovery is allowed
+while engine, target, and voice choices are incomplete. Readio strictly resolves the
+completed synthesis target only after those selections are gathered. Project settings
+are saved through Readio's public API only after that resolution succeeds, before
+confirmation or build. A failed build can be retried without repeating setup. Readio
+remains the sole owner of persisted project state.
 
 Use `--reconfigure` to revisit unpinned setup fields with saved values as defaults.
 Explicit CLI values pin and update only their corresponding settings. Changing language,
 engine, or model causes dependent unpinned choices to be selected again; CLI-pinned
 dependents remain.
 
-TTSForge asks for language, runnable engine selection where applicable, and model/voice
-catalog choices when needed. These catalogs render as compact vertical lists. Voice
-choices show canonical Readio voice IDs first and stable selectors as aliases; guided
-voice prompts accept a row number, canonical ID, selector, or qualified ID and store the
-selected catalog row's canonical ID. Remaining questions cover supported quality, speed,
-spaCy and short-sentence policies, lexicons, G2P fallback and lexicon data, supported
-voice-level calibration, pause mode, and synthesis unit. Readio owns catalogs,
-capabilities, and resolution rules; the `Audiobook Setup` table shows the effective
-values used.
+Interactive catalogs provide choices for the selected engine. PyKokoro uses model then
+voice; Piper uses a target-bound voice bundle, and its matching canonical voice is
+selected automatically; Pocket uses a bundle followed by a predefined named voice.
+TTSForge stores these choices in Readio's neutral `model` and `voice` request fields.
+The wizard gathers catalog selections before strict resolution of the complete synthesis
+target.
+
+Remaining questions cover supported quality and speed, spaCy and short-sentence
+policies, lexicons, G2P fallback and lexicon data, supported voice-level calibration,
+pause mode, and synthesis unit. Pocket speed defaults automatically to `1.0`. An
+explicit `--speed` value is preserved and may be rejected by Readio's final resolution.
+Readio owns catalogs, capabilities, and resolution rules; the `Audiobook Setup` table
+shows the effective values used.
 
 Interactive catalog discovery happens before strict synthesis resolution. TTSForge
 collects the required engine, target, and voice choices first, then strictly resolves

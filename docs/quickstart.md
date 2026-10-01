@@ -42,16 +42,26 @@ Use `--project` or `--fresh` to create another project with a different selectio
 ## Guided synthesis setup
 
 On a TTY, `ttsforge convert novel.epub` continues after chapter selection with a guided
-setup for omitted synthesis values. Readio catalogs are shown for available models and
-voices; choose a row number or enter its exact identifier. The prompts include language,
-runnable engine selection when needed, model and voice, speed and supported quality,
-spaCy and short-sentence policies, lexicon/G2P choices, capability-gated voice level,
-pause handling, and sentence-versus-paragraph units. The final setup displays Readio's
-effective resolution before confirmation. The resolved setup is saved through Readio's
-public project-settings API before confirmation or build, so a failed build can be
-retried and later runs do not repeat the same questions. Use `--reconfigure` to revisit
-saved choices with their saved values as defaults. Explicit CLI options pin and update
-only their corresponding settings.
+setup for omitted synthesis values. It discovers catalog choices while the selection is
+in progress, then asks Readio to strictly resolve the completed synthesis target.
+
+The selection differs by engine:
+
+- PyKokoro: choose a model, then a voice.
+- Piper: choose a voice-bundle target. Its matching canonical voice is selected
+  automatically, so users do not choose the same bundle twice.
+- Pocket: choose a bundle, then a predefined named voice. Pocket speed is fixed at `1.0`
+  unless an explicit CLI speed is supplied. An explicit value is preserved for Readio's
+  final validation.
+
+The remaining prompts cover language, runnable engine selection when needed, supported
+quality and speed, spaCy and short-sentence policies, lexicon/G2P choices,
+capability-gated voice level, pause handling, and sentence-versus-paragraph units.
+TTSForge saves the resolved setup through Readio's public project-settings API only
+after final resolution succeeds, before confirmation or build. A failed build can then
+be retried without repeating setup questions. Use `--reconfigure` to revisit saved
+choices with their saved values as defaults. Explicit CLI options pin and update only
+their corresponding settings.
 
 Piper is target-bound: choose a voice bundle once, and TTSForge automatically uses its
 canonical voice instead of asking you to select the same identity again. Pocket
