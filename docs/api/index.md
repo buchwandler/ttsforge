@@ -30,7 +30,7 @@ status = app.projects.status(created.project)
 print(status.next_actions)
 ```
 
-Readio `>=0.3.4` provides this public API, including expanded synthesis resolution and
+Readio `>=0.3.5` provides this public API, including expanded synthesis resolution and
 persisted project settings. See [Installation](../installation.md) for the standard
 package install and optional source-development setup.
 

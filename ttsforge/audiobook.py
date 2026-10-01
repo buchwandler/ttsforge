@@ -108,10 +108,16 @@ class AudiobookConverter:
         return self._app.audiobooks.inspect(source)
 
     def resolve_synthesis(
-        self, project: ProjectRef | Path, request: SynthesisRequest
+        self,
+        project: ProjectRef | Path,
+        request: SynthesisRequest,
+        *,
+        use_saved_settings: bool = True,
     ) -> SynthesisResolution:
-        """Resolve request defaults through Readio's project service."""
-        return self._app.projects.resolve_synthesis(project, request)
+        """Resolve request defaults through Readio's public project service."""
+        return self._app.projects.resolve_synthesis(
+            project, request, use_saved_settings=use_saved_settings
+        )
 
     def project_settings(self, project: ProjectRef | Path) -> ProjectSettings:
         """Read desired build settings through Readio's public project service."""

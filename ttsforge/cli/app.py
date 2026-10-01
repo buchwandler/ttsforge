@@ -489,7 +489,9 @@ def convert(
                 )
 
             request = synthesis_request(options)
-            resolution = converter.resolve_synthesis(setup.project, request)
+            resolution = converter.resolve_synthesis(
+                setup.project, request, use_saved_settings=False
+            )
             materialized_settings = project_settings(options, resolution)
             persisted_settings = converter.save_project_settings(
                 setup.project, materialized_settings

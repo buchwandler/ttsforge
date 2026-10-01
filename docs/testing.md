@@ -1,6 +1,6 @@
 # Testing and release checks
 
-TTSForge declares a dependency on Readio `>=0.3.4`. The public API contract test checks
+TTSForge declares a dependency on Readio `>=0.3.5`. The public API contract test checks
 that the installed Readio exposes persisted project settings, synthesis requests and
 resolutions, catalog types, and services required by the frontend. For development
 against a Readio checkout, install both projects editable:
@@ -27,7 +27,7 @@ Readio installation.
 
 Before a TTSForge package release:
 
-1. Test against the declared Readio floor, `0.3.4`, and the newest supported Readio
+1. Test against the declared Readio floor, `0.3.5`, and the newest supported Readio
    release.
 2. Install TTSForge into a clean environment, run `pip check`, and smoke-test
    `ttsforge --help` and `ttsforge doctor`.

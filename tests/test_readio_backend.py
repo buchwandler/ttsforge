@@ -26,6 +26,7 @@ from ttsforge.readio_backend import (
     audiobook_export_options,
     composition_options,
     generic_export_options,
+    has_synthesis_setup,
     project_build_request,
     project_settings,
     synthesis_request,
@@ -379,3 +380,14 @@ def test_generic_formats_use_persisted_project_export_settings() -> None:
 
     assert result is build_result
     assert calls == [None]
+
+
+def test_synthesis_setup_requires_target_model_and_voice() -> None:
+    complete = project_settings(_options(), _resolution())
+    assert has_synthesis_setup(complete)
+    assert complete.synthesis is not None
+
+    for field in ("model", "voice"):
+        partial_synthesis = replace(complete.synthesis, **{field: None})
+        partial_settings = replace(complete, synthesis=partial_synthesis)
+        assert not has_synthesis_setup(partial_settings)

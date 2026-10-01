@@ -38,7 +38,9 @@ def _engine_features(engine: EngineInfo) -> str:
     if capabilities is None:
         return ""
     features = []
-    if capabilities.supports_named_voices:
+    if capabilities.voice_binding_scope == "target":
+        features.append("voice bundles")
+    elif capabilities.supports_named_voices:
         features.append("voices")
     if capabilities.supports_lexicons:
         features.append("lexicons")

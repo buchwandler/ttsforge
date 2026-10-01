@@ -18,6 +18,7 @@ from readio.api import (
     LexiconInfo,
     ModelInfo,
     ProjectRef,
+    SynthesisRequest,
     SynthesisResolution,
     VoiceInfo,
 )
@@ -25,7 +26,6 @@ from rich.console import Console
 
 from ..audiobook import AudiobookConverter
 from ..options import AudiobookOptions
-from ..readio_backend import synthesis_request
 from ..synthesis_setup import (
     CatalogSelectionError,
     CliPins,
@@ -104,11 +104,17 @@ def _show_engines(rows: Sequence[EngineInfo], console: Console) -> None:
 
 
 def _show_models(
-    rows: Sequence[ModelInfo], language: str, engine: str, console: Console
+    rows: Sequence[ModelInfo],
+    language: str,
+    engine: str,
+    console: Console,
+    *,
+    target_bound: bool = False,
 ) -> None:
+    title = "voice bundles" if target_bound else "models"
     render_catalog_list(
         console,
-        title=f"Available models for {language} / {engine}",
+        title=f"Available {title} for {language} / {engine}",
         items=tuple(model_item(model, engine=engine) for model in rows),
     )
 
@@ -176,7 +182,11 @@ def _choose_engine(
             selected = _catalog_choice(
                 "Engine",
                 runnable_engines,
-                default=baseline.engine,
+                default=(
+                    baseline.engine
+                    if any(item.id == baseline.engine for item in runnable_engines)
+                    else None
+                ),
                 keys=lambda item: (item.id,),
                 console=console,
             )
@@ -201,11 +211,14 @@ def _choose_model(
     engine: str,
     discovery: DiscoveryOptions,
     console: Console,
+    *,
+    target_bound: bool = False,
     reconfigure: bool = False,
 ) -> tuple[AudiobookOptions, ModelInfo | None]:
     models = converter.models(
         language=language, engine=engine, discovery=discovery
     ).items
+    model_ids = {item.id for item in models}
     selected_model_info = next(
         (item for item in models if item.id == options.model), None
     )
@@ -216,29 +229,40 @@ def _choose_model(
             options = replace(options, model_source=selected_model_info.source)
         return options, selected_model_info
 
-    if models:
-        _show_models(models, language, engine, console)
+    if len(models) == 1:
+        selected_model_info = models[0]
+        label = "voice bundle" if target_bound else "model"
+        console.print(f"Using {label} {selected_model_info.id}.")
     else:
-        console.print(f"No catalog models matched {language} / {engine}.")
-    selected_model = _catalog_choice(
-        "Model",
-        models,
-        default=baseline.model,
-        keys=lambda item: (item.id,),
-        console=console,
-    )
-    model = (
-        selected_model.id if isinstance(selected_model, ModelInfo) else selected_model
-    )
-    selected_model_info = (
-        selected_model if isinstance(selected_model, ModelInfo) else None
-    )
-    if selected_model_info is not None and sources.prompt_required(
-        "model_source", reconfigure=reconfigure
-    ):
-        options = replace(options, model=model, model_source=selected_model_info.source)
-    else:
-        options = replace(options, model=model)
+        if target_bound:
+            _show_models(models, language, engine, console, target_bound=True)
+        elif models:
+            _show_models(models, language, engine, console)
+        else:
+            console.print(f"No catalog models matched {language} / {engine}.")
+        default_model = (
+            options.model
+            if options.model in model_ids
+            else baseline.model
+            if baseline.model in model_ids
+            else None
+        )
+        selected_model = _catalog_choice(
+            "Voice bundle" if target_bound else "Model",
+            models,
+            default=default_model,
+            keys=lambda item: (item.id,),
+            console=console,
+        )
+        if not isinstance(selected_model, ModelInfo):
+            return replace(options, model=selected_model), None
+        selected_model_info = selected_model
+
+    if selected_model_info is None:
+        return options, None
+    options = replace(options, model=selected_model_info.id)
+    if sources.prompt_required("model_source", reconfigure=reconfigure):
+        options = replace(options, model_source=selected_model_info.source)
     return options, selected_model_info
 
 
@@ -279,19 +303,25 @@ def _choose_voice(
         model=options.model,
         discovery=discovery,
     ).items
+    if len(voices) == 1:
+        console.print(f"Using voice {voices[0].id}.")
+        return replace(options, voice=voices[0].id)
     if voices:
         _show_voices(voices, language, engine, options.model, console)
     else:
         model = options.model or "default"
         console.print(f"No catalog voices matched {language} / {engine} / {model}.")
-    if baseline.voice and any(baseline.voice in _voice_keys(voice) for voice in voices):
-        default_voice = baseline.voice
-    else:
-        default_voice = (
-            model_info.default_voice
-            if model_info is not None and model_info.default_voice
-            else baseline.voice
-        )
+
+    def compatible(value: str | None) -> str | None:
+        if value is None:
+            return None
+        return value if any(value in _voice_keys(voice) for voice in voices) else None
+
+    default_voice = (
+        compatible(options.voice)
+        or compatible(baseline.voice)
+        or compatible(model_info.default_voice if model_info is not None else None)
+    )
     selected = _catalog_choice(
         "Voice",
         voices,
@@ -309,8 +339,12 @@ def _prompt_text_policies(
     baseline: SynthesisResolution,
     console: Console,
     reconfigure: bool = False,
+    *,
+    fixed_speed: float | None = None,
 ) -> AudiobookOptions:
-    if sources.prompt_required("speed", reconfigure=reconfigure):
+    if fixed_speed is not None:
+        options = replace(options, speed=fixed_speed)
+    elif sources.prompt_required("speed", reconfigure=reconfigure):
         options = replace(options, speed=_prompt_speed(baseline.speed, console))
     if sources.prompt_required("spacy", reconfigure=reconfigure):
         default_spacy = baseline.spacy if baseline.spacy in SPACY_POLICIES else "auto"
@@ -500,9 +534,13 @@ def configure_synthesis_interactively(
         sources.prompt_required(field, reconfigure=reconfigure)
         for field in prompt_fields
     ):
+        if options.engine == "pocket" and "speed" not in sources.cli:
+            return replace(options, speed=1.0)
         return options
 
-    baseline = converter.resolve_synthesis(project, synthesis_request(options))
+    baseline = converter.resolve_synthesis(
+        project, SynthesisRequest(), use_saved_settings=False
+    )
     pins = CliPins(sources.cli)
     previous_language = options.language or baseline.language
     if sources.prompt_required("language", reconfigure=reconfigure):
@@ -510,7 +548,11 @@ def configure_synthesis_interactively(
         if options.language != previous_language:
             options = reset_dependency_choices(options, "language", pins)
             sources = invalidate_dependency_sources(sources, "language")
-            baseline = converter.resolve_synthesis(project, synthesis_request(options))
+            baseline = converter.resolve_synthesis(
+                project,
+                SynthesisRequest(language=options.language),
+                use_saved_settings=False,
+            )
     language = options.language or baseline.language
 
     previous_engine = options.engine or baseline.engine
@@ -520,11 +562,14 @@ def configure_synthesis_interactively(
     if engine != previous_engine:
         options = reset_dependency_choices(options, "engine", pins)
         sources = invalidate_dependency_sources(sources, "engine")
-        baseline = converter.resolve_synthesis(project, synthesis_request(options))
-        engine = options.engine or baseline.engine
 
     discovery = _discovery_options(options)
     previous_model = options.model or baseline.model
+    target_bound = bool(
+        engine_info is not None
+        and engine_info.capabilities is not None
+        and engine_info.capabilities.voice_binding_scope == "target"
+    )
     options, model_info = _choose_model(
         converter,
         options,
@@ -534,13 +579,12 @@ def configure_synthesis_interactively(
         engine,
         discovery,
         console,
+        target_bound=target_bound,
         reconfigure=reconfigure,
     )
-    selected_model = options.model or baseline.model
-    if selected_model != previous_model:
+    if options.model != previous_model:
         options = reset_dependency_choices(options, "model", pins)
         sources = invalidate_dependency_sources(sources, "model")
-        baseline = converter.resolve_synthesis(project, synthesis_request(options))
 
     options = _choose_quality(
         options, sources, baseline, model_info, console, reconfigure=reconfigure
@@ -559,7 +603,12 @@ def configure_synthesis_interactively(
         reconfigure=reconfigure,
     )
     options = _prompt_text_policies(
-        options, sources, baseline, console, reconfigure=reconfigure
+        options,
+        sources,
+        baseline,
+        console,
+        reconfigure=reconfigure,
+        fixed_speed=1.0 if engine == "pocket" and not pins.pinned("speed") else None,
     )
     options = _prompt_lexicon_options(
         converter,

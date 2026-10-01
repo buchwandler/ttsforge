@@ -14,7 +14,7 @@ TTSForge does not implement or bundle a parallel speech engine. Use Readio's pub
 application API and its engine integrations; TTSForge maps audiobook choices to those
 services.
 
-TTSForge requires Readio `>=0.3.4`, which provides the public audiobook API, expanded
+TTSForge requires Readio `>=0.3.5`, which provides the public audiobook API, expanded
 synthesis-resolution contract, and persisted project settings used by guided setup.
 Install TTSForge normally, then add a Readio engine integration as needed; see
 [Installation](docs/installation.md) for setup and development instructions.

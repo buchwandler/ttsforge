@@ -1,6 +1,6 @@
 # Quick start
 
-Install TTSForge with Readio `>=0.3.4`, then install a supported Readio engine extra if
+Install TTSForge with Readio `>=0.3.5`, then install a supported Readio engine extra if
 you want to synthesize speech. See [Installation](installation.md) for platform and
 development instructions.
 
@@ -52,6 +52,13 @@ public project-settings API before confirmation or build, so a failed build can 
 retried and later runs do not repeat the same questions. Use `--reconfigure` to revisit
 saved choices with their saved values as defaults. Explicit CLI options pin and update
 only their corresponding settings.
+
+Piper is target-bound: choose a voice bundle once, and TTSForge automatically uses its
+canonical voice instead of asking you to select the same identity again. Pocket
+selection is bundle first, then a predefined named voice. Catalog choices are gathered
+before the final strict Readio synthesis resolution; incomplete setup is not saved. The
+current Pocket integration uses speed `1.0` when speed is not pinned explicitly. An
+explicit `--speed` pin is retained for Readio to validate.
 
 Use explicit options to pin settings and skip matching questions, for example:
 

@@ -226,7 +226,15 @@ def has_synthesis_setup(settings: ProjectSettings) -> bool:
         return False
     return all(
         getattr(synthesis, field) is not None
-        for field in ("language", "engine", "speed", "unit", "pause_mode")
+        for field in (
+            "language",
+            "engine",
+            "model",
+            "voice",
+            "speed",
+            "unit",
+            "pause_mode",
+        )
     )
 
 

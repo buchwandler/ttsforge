@@ -80,6 +80,14 @@ voice-level calibration, pause mode, and synthesis unit. Readio owns catalogs,
 capabilities, and resolution rules; the `Audiobook Setup` table shows the effective
 values used.
 
+Interactive catalog discovery happens before strict synthesis resolution. TTSForge
+collects the required engine, target, and voice choices first, then strictly resolves
+the complete request through Readio before saving synthesis settings. If that resolution
+fails, the incomplete or invalid setup is not persisted. Piper is target-bound: choose
+its voice bundle once, and the matching canonical voice is selected automatically.
+Pocket uses bundle then predefined named voice; unpinned speed is `1.0`. An explicit
+`--speed` pin is preserved for Readio to validate.
+
 Explicit synthesis options pin and update their corresponding saved settings. `--yes`
 skips only final confirmation; it does not skip any setup questions still needed.
 `--reconfigure` reopens unpinned saved setup questions with their current values as

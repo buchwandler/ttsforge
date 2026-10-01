@@ -62,3 +62,17 @@ maintain voice recommendations, or promise that a voice selector will be availab
 every engine. See
 [Readio's catalog documentation](https://github.com/buchwandler/readio/blob/main/docs/api.md#discovery-and-roles)
 for the public discovery contract.
+
+## Selection layouts
+
+The interactive converter follows each engine's public Readio catalog semantics:
+
+```text
+PyKokoro: model -> voice
+Piper:    voice-bundle target
+Pocket:   bundle -> predefined named voice
+```
+
+For Piper, the selected bundle is stored in Readio's neutral `model` request field, and
+its matching canonical voice is selected automatically. Pocket stores the bundle in
+`model` and the chosen predefined voice in `voice`.

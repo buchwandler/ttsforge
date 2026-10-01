@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import json
 import re
+from dataclasses import replace
 from importlib import import_module
 from io import StringIO
 from pathlib import Path
@@ -24,6 +25,7 @@ from readio.api import (
     ProjectRef,
     ProjectSettings,
     ProjectStatus,
+    SynthesisRequest,
     SynthesisResolution,
     VoiceInfo,
 )
@@ -34,6 +36,7 @@ from ttsforge.audiobook import ConversionPreflight, ProjectSetup
 from ttsforge.chapter_selection import parse_chapter_selection
 from ttsforge.options import AudiobookOptions
 from ttsforge.synthesis_setup import SetupSources
+from ttsforge.ui.catalog import engine_item
 from ttsforge.ui.interaction import InteractionMode
 
 cli_module = import_module("ttsforge.cli.app")
@@ -133,6 +136,8 @@ class _FakeConverter:
         self.fail_build: Exception | None = None
         self.build_count = 0
 
+        self.resolve_settings_flags: list[bool] = []
+        self.resolution_requests: list[object] = []
         self.catalog_calls: list[tuple[str, object, DiscoveryOptions | None]] = []
         capabilities = EngineCapabilities(
             id="pykokoro",
@@ -264,9 +269,11 @@ class _FakeConverter:
         self.calls.append("inspect")
         return self.inspection
 
-    def resolve_synthesis(self, project, request):  # type: ignore[no-untyped-def]
+    def resolve_synthesis(self, project, request, *, use_saved_settings=True):  # type: ignore[no-untyped-def]
         self.calls.append("resolve_synthesis")
-        saved = self.settings.synthesis
+        self.resolve_settings_flags.append(use_saved_settings)
+        self.resolution_requests.append(request)
+        saved = self.settings.synthesis if use_saved_settings else None
 
         def value(name, default):  # type: ignore[no-untyped-def]
             requested = getattr(request, name, None) if request is not None else None
@@ -480,6 +487,343 @@ def test_guided_voice_selection_preserves_text_when_catalog_is_empty(
     assert options.voice == "custom-provider-voice"
 
 
+def test_model_catalog_does_not_use_incompatible_baseline_as_enter_default(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    source = tmp_path / "book.epub"
+    project = ProjectRef(tmp_path / "book.readio", "id", "book", "audiobook", "epub")
+    converter = _FakeConverter(source, project)
+    converter.model_rows = tuple(
+        replace(
+            converter.model_rows[0],
+            id=f"piper-{suffix}",
+            source="piper",
+            backend="piper",
+        )
+        for suffix in ("a", "b")
+    )
+    baseline = converter.resolve_synthesis(project, None)
+    prompts: list[tuple[str, object, bool]] = []
+    answers = iter(("", "2"))
+
+    def prompt(message: str, **kwargs: object) -> str:
+        prompts.append(
+            (message, kwargs.get("default"), bool(kwargs.get("show_default")))
+        )
+        return next(answers)
+
+    monkeypatch.setattr(synthesis_ui.typer, "prompt", prompt)
+    output = StringIO()
+    options, model = synthesis_ui._choose_model(
+        converter,
+        AudiobookOptions(source=source),
+        SetupSources(),
+        baseline,
+        "en-us",
+        "piper",
+        DiscoveryOptions(),
+        Console(file=output, width=100, force_terminal=False, color_system=None),
+        target_bound=True,
+    )
+
+    assert options.model == "piper-b"
+    assert model is not None and model.id == "piper-b"
+    assert prompts == [
+        ("Voice bundle", "", False),
+        ("Voice bundle", "", False),
+    ]
+    assert "A selection is required." in output.getvalue()
+
+
+def test_voice_default_uses_compatible_model_voice_not_old_baseline(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    source = tmp_path / "book.epub"
+    project = ProjectRef(tmp_path / "book.readio", "id", "book", "audiobook", "epub")
+    converter = _FakeConverter(source, project)
+    converter.voice_rows = tuple(
+        replace(
+            voice,
+            selector=name,
+            id=name,
+            model="pocket-b",
+            source="pocket",
+            engine="pocket",
+        )
+        for voice, name in zip(
+            converter.voice_rows[:2], ("alba", "marius"), strict=True
+        )
+    )
+    model_info = replace(converter.model_rows[0], default_voice="alba")
+    baseline = converter.resolve_synthesis(project, None)
+    defaults: list[object] = []
+
+    def prompt(_message: str, **kwargs: object) -> str:
+        defaults.append(kwargs.get("default"))
+        return ""
+
+    monkeypatch.setattr(synthesis_ui.typer, "prompt", prompt)
+    options = synthesis_ui._choose_voice(
+        converter,
+        AudiobookOptions(source=source, engine="pocket", model="pocket-b"),
+        SetupSources(),
+        baseline,
+        model_info,
+        "en-us",
+        "pocket",
+        DiscoveryOptions(),
+        Console(file=StringIO(), width=100, force_terminal=False, color_system=None),
+    )
+
+    assert baseline.voice == "af_sarah"
+    assert defaults == ["alba"]
+    assert options.voice == "alba"
+
+
+@pytest.mark.parametrize("pin_engine", (False, True))
+def test_piper_interactive_setup_selects_bundle_before_singleton_voice(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch, pin_engine: bool
+) -> None:
+    source = tmp_path / "book.epub"
+    project = ProjectRef(tmp_path / "book.readio", "id", "book", "audiobook", "epub")
+    converter = _FakeConverter(source, project)
+    piper = converter.engine_rows[1]
+    converter.engine_rows = (
+        converter.engine_rows[0],
+        replace(
+            piper,
+            capabilities=EngineCapabilities(
+                id="piper", voice_binding_scope="target", supports_qualities=True
+            ),
+        ),
+    )
+
+    piper_features = engine_item(converter.engine_rows[1]).details
+    assert any("voice bundles" in feature for feature in piper_features)
+    assert all("voices" not in feature for feature in piper_features)
+    converter.model_rows = tuple(
+        replace(
+            converter.model_rows[0],
+            id=f"piper-{suffix}",
+            source="piper",
+            languages=("en-us",),
+            voices=(f"piper-{suffix}",),
+            default_voice=f"piper-{suffix}",
+            qualities=("int8", "fp32"),
+            g2p_backend=None,
+            lexicons=(),
+            frontend="piper",
+            backend="piper",
+        )
+        for suffix in ("a", "b")
+    )
+    converter.voice_rows = (
+        replace(
+            converter.voice_rows[0],
+            selector="en-pi-12",
+            id="piper-b",
+            model="piper-b",
+            source="piper",
+            engine="piper",
+        ),
+    )
+    prompts: list[str] = []
+    policy_prompts: list[str] = []
+
+    cli_fields = {"language", "speed"}
+    if pin_engine:
+        cli_fields.add("engine")
+
+    def prompt(message: str, **kwargs: object) -> str:
+        prompts.append(message)
+        if message == "Engine" and not pin_engine:
+            return "2"
+        if message == "Voice bundle":
+            return "2"
+        raise AssertionError(f"Unexpected input prompt: {message}")
+
+    def choose_policy(
+        message: str, default: str, choices: tuple[str, ...], console: Console
+    ) -> str:
+        policy_prompts.append(message)
+        return default
+
+    monkeypatch.setattr(synthesis_ui.typer, "prompt", prompt)
+    monkeypatch.setattr(
+        synthesis_ui,
+        "_choice",
+        choose_policy,
+    )
+    output = StringIO()
+    result = synthesis_ui.configure_synthesis_interactively(
+        converter=converter,
+        project=project,
+        options=AudiobookOptions(
+            source=source,
+            language="en-us",
+            engine="piper" if pin_engine else None,
+            speed=1.0,
+        ),
+        sources=SetupSources(
+            cli=frozenset(cli_fields),
+            project=frozenset(
+                {
+                    "model_source",
+                    "spacy",
+                    "short_sentence",
+                    "lexicons",
+                    "g2p_fallback",
+                    "lexicon_data_policy",
+                    "pause_mode",
+                    "unit",
+                }
+            ),
+        ),
+        console=Console(
+            file=output, width=100, force_terminal=False, color_system=None
+        ),
+    )
+
+    assert result.engine == "piper"
+    assert result.model == "piper-b"
+    assert result.voice == "piper-b"
+    assert prompts == (["Voice bundle"] if pin_engine else ["Engine", "Voice bundle"])
+    assert policy_prompts == ["Quality"]
+    assert "Available voice bundles for en-us / piper" in output.getvalue()
+    assert "Using voice piper-b." in output.getvalue()
+    assert len(converter.resolution_requests) == 1
+    baseline_request = converter.resolution_requests[0]
+    assert isinstance(baseline_request, SynthesisRequest)
+    assert baseline_request.engine is None
+    assert baseline_request.model is None
+    assert baseline_request.voice is None
+    assert converter.resolve_settings_flags == [False]
+
+
+@pytest.mark.parametrize(
+    ("speed", "pin_speed", "expected_speed"),
+    ((None, False, 1.0), (1.2, True, 1.2)),
+)
+def test_pocket_interactive_setup_selects_bundle_then_voice_and_defaults_speed(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+    speed: float | None,
+    pin_speed: bool,
+    expected_speed: float,
+) -> None:
+    source = tmp_path / "book.epub"
+    project = ProjectRef(tmp_path / "book.readio", "id", "book", "audiobook", "epub")
+    converter = _FakeConverter(source, project)
+    pocket = converter.engine_rows[1]
+    converter.engine_rows = (
+        converter.engine_rows[0],
+        replace(
+            pocket,
+            id="pocket",
+            capabilities=EngineCapabilities(
+                id="pocket", supports_named_voices=True, supports_qualities=True
+            ),
+        ),
+    )
+    converter.model_rows = tuple(
+        replace(
+            converter.model_rows[0],
+            id=f"pocket-{suffix}",
+            source="pocket",
+            languages=("en-us",),
+            voices=("alba", "marius"),
+            default_voice="alba",
+            qualities=("int8", "fp32"),
+            g2p_backend=None,
+            lexicons=(),
+            frontend="pocket",
+            backend="pocket",
+        )
+        for suffix in ("a", "b")
+    )
+    converter.voice_rows = tuple(
+        replace(
+            voice,
+            selector=name,
+            id=name,
+            model="pocket-b",
+            source="pocket",
+            engine="pocket",
+        )
+        for voice, name in zip(
+            converter.voice_rows[:2], ("alba", "marius"), strict=True
+        )
+    )
+    selections: list[str] = []
+    steps: list[str] = []
+    workflow_steps: list[str] = []
+    cli_fields = {"language"}
+    if pin_speed:
+        cli_fields.add("speed")
+
+    def prompt(message: str, **kwargs: object) -> str:
+        selections.append(message)
+        workflow_steps.append(message)
+        if message in {"Engine", "Model", "Voice"}:
+            return "2"
+        raise AssertionError(f"Unexpected input prompt: {message}")
+
+    def choose_policy(
+        message: str, default: str, choices: tuple[str, ...], console: Console
+    ) -> str:
+        steps.append(message)
+        workflow_steps.append(message)
+        return default
+
+    monkeypatch.setattr(synthesis_ui.typer, "prompt", prompt)
+    monkeypatch.setattr(
+        synthesis_ui,
+        "_choice",
+        choose_policy,
+    )
+    output = StringIO()
+    result = synthesis_ui.configure_synthesis_interactively(
+        converter=converter,
+        project=project,
+        options=AudiobookOptions(source=source, language="en-us", speed=speed),
+        sources=SetupSources(
+            cli=frozenset(cli_fields),
+            project=frozenset(
+                {
+                    "model_source",
+                    "spacy",
+                    "short_sentence",
+                    "lexicons",
+                    "g2p_fallback",
+                    "lexicon_data_policy",
+                    "pause_mode",
+                    "unit",
+                }
+            ),
+        ),
+        console=Console(
+            file=output, width=100, force_terminal=False, color_system=None
+        ),
+    )
+
+    assert result.engine == "pocket"
+    assert result.model == "pocket-b"
+    assert result.voice == "marius"
+    assert result.speed == expected_speed
+    assert selections == ["Engine", "Model", "Voice"]
+    assert steps == ["Quality"]
+    assert workflow_steps == ["Engine", "Model", "Quality", "Voice"]
+    assert "Available models for en-us / pocket" in output.getvalue()
+    assert "Available voices for en-us / pocket / pocket-b" in output.getvalue()
+    assert len(converter.resolution_requests) == 1
+    baseline_request = converter.resolution_requests[0]
+    assert isinstance(baseline_request, SynthesisRequest)
+    assert baseline_request.engine is None
+    assert baseline_request.model is None
+    assert baseline_request.voice is None
+    assert converter.resolve_settings_flags == [False]
+
+
 def test_guided_catalog_lists_wrap_at_narrow_width(tmp_path: Path) -> None:
     project = ProjectRef(tmp_path / "book.readio", "id", "book", "audiobook", "epub")
     converter = _FakeConverter(tmp_path / "book.epub", project)
@@ -672,8 +1016,6 @@ def test_interactive_new_project_prompts_retries_and_preflights_before_build(
         "2-3",
         "",
         "1",
-        "wrong-model",
-        "1",
         "",
         "wrong-voice",
         "en_us-ko-10",
@@ -704,7 +1046,7 @@ def test_interactive_new_project_prompts_retries_and_preflights_before_build(
     assert result.exit_code == 0, result.output
     assert "3 chapters detected" in result.output
     assert "Invalid chapter number: typo" in result.output
-    assert "Unknown selection 'wrong-model'" in result.output
+    assert "Using model v1.0." in result.output
     assert "Unknown selection 'wrong-voice'" in result.output
     assert "Runnable Readio engines" in result.output
     assert result.output.index("Runnable Readio engines") < result.output.index(
@@ -713,9 +1055,6 @@ def test_interactive_new_project_prompts_retries_and_preflights_before_build(
     assert result.output.count("Chapters to include") == 2
     assert "Create this audiobook?" in result.output
     assert "2-3" in result.output
-    assert "Model" in result.output
-    assert "Available models for en-us / pykokoro" in result.output
-    assert result.output.index("Available models") < result.output.index("Model [v1.0]")
     assert result.output.index(
         "Available voices for en-us / pykokoro"
     ) < result.output.index("Voice [af_sarah]")
@@ -745,6 +1084,62 @@ def test_interactive_new_project_prompts_retries_and_preflights_before_build(
         "build_and_export"
     )
     assert converter.build_synthesis is converter.preflight_synthesis
+    assert converter.resolve_settings_flags == [False, False, True]
+    resolution_positions = [
+        index
+        for index, call in enumerate(converter.calls)
+        if call == "resolve_synthesis"
+    ]
+    save_position = converter.calls.index("save_project_settings")
+    assert len(resolution_positions) == 3
+    assert resolution_positions[1] < save_position < resolution_positions[2]
+    assert "Model [" not in result.output
+    assert "Using model v1.0." in result.output
+
+
+def test_failed_final_resolution_does_not_persist_invalid_explicit_speed(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    source = tmp_path / "book.epub"
+    source.touch()
+    project = ProjectRef(tmp_path / "book.readio", "id", "book", "audiobook", "epub")
+    converter = _FakeConverter(source, project)
+    original_resolve = converter.resolve_synthesis
+    observed: list[tuple[str | None, float | None, bool]] = []
+
+    def reject_pocket_speed(project_ref, request, *, use_saved_settings=True):  # type: ignore[no-untyped-def]
+        if not use_saved_settings and request.engine == "pocket":
+            observed.append((request.engine, request.speed, use_saved_settings))
+            raise ValueError("Pocket does not support speed 1.2")
+        return original_resolve(
+            project_ref, request, use_saved_settings=use_saved_settings
+        )
+
+    converter.resolve_synthesis = reject_pocket_speed  # type: ignore[method-assign]
+    monkeypatch.setattr(
+        cli_module, "_converter", lambda json_mode, progress=None: converter
+    )
+    _set_mode(monkeypatch, interactive=False)
+
+    result = runner.invoke(
+        cli_module.app,
+        [
+            "convert",
+            str(source),
+            "--non-interactive",
+            "--engine",
+            "pocket",
+            "--speed",
+            "1.2",
+        ],
+    )
+
+    assert result.exit_code == 1
+    assert "Pocket does not support speed 1.2" in result.output
+    assert observed == [("pocket", 1.2, False)]
+    assert converter.settings.synthesis is None
+    assert "save_project_settings" not in converter.calls
+    assert "build_and_export" not in converter.calls
 
 
 def test_interactive_explicit_chapters_skip_chapter_prompt(
@@ -1186,7 +1581,7 @@ def test_saved_setup_accepts_one_cli_pin_and_reconfigure_uses_it_as_default(
     assert "Updating saved audiobook setup" in reconfigured.output
     assert "Language [" in reconfigured.output
     assert "Engine [" in reconfigured.output
-    assert "Model [" in reconfigured.output
+    assert "Using model v1.0." in reconfigured.output
     assert "Voice [am_adam]" in reconfigured.output
     assert "am_adam" in reconfigured.output
     assert converter.settings.synthesis is not None

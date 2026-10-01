@@ -30,7 +30,7 @@ def test_install_docs_describe_released_readio_floor() -> None:
     testing = (DOCS / "testing.md").read_text(encoding="utf-8")
 
     for document in (readme, installation, index, testing):
-        assert "Readio `>=0.3.4`" in document
+        assert "Readio `>=0.3.5`" in document
         assert "not yet available" not in document
     assert "Readio checkout is not required for a normal installation" in " ".join(
         installation.split()
@@ -41,6 +41,7 @@ def test_install_docs_describe_released_readio_floor() -> None:
 def test_user_docs_cover_interaction_progress_and_persisted_chapter_scope() -> None:
     quickstart = (DOCS / "quickstart.md").read_text(encoding="utf-8")
     cli = (DOCS / "cli.md").read_text(encoding="utf-8")
+    voices = (DOCS / "voices.md").read_text(encoding="utf-8")
     projects = (DOCS / "projects.md").read_text(encoding="utf-8")
     examples = " ".join(
         (ROOT / "examples" / "README.md").read_text(encoding="utf-8").split()
@@ -56,6 +57,13 @@ def test_user_docs_cover_interaction_progress_and_persisted_chapter_scope() -> N
     assert "saved setup" in projects
     assert "failed build" in projects
     assert "## Guided synthesis setup" in quickstart
+    assert "choose a voice bundle once" in quickstart
+    assert "Pocket selection" in quickstart
+    assert "strict Readio synthesis resolution" in quickstart
+    assert "Piper:    voice-bundle target" in voices
+    assert "Pocket:   bundle -> predefined named voice" in voices
+    assert "strictly resolves the complete request" in cli
+    assert "unpinned speed is `1.0`" in cli
     assert "--spacy POLICY" in cli and "--unit UNIT" in cli
     assert "does not run the guided" in cli
     assert "`--chapters` when reusing a project" in projects

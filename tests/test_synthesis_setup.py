@@ -148,8 +148,12 @@ def test_converter_catalog_delegates_use_the_same_readio_services() -> None:
         lexicons_listing=record("lexicons"),
     )
     resolution = object()
+    resolve_options: list[bool] = []
 
-    def resolve(project, request):
+    def resolve(
+        project: object, request: object, *, use_saved_settings: bool = True
+    ) -> object:
+        resolve_options.append(use_saved_settings)
         calls.append(("resolve", project, request))
         return resolution
 
@@ -178,7 +182,11 @@ def test_converter_catalog_delegates_use_the_same_readio_services() -> None:
         )
         is listing
     )
-    assert converter.resolve_synthesis(project, request) is resolution
+    assert (
+        converter.resolve_synthesis(project, request, use_saved_settings=False)
+        is resolution
+    )
+    assert resolve_options == [False]
     assert [name for name, _, _ in calls] == ["models", "voices", "lexicons", "resolve"]
     assert calls[0][1].language == "en-us"
     assert calls[0][1].engine == "pykokoro"
@@ -250,6 +258,7 @@ def test_engine_change_resets_unpinned_dependent_saved_values() -> None:
     assert merged.model is None
     assert merged.model_source is None
     assert merged.quality is None
+    assert merged.speed is None
     assert merged.voice == "af_bella"
     assert merged.lexicons is None
     assert merged.g2p_fallback is None
@@ -282,11 +291,13 @@ def test_non_interactive_invalid_saved_dependency_is_actionable() -> None:
 
 
 def test_dependency_reset_preserves_explicit_dependent_cli_pins() -> None:
-    pins = CliPins(frozenset({"model", "voice"}))
-    reset = reset_dependency_choices(_saved_options(), "engine", pins)
-
+    pins = CliPins(frozenset({"model", "voice", "speed"}))
+    reset = reset_dependency_choices(
+        replace(_saved_options(), speed=1.2), "engine", pins
+    )
     assert reset.model == "v1.0"
     assert reset.voice == "af_sarah"
+    assert reset.speed == 1.2
     assert reset.quality is None
     assert reset.lexicons is None
 
