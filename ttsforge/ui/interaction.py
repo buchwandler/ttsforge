@@ -1,30 +1,6 @@
-"""Resolve terminal interaction behavior once for a CLI invocation."""
-
-from __future__ import annotations
+"""Compatibility alias for terminal interaction policy."""
 
 import sys
-from dataclasses import dataclass
+from importlib import import_module
 
-
-@dataclass(frozen=True, slots=True)
-class InteractionMode:
-    interactive: bool
-    json: bool
-    live_progress: bool
-    confirm: bool
-
-
-def resolve_interaction_mode(
-    *,
-    json_mode: bool,
-    assume_yes: bool,
-    force_non_interactive: bool,
-) -> InteractionMode:
-    terminal = sys.stdin.isatty() and sys.stdout.isatty() and sys.stderr.isatty()
-    interactive = terminal and not json_mode and not force_non_interactive
-    return InteractionMode(
-        interactive=interactive,
-        json=json_mode,
-        live_progress=interactive,
-        confirm=interactive and not assume_yes,
-    )
+sys.modules[__name__] = import_module("ttsforge.cli.interaction")

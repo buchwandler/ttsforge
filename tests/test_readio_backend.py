@@ -71,7 +71,7 @@ def _options() -> AudiobookOptions:
 
 def _resolution() -> SynthesisResolution:
     return SynthesisResolution(
-        engine="pykokoro",
+        engine="kokoro",
         language="en-us",
         voice="af_heart",
         model="v1.0",
@@ -103,7 +103,7 @@ def test_project_settings_materialize_synthesis_and_m4b_choices() -> None:
         settings.synthesis.voice,
         settings.synthesis.quality,
         settings.synthesis.speed,
-    ) == ("pykokoro", "v1.0", "af_heart", "fp32", 1.0)
+    ) == ("kokoro", "v1.0", "af_heart", "fp32", 1.0)
     assert settings.synthesis.language == "en-us"
     assert settings.synthesis.lexicons == ("crane", "beta")
     assert settings.synthesis.g2p_fallback == "espeak"
@@ -181,7 +181,7 @@ def test_apply_project_settings_restores_durable_values_only() -> None:
     )
 
     assert restored.language == "en-us"
-    assert restored.engine == "pykokoro"
+    assert restored.engine == "kokoro"
     assert restored.model == "v1.0"
     assert restored.model_source == "github"
     assert restored.voice == "af_heart"
@@ -409,3 +409,14 @@ def test_synthesis_setup_requires_target_model_and_voice() -> None:
         partial_synthesis = replace(complete.synthesis, **{field: None})
         partial_settings = replace(complete, synthesis=partial_synthesis)
         assert not has_synthesis_setup(partial_settings)
+
+
+def test_converter_engine_normalization_delegates_to_readio_catalog() -> None:
+    app = SimpleNamespace(
+        catalog=SimpleNamespace(
+            normalize_engine=lambda engine: "kokoro" if engine == "pykokoro" else engine
+        )
+    )
+    converter = AudiobookConverter(app=app)  # type: ignore[arg-type]
+
+    assert converter.normalize_engine("pykokoro") == "kokoro"

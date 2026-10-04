@@ -6,7 +6,8 @@ owns projects, planning, synthesis, composition, resumability, invalidation, and
 
 ## Compatibility and installation
 
-TTSForge requires Readio `>=0.3.5`, which provides the persisted project-settings API.
+TTSForge requires Readio `>=0.4.0,<0.5`, which provides the persisted project-settings
+API.
 
 ```bash
 python -m pip install ttsforge
@@ -16,11 +17,30 @@ Install a supported Readio engine extra if you need synthesis. A sibling Readio 
 is needed only when developing against Readio source; see
 [Installation](installation.md).
 
+## Readio 0.3 to 0.4 migration
+
+Readio 0.4 changes the configuration and project schemas. Migrate existing Readio-owned
+data explicitly before opening it with TTSForge:
+
+```bash
+readio config migrate
+readio project migrate PROJECT
+```
+
+TTSForge does not migrate or overwrite Readio configuration or project data
+automatically. Keep a backup before migrating.
+
+Readio 0.4 requires new EPUB project containers to use the `.ssmdbook` suffix, so
+TTSForge's default changes from `.readio` to `.ssmdbook`. Existing Readio projects are
+not renamed. After explicitly migrating an existing project, continue to use its path
+with `--project PATH`. Former TTSForge-owned renderer workspaces are not Readio projects
+and must not be passed to Readio's migration command.
+
 ## What changes
 
 | Former TTSForge behavior                        | Readio-backed workflow                                                            |
 | ----------------------------------------------- | --------------------------------------------------------------------------------- |
-| TTSForge-owned conversion and resume workspaces | Persistent Readio project, normally beside the EPUB as `<stem>.readio`            |
+| TTSForge-owned conversion and resume workspaces | Persistent Readio project, normally beside the EPUB as `<stem>.ssmdbook`          |
 | TTSForge-rendered M4B and generic audio output  | Readio project build plus the appropriate Readio export service                   |
 | TTSForge-local voice and engine lists           | Readio discovery: `voices`, `models`, `engines`, and `formats`                    |
 | TTSForge backend configuration                  | Readio configuration through `ttsforge config`                                    |
@@ -43,7 +63,7 @@ Keep the old directory as a backup. Start a distinct project using either:
 ```bash
 ttsforge convert novel.epub --fresh
 # or choose an explicit path
-ttsforge convert novel.epub --project novel-readio.readio
+ttsforge convert novel.epub --project novel-readio.ssmdbook
 ```
 
 A fresh project does not resume old TTSForge progress. Existing final audio is left
@@ -92,7 +112,7 @@ workflow and Readio discovery/configuration.
 ttsforge list novel.epub
 ttsforge preview novel.epub
 ttsforge convert novel.epub
-ttsforge status novel.readio
+ttsforge status novel.ssmdbook
 ```
 
 For API examples and exact project/export semantics, see

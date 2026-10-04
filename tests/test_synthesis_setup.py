@@ -11,6 +11,7 @@ from readio.api import (
     DiscoveryOptions,
     LexiconInfo,
     ProjectRef,
+    SynthesisRequest,
     SynthesisResolution,
 )
 from rich.console import Console
@@ -86,7 +87,7 @@ def test_catalog_selection_reports_invalid_and_ambiguous_input() -> None:
 def _lexicon(selector: str) -> LexiconInfo:
     return LexiconInfo(
         selector=selector,
-        engine="pykokoro",
+        engine="kokoro",
         language="en",
         locale="en-us",
         asset_id=selector,
@@ -143,6 +144,7 @@ def test_converter_catalog_delegates_use_the_same_readio_services() -> None:
 
     catalog = SimpleNamespace(
         engines=lambda: engines,
+        normalize_engine=lambda engine: engine,
         models_listing=record("models"),
         voices_listing=record("voices"),
         lexicons_listing=record("lexicons"),
@@ -163,22 +165,22 @@ def test_converter_catalog_delegates_use_the_same_readio_services() -> None:
     converter = AudiobookConverter(app=app)  # type: ignore[arg-type]
     discovery = DiscoveryOptions(offline=True, refresh=True, preference="github")
     project = Path("book.readio")
-    request = object()
+    request = SynthesisRequest()
 
     assert converter.engines() is engines
     assert (
-        converter.models(language="en-us", engine="pykokoro", discovery=discovery)
+        converter.models(language="en-us", engine="kokoro", discovery=discovery)
         is listing
     )
     assert (
         converter.voices(
-            language="en-us", engine="pykokoro", model="v1.0", discovery=discovery
+            language="en-us", engine="kokoro", model="v1.0", discovery=discovery
         )
         is listing
     )
     assert (
         converter.lexicons(
-            language="en-us", engine="pykokoro", model="v1.0", discovery=discovery
+            language="en-us", engine="kokoro", model="v1.0", discovery=discovery
         )
         is listing
     )
@@ -189,7 +191,7 @@ def test_converter_catalog_delegates_use_the_same_readio_services() -> None:
     assert resolve_options == [False]
     assert [name for name, _, _ in calls] == ["models", "voices", "lexicons", "resolve"]
     assert calls[0][1].language == "en-us"
-    assert calls[0][1].engine == "pykokoro"
+    assert calls[0][1].engine == "kokoro"
     assert calls[1][1].model == "v1.0"
     assert calls[2][1].model == "v1.0"
     assert all(call[2] is discovery for call in calls[:3])
@@ -199,7 +201,7 @@ def _saved_options() -> AudiobookOptions:
     return replace(
         _options(),
         language="en-us",
-        engine="pykokoro",
+        engine="kokoro",
         model="v1.0",
         model_source="github",
         quality="fp32",
@@ -237,7 +239,7 @@ def test_merge_saved_setup_uses_project_values_except_cli_pins() -> None:
     )
 
     assert merged.language == "en-us"
-    assert merged.engine == "pykokoro"
+    assert merged.engine == "kokoro"
     assert merged.model == "v1.0"
     assert merged.voice == "af_bella"
     assert merged.target_lufs == -18.0
@@ -304,7 +306,7 @@ def test_dependency_reset_preserves_explicit_dependent_cli_pins() -> None:
 
 def _baseline() -> SynthesisResolution:
     return SynthesisResolution(
-        engine="pykokoro",
+        engine="kokoro",
         language="en-us",
         voice="af_sarah",
         model="v1.0",

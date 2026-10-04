@@ -45,7 +45,7 @@ def test_required_public_api_symbols_are_available() -> None:
     missing = sorted(name for name in required if not hasattr(readio_api, name))
     assert not missing, (
         "The installed Readio does not provide TTSForge's required public API: "
-        f"{', '.join(missing)}. Install Readio 0.3.4 or newer "
+        f"{', '.join(missing)}. Install Readio >=0.4.0,<0.5 "
     )
     assert readio_api.PUBLIC_API_VERSION == 1
 
@@ -136,3 +136,59 @@ def test_public_services_support_composition_then_audiobook_export() -> None:
     assert callable(app.projects.preview)
     assert callable(app.projects.settings)
     assert callable(app.projects.configure)
+
+
+def test_readio_04_catalog_dto_fields_and_canonical_engine_ids() -> None:
+    model_fields = {field.name for field in fields(readio_api.ModelInfo)}
+    voice_fields = {field.name for field in fields(readio_api.VoiceInfo)}
+
+    assert "engine" in model_fields
+    assert "backend" not in model_fields
+    assert {"ref", "engine"} <= voice_fields
+    assert "selector" not in voice_fields
+    assert hasattr(readio_api.VoiceInfo, "target_id")
+    assert hasattr(readio_api.VoiceInfo, "qualified_id")
+
+    catalog = readio_api.Readio().catalog
+    engines = ("kokoro", "piper", "pocket", "supertonic", "kitten")
+    assert tuple(catalog.normalize_engine(engine) for engine in engines) == engines
+    assert catalog.normalize_engine("pykokoro") == "kokoro"
+
+
+def test_catalog_presentation_uses_readio_04_model_engine_and_voice_ref() -> None:
+    from ttsforge.ui.catalog import model_item, voice_item
+
+    model = readio_api.ModelInfo(
+        id="v1.0",
+        source="github",
+        languages=("en-us",),
+        voices=("af_heart",),
+        default_voice="af_heart",
+        qualities=("fp32",),
+        g2p_backend=None,
+        lexicons=(),
+        frontend="kokoro",
+        status="ready",
+        experimental=False,
+        runtime_available=True,
+        redistribution_allowed=True,
+        engine="kokoro",
+    )
+    voice = readio_api.VoiceInfo(
+        ref="kokoro:v1.0/af_heart",
+        id="af_heart",
+        gender="female",
+        language="en",
+        locale="en-us",
+        language_label="English",
+        model="v1.0",
+        source="github",
+        default=True,
+        status="ready",
+        experimental=False,
+        runtime_available=True,
+        engine="kokoro",
+    )
+
+    assert "engine: kokoro" in model_item(model).details
+    assert "ref: kokoro:v1.0/af_heart" in voice_item(voice).details

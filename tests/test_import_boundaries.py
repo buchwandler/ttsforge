@@ -11,7 +11,20 @@ from pathlib import Path
 
 ROOT = Path(__file__).resolve().parents[1]
 PRODUCTION = ROOT / "ttsforge"
-FORBIDDEN_IMPORTS = {"pykokoro", "kokorog2p", "phrasplit", "epub2text"}
+FORBIDDEN_IMPORTS = {
+    "pykokoro",
+    "kokorog2p",
+    "phrasplit",
+    "epub2text",
+    "tkinter",
+    "PyQt5",
+    "PyQt6",
+    "PySide2",
+    "PySide6",
+    "wx",
+    "kivy",
+    "gi",
+}
 
 
 def _run_python(*args: str) -> subprocess.CompletedProcess[str]:
@@ -35,6 +48,17 @@ def _semantic_output(output: str) -> str:
     return " ".join(without_ansi.split())
 
 
+def _import_modules(path: Path) -> tuple[str, ...]:
+    tree = ast.parse(path.read_text(encoding="utf-8"), filename=str(path))
+    modules = []
+    for node in ast.walk(tree):
+        if isinstance(node, ast.Import):
+            modules.extend(alias.name for alias in node.names)
+        elif isinstance(node, ast.ImportFrom) and node.module:
+            modules.append(node.module)
+    return tuple(modules)
+
+
 def test_production_imports_only_the_readio_public_api() -> None:
     violations: list[str] = []
     for path in PRODUCTION.rglob("*.py"):
@@ -50,9 +74,55 @@ def test_production_imports_only_the_readio_public_api() -> None:
                 root = module.split(".", 1)[0]
                 if root in FORBIDDEN_IMPORTS:
                     violations.append(f"{path.relative_to(ROOT)}: {module}")
-                if root == "readio" and module != "readio.api":
+                if root == "readio" and (
+                    module != "readio.api" or path.name != "readio_backend.py"
+                ):
                     violations.append(f"{path.relative_to(ROOT)}: {module}")
     assert not violations, "Forbidden imports:\n" + "\n".join(violations)
+
+
+def test_application_modules_do_not_import_frontend_or_readio_modules() -> None:
+    forbidden = {
+        "typer",
+        "rich",
+        "readio",
+        "tkinter",
+        "PyQt5",
+        "PyQt6",
+        "PySide2",
+        "PySide6",
+        "wx",
+        "kivy",
+        "gi",
+    }
+    violations = [
+        f"{path.relative_to(ROOT)}: {module}"
+        for path in (PRODUCTION / "application").rglob("*.py")
+        for module in _import_modules(path)
+        if module.split(".", 1)[0] in forbidden
+    ]
+    assert not violations, "Frontend dependencies in application:\n" + "\n".join(
+        violations
+    )
+
+
+def test_cli_modules_do_not_import_readio() -> None:
+    violations = [
+        f"{path.relative_to(ROOT)}: {module}"
+        for path in (PRODUCTION / "cli").rglob("*.py")
+        for module in _import_modules(path)
+        if module.split(".", 1)[0] == "readio"
+    ]
+    assert not violations, "Readio imports in CLI:\n" + "\n".join(violations)
+
+
+def test_readio_public_api_imports_are_confined_to_the_adapter() -> None:
+    owners = [
+        path.relative_to(PRODUCTION)
+        for path in PRODUCTION.rglob("*.py")
+        if any(module == "readio.api" for module in _import_modules(path))
+    ]
+    assert owners == [Path("readio_backend.py")]
 
 
 def test_import_ttsforge_does_not_load_a_synthesis_backend() -> None:

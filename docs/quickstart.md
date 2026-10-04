@@ -1,8 +1,8 @@
 # Quick start
 
-Install TTSForge with Readio `>=0.3.5`, then install a supported Readio engine extra if
-you want to synthesize speech. See [Installation](installation.md) for platform and
-development instructions.
+Install TTSForge with Readio `>=0.4.0,<0.5`, then install a supported Readio engine
+extra if you want to synthesize speech. See [Installation](installation.md) for platform
+and development instructions.
 
 ## Inspect and convert
 
@@ -19,10 +19,10 @@ Create or reuse its audiobook project and export the default M4B:
 ttsforge convert novel.epub
 ```
 
-The default project is `novel.readio` beside the source EPUB, and the default output is
-`novel.m4b`. Re-running the command uses the existing project's saved chapter scope and
-reusable work. In an interactive terminal, TTSForge then guides you through synthesis
-choices and displays the resolved Readio settings before confirmation.
+The default project is `novel.ssmdbook` beside the source EPUB, and the default output
+is `novel.m4b`. Re-running the command uses the existing project's saved chapter scope
+and reusable work. In an interactive terminal, TTSForge then guides you through
+synthesis choices and displays the resolved Readio settings before confirmation.
 
 ## Select chapters
 
@@ -47,7 +47,7 @@ in progress, then asks Readio to strictly resolve the completed synthesis target
 
 The selection differs by engine:
 
-- PyKokoro: choose a model, then a voice.
+- Kokoro: choose a model, then a voice.
 - Piper: choose a voice-bundle target. Its matching canonical voice is selected
   automatically, so users do not choose the same bundle twice.
 - Pocket: choose a bundle, then a predefined named voice. Pocket speed is fixed at `1.0`
@@ -93,8 +93,8 @@ A preview uses the same Readio project pipeline as a full conversion:
 
 ```bash
 ttsforge preview novel.epub --selection first:3
-ttsforge plan novel.readio
-ttsforge status novel.readio
+ttsforge plan novel.ssmdbook
+ttsforge status novel.ssmdbook
 ```
 
 `preview` creates or reuses the default project if necessary. `status` reports Readio's

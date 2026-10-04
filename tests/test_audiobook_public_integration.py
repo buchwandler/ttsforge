@@ -91,7 +91,7 @@ def test_public_inspection_and_project_creation_persist_chapter_scope(
         "Chapter One",
         "Chapter Two",
     ]
-    assert setup.project.root == tmp_path / "sample.readio"
+    assert setup.project.root == tmp_path / "sample.ssmdbook"
     assert setup.created is True
     assert setup.selected_chapters == (2,)
     assert reopened.project == setup.project

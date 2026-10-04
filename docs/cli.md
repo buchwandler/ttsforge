@@ -17,10 +17,10 @@ ttsforge convert novel.epub
 | -------------------------------------- | --------------------------------------------------------------------------------- |
 | `-o, --output PATH`                    | Output file path; defaults to the source stem and selected format.                |
 | `-f, --format FORMAT`                  | Output format; default `m4b`. Use `ttsforge formats` for available formats.       |
-| `--project PATH`                       | Project directory; default is `<source-stem>.readio` beside the EPUB.             |
+| `--project PATH`                       | Project directory; default is `<source-stem>.ssmdbook` beside the EPUB.           |
 | `--chapters SELECTION`                 | Chapter scope for a new project, such as `1-5`, `1,3,5`, or `all`.                |
 | `--interactive-chapters`               | Deprecated compatibility flag; interactive terminals now prompt automatically.    |
-| `--voice VOICE`                        | Engine voice/selector supported by Readio.                                        |
+| `--voice VOICE`                        | Engine voice ID/reference supported by Readio.                                    |
 | `--language LANG`                      | Synthesis language/profile override.                                              |
 | `--engine ENGINE`                      | Readio synthesis engine.                                                          |
 | `--model MODEL`                        | Model selector forwarded to Readio.                                               |
@@ -70,7 +70,7 @@ Explicit CLI values pin and update only their corresponding settings. Changing l
 engine, or model causes dependent unpinned choices to be selected again; CLI-pinned
 dependents remain.
 
-Interactive catalogs provide choices for the selected engine. PyKokoro uses model then
+Interactive catalogs provide choices for the selected engine. Kokoro uses model then
 voice; Piper uses a target-bound voice bundle, and its matching canonical voice is
 selected automatically; Pocket uses a bundle followed by a predefined named voice.
 TTSForge stores these choices in Readio's neutral `model` and `voice` request fields.
@@ -122,8 +122,8 @@ reuse and replacement safety.
 ```bash
 ttsforge list novel.epub
 ttsforge info novel.epub
-ttsforge status novel.readio
-ttsforge plan novel.readio
+ttsforge status novel.ssmdbook
+ttsforge plan novel.ssmdbook
 ```
 
 - `list EPUB` displays chapters and character counts.

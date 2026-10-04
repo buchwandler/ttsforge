@@ -5,8 +5,8 @@ persistent project lifecycle, synthesis engines, composition, reuse, and exports
 TTSForge presents an EPUB audiobook workflow and maps choices to Readio's public
 services.
 
-TTSForge requires Readio `>=0.3.5`, whose public API supplies its audiobook project,
-expanded synthesis resolution, and persisted project settings. See
+TTSForge requires Readio `>=0.4.0,<0.5`, whose public API supplies its audiobook
+project, expanded synthesis resolution, and persisted project settings. See
 [Installation](installation.md) for user and development setup.
 
 ```{toctree}
@@ -24,6 +24,7 @@ voices
 ssmd
 filename_templates
 testing
+application-architecture
 changelog
 ```
 
@@ -40,10 +41,10 @@ api/index
 ttsforge list novel.epub
 ttsforge preview novel.epub
 ttsforge convert novel.epub
-ttsforge status novel.readio
+ttsforge status novel.ssmdbook
 ```
 
-TTSForge creates or reuses a Readio project, normally `<book-stem>.readio` beside the
+TTSForge creates or reuses a Readio project, normally `<book-stem>.ssmdbook` beside the
 EPUB. Readio manages project state and decides which work can be reused. M4B is produced
 through Readio's audiobook export service; generic formats use its project export
 service.

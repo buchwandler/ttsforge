@@ -4,9 +4,10 @@ from __future__ import annotations
 
 from io import StringIO
 
-from readio.api import AudiobookProjectChapter, ReadioEvent
+from readio.api import AudiobookProjectChapter
 from rich.console import Console
 
+from ttsforge.application.events import ApplicationEvent as ReadioEvent
 from ttsforge.progress import (
     LineReadioProgress,
     LiveReadioProgress,
@@ -20,6 +21,10 @@ def _chapters() -> tuple[AudiobookProjectChapter, ...]:
         AudiobookProjectChapter(1, "scope-1", "First", 0),
         AudiobookProjectChapter(2, "scope-2", "Second", 0),
     )
+
+
+def _scope_ids() -> tuple[str, ...]:
+    return tuple(chapter.scope_id for chapter in _chapters())
 
 
 def _segment_event(
@@ -44,7 +49,7 @@ def _segment_event(
 
 def test_scope_counters_are_isolated_and_overall_progress_never_regresses() -> None:
     state = ReadioProgressState()
-    state.set_chapters(_chapters())
+    state.set_chapters(_scope_ids())
     state.reduce(
         _segment_event("segment.started", "scope-1", completed=0, total=2, segment="a")
     )
@@ -86,7 +91,7 @@ def test_scope_counters_are_isolated_and_overall_progress_never_regresses() -> N
 
 def test_phase_and_cache_events_update_status_and_fully_cached_scopes() -> None:
     state = ReadioProgressState()
-    state.set_chapters(_chapters())
+    state.set_chapters(_scope_ids())
     state.reduce(
         ReadioEvent(
             kind="stage.started",
@@ -123,7 +128,7 @@ def test_phase_and_cache_events_update_status_and_fully_cached_scopes() -> None:
 
 def test_unknown_scope_is_safe_and_does_not_change_selected_chapter_total() -> None:
     state = ReadioProgressState()
-    state.set_chapters(_chapters())
+    state.set_chapters(_scope_ids())
     state.reduce(
         _segment_event(
             "segment.completed", "future-scope", completed=1, total=1, segment="x"
@@ -137,7 +142,7 @@ def test_unknown_scope_is_safe_and_does_not_change_selected_chapter_total() -> N
 
 def test_unit_progress_tracks_current_unit_and_completes_scope() -> None:
     state = ReadioProgressState()
-    state.set_chapters(_chapters())
+    state.set_chapters(_scope_ids())
     state.reduce(
         ReadioEvent(
             kind="progress",

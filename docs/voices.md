@@ -1,6 +1,6 @@
 # Voices and discovery
 
-TTSForge does not ship a fixed voice list. The available voices, selectors, models, and
+TTSForge does not ship a fixed voice list. The available voices, references, models, and
 runtime status come from Readio's discovery catalog and depend on the installed engine
 integrations and selected model/profile.
 
@@ -18,11 +18,11 @@ avoid network discovery and `--refresh` to refresh cached catalog data. `--json`
 catalog items together with discovery information.
 
 Human-readable output shows the canonical Readio voice ID (`VoiceInfo.id`) as the
-primary name, with the stable selector as a secondary alias when available. If a
-selector is not available, the qualified voice ID is shown instead. Voice listings may
-also include language/locale, model, engine, status, and runtime availability. Readio
-owns these identities; do not assume legacy Kokoro IDs or language-prefix conventions
-apply to every engine.
+primary name, with the semantic reference (`VoiceInfo.ref`) when available. If no
+reference is available, the qualified voice ID can be used. also include
+language/locale, model, engine, status, and runtime availability. Readio owns these
+identities; do not assume legacy Kokoro IDs or language-prefix conventions apply to
+every engine.
 
 ## Inspect models and engines
 
@@ -39,8 +39,8 @@ missing runtime dependencies and format availability.
 
 ## Use a discovered voice
 
-For explicit `--voice` values, use the canonical voice ID or selector reported by
-Readio:
+For explicit `--voice` values, use the canonical voice ID or semantic reference reported
+by Readio:
 
 ```bash
 ttsforge convert novel.epub --engine kokoro --voice af_heart
@@ -51,15 +51,15 @@ ttsforge preview novel.epub --engine kokoro --voice af_heart
 
 `ttsforge convert` uses the same Readio discovery services interactively on a TTY. It
 shows filtered choices as compact vertical lists. Enter a row number or exact
-identifier. Voice entries show the canonical Readio voice ID first and the stable
-selector as an alias. Guided voice prompts accept a row number, canonical voice ID,
-selector, or qualified ID, then keep the selected row's canonical ID. Catalogs are
-filtered by language and engine, and by model for voices. Explicit `--model` and
-`--voice` options bypass matching prompts.
+identifier. Voice entries show the canonical Readio voice ID first and the semantic
+reference (`VoiceInfo.ref`) when available. Guided voice prompts accept a row number,
+canonical voice ID, semantic reference, or qualified ID, then keep the selected row's
+canonical ID. Catalogs are filtered by language and engine, and by model for voices.
+Explicit `--model` and `--voice` options bypass matching prompts.
 
 The engine-specific selection layouts are:
 
-- PyKokoro: model, then voice.
+- Kokoro: model, then voice.
 - Piper: choose a voice-bundle target. The matching voice has the same canonical
   identity and is selected automatically, without a duplicate prompt.
 - Pocket: choose a model bundle, then a predefined named voice.
@@ -77,7 +77,7 @@ for the public discovery contract.
 The interactive converter follows each engine's public Readio catalog semantics:
 
 ```text
-PyKokoro: model -> voice
+Kokoro: model -> voice
 Piper:    voice-bundle target
 Pocket:   bundle -> predefined named voice
 ```

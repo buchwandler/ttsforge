@@ -7,52 +7,43 @@ import traceback
 from collections.abc import Callable
 from dataclasses import asdict, replace
 from pathlib import Path
-from typing import Annotated, TypeVar
+from typing import Annotated, Any, TypeVar
 
 import typer
-from readio.api import (
-    SUPPORTED_AUDIO_FORMATS,
-    SUPPORTED_AUDIOBOOK_FORMATS,
-    AudiobookExportResult,
-    AudiobookInspection,
-    DiscoveryOptions,
-    ModelQuery,
-    PreviewResult,
-    ProjectBuildResult,
-    Readio,
-    ReadioConfig,
-    ReadioError,
-    SSMDAnalysis,
-    SSMDMaterializeResult,
-    VoiceQuery,
-)
 from rich.console import Console
 from rich.table import Table
 
-from ..audiobook import AudiobookConverter, ConversionPreflight, ProjectSetup
-from ..chapter_selection import format_chapter_numbers, parse_chapter_selection
+from ..application.models import (
+    BookInspectionView,
+    DiscoveryRequest,
+    InputOverrides,
+    OperationResultView,
+    PreflightView,
+    ProjectPreparation,
+)
+from ..application.service import AudiobookApplicationService
+from ..audiobook import AudiobookConverter, ProjectSetup
 from ..options import AudiobookOptions
-from ..progress import (
+from ..readio_backend import (
+    SUPPORTED_AUDIO_FORMATS,
+    SUPPORTED_AUDIOBOOK_FORMATS,
+    ReadioBackend,
+    ReadioError,
+    create_readio,
+)
+from ..synthesis_setup import SetupSources
+from .catalog import engine_item, model_item, render_catalog_list, voice_item
+from .chapters import chapter_table, choose_chapters
+from .interaction import InteractionMode, resolve_interaction_mode
+from .preflight import render_completion, render_preflight
+from .progress import (
     LineReadioProgress,
     LiveReadioProgress,
     NullReadioProgress,
     ProgressRenderer,
     RichReadioProgress,
 )
-from ..readio_backend import (
-    apply_project_settings,
-    create_readio,
-    has_synthesis_setup,
-    project_setting_sources,
-    project_settings,
-    synthesis_request,
-)
-from ..synthesis_setup import CliPins, SetupSources, merge_saved_setup
-from ..ui.catalog import engine_item, model_item, render_catalog_list, voice_item
-from ..ui.chapters import chapter_table, choose_chapters
-from ..ui.interaction import InteractionMode, resolve_interaction_mode
-from ..ui.preflight import render_completion, render_preflight
-from ..ui.synthesis import configure_synthesis_interactively
+from .synthesis import configure_synthesis_interactively
 
 T = TypeVar("T")
 _output = Console(stderr=False, highlight=False)
@@ -122,6 +113,19 @@ def _converter(
     return AudiobookConverter(on_event=handler)
 
 
+def _workflow(
+    json_mode: bool, progress: ProgressRenderer | None = None
+) -> tuple[AudiobookConverter, AudiobookApplicationService]:
+    converter = _converter(json_mode, progress=progress)
+    service_factory = getattr(converter, "application_service", None)
+    service = (
+        service_factory()
+        if service_factory is not None
+        else AudiobookApplicationService(converter)
+    )
+    return converter, service
+
+
 def _progress_renderer(interaction: InteractionMode) -> ProgressRenderer:
     if interaction.json:
         return NullReadioProgress()
@@ -130,8 +134,8 @@ def _progress_renderer(interaction: InteractionMode) -> ProgressRenderer:
     return LineReadioProgress()
 
 
-def _readio() -> Readio:
-    return create_readio()
+def _readio() -> ReadioBackend:
+    return ReadioBackend(create_readio())
 
 
 def _validate_output_format(output_format: str) -> None:
@@ -151,6 +155,16 @@ def _validate_lexicon_modes(
         raise typer.BadParameter(
             "--lexicon, --no-lexicons, and --auto-lexicons are mutually exclusive."
         )
+
+
+def _input_overrides(**values: object) -> InputOverrides:
+    return InputOverrides(
+        frozenset(
+            name
+            for name, value in values.items()
+            if value is not None and value is not False
+        )
+    )
 
 
 def _options(
@@ -225,19 +239,19 @@ def _options(
     )
 
 
-def _chapter_table(inspection: AudiobookInspection) -> Table:
+def _chapter_table(inspection: BookInspectionView) -> Table:
     return chapter_table(inspection)
 
 
 def _choose_chapters(
-    inspection: AudiobookInspection,
+    inspection: BookInspectionView,
     *,
     book_label: str | None = None,
 ) -> str:
     return choose_chapters(inspection, _output, book_label=book_label)
 
 
-def _book_label(inspection: AudiobookInspection) -> str:
+def _book_label(inspection: BookInspectionView) -> str:
     title_value = inspection.metadata.get("title")
     title = title_value if isinstance(title_value, str) else inspection.source.name
     authors_value = inspection.metadata.get("authors")
@@ -248,30 +262,6 @@ def _book_label(inspection: AudiobookInspection) -> str:
     else:
         author = ""
     return f"{title} — {author}" if author else title
-
-
-def _validate_existing_selection(
-    requested: str | None,
-    inspection: AudiobookInspection,
-    setup: ProjectSetup,
-) -> None:
-    if requested is None:
-        return
-    requested_numbers = tuple(
-        index + 1
-        for index in parse_chapter_selection(requested, len(inspection.chapters))
-    )
-    if not requested_numbers:
-        raise ValueError("Chapter selection must include at least one chapter.")
-    if requested_numbers == setup.selected_chapters:
-        return
-    existing = format_chapter_numbers(setup.selected_chapters)
-    selected = format_chapter_numbers(requested_numbers)
-    raise ValueError(
-        f"Existing project uses chapters {existing}. --chapters {selected} cannot "
-        "modify the scope of an existing Readio project. Use --fresh or "
-        "--project PATH to create a new project with a different selection."
-    )
 
 
 def _json_dump(payload: object) -> None:
@@ -368,7 +358,7 @@ def convert(
         assume_yes=yes,
         force_non_interactive=non_interactive,
     )
-    _pins = CliPins.from_cli_values(
+    _overrides = _input_overrides(
         language=language,
         engine=engine,
         model=model,
@@ -396,17 +386,16 @@ def convert(
     )
 
     def action() -> tuple[
-        AudiobookInspection,
-        ProjectSetup,
-        ConversionPreflight,
-        AudiobookExportResult | ProjectBuildResult | None,
+        BookInspectionView,
+        ProjectPreparation,
+        PreflightView,
+        OperationResultView | None,
     ]:
         progress = _progress_renderer(interaction)
         try:
             requested_format = output_format or "m4b"
             _validate_output_format(requested_format)
-            converter = _converter(interaction.json, progress=progress)
-            inspection = converter.inspect(source)
+            converter, service = _workflow(interaction.json, progress=progress)
             options = _options(
                 source,
                 project=project,
@@ -441,92 +430,70 @@ def convert(
                 author=author,
                 cover=cover,
             )
-            existing = converter.find_project(options)
-            if existing is not None:
-                setup = converter.create_or_open_project(
-                    options,
-                    inspection=inspection,
-                    existing_project=existing,
-                    project_checked=True,
+            if options.engine is not None:
+                options = replace(
+                    options, engine=converter.normalize_engine(options.engine)
                 )
-                _validate_existing_selection(chapters, inspection, setup)
+            inspection = service.inspect_book(source)
+            existing = service.find_project(options)
+            if existing is None and interaction.interactive and chapters is None:
+                selected = _choose_chapters(
+                    inspection, book_label=_book_label(inspection)
+                )
+                options = replace(options, chapters=selected)
+                chapter_selection = selected
+            elif existing is not None:
+                chapter_selection = chapters
             else:
-                if interaction.interactive and chapters is None:
-                    options = replace(
-                        options,
-                        chapters=_choose_chapters(
-                            inspection, book_label=_book_label(inspection)
-                        ),
-                    )
-                setup = converter.create_or_open_project(
-                    options, inspection=inspection, project_checked=True
-                )
-
-            progress.set_chapters(setup.chapters)
-            stored_settings = converter.project_settings(setup.project)
-            saved_synthesis = has_synthesis_setup(stored_settings)
-            project_sources = project_setting_sources(stored_settings)
-            saved_options = apply_project_settings(options, stored_settings)
-            options = merge_saved_setup(
+                chapter_selection = options.chapters
+            preparation = service.prepare_project(
                 options,
-                saved_options,
-                _pins,
+                chapter_selection=chapter_selection,
+                inspection=inspection,
+                existing_project=existing,
+                project_checked=True,
+            )
+
+            progress.set_chapters(preparation.chapters)
+            merged = service.merge_saved_settings(
+                preparation.project,
+                options,
+                _overrides,
+                created=preparation.created,
                 interactive=interaction.interactive,
             )
+            options = merged.request
             _validate_output_format(options.format)
-            sources = SetupSources(cli=_pins.fields, project=project_sources)
             reconfigure_active = bool(
-                reconfigure and not setup.created and saved_synthesis
+                reconfigure and not preparation.created and merged.has_saved_synthesis
             )
             if interaction.interactive:
                 options = configure_synthesis_interactively(
                     converter=converter,
-                    project=setup.project,
+                    project=preparation.project.path,
                     options=options,
-                    sources=sources,
+                    sources=SetupSources(
+                        cli=_overrides.fields, project=merged.origins.project
+                    ),
                     reconfigure=reconfigure_active,
                     console=_output,
                 )
 
-            request = synthesis_request(options)
-            resolution = converter.resolve_synthesis(
-                setup.project, request, use_saved_settings=False
+            resolved = service.resolve_and_save_setup(preparation, options)
+            preflight = replace(
+                service.preflight(resolved),
+                settings_source=merged.settings_source,
             )
-            materialized_settings = project_settings(options, resolution)
-            persisted_settings = converter.save_project_settings(
-                setup.project, materialized_settings
-            )
-            options = apply_project_settings(options, persisted_settings)
-
-            if setup.created:
-                settings_source = "new"
-            elif saved_synthesis:
-                settings_source = "project+cli" if _pins.fields else "project"
-            elif project_sources and _pins.fields:
-                settings_source = "project+cli"
-            elif project_sources:
-                settings_source = "project"
-            else:
-                settings_source = "defaults"
-
+            progress.set_synthesis(resolved.synthesis)
             if not interaction.json:
-                if setup.created or not saved_synthesis:
+                if preparation.created or not merged.has_saved_synthesis:
                     message = "Audiobook setup saved"
-                elif reconfigure_active or _pins.fields:
+                elif reconfigure_active or _overrides.fields:
                     message = "Updating saved audiobook setup"
                 else:
                     message = "Using saved audiobook setup"
                 _output.print(message)
-                _output.print(f"Project  {setup.project.root}")
-
-            preflight = converter.preflight(setup, inspection, options)
-            preflight = replace(
-                preflight,
-                settings_source=settings_source,
-                settings_saved=True,
-            )
-            progress.set_synthesis(preflight.synthesis)
-            if not interaction.json:
+                _output.print(f"Project  {preparation.project.path}")
                 render_preflight(preflight, _output)
             if interaction.confirm and not typer.confirm(
                 "Create this audiobook?", default=True
@@ -535,33 +502,29 @@ def convert(
                     "Cancelled before synthesis; the Readio project and "
                     "audiobook setup were saved."
                 )
-                return inspection, setup, preflight, None
+                return inspection, preparation, preflight, None
 
-            result = converter.build_and_export(setup.project, options)
-            return inspection, setup, preflight, result
+            result = service.build(resolved)
+            return inspection, preparation, preflight, result
         finally:
             progress.close()
 
-    _inspection, setup, preflight, result = _run(action, debug=debug)
+    _inspection, preparation, preflight, result = _run(action, debug=debug)
     if result is None:
         return
     if interaction.json:
         _json_dump(
             {
                 "source": str(source),
-                "project": str(setup.project.root),
-                "created": setup.created,
-                "selected_chapters": list(setup.selected_chapters),
+                "project": str(preparation.project.path),
+                "created": preparation.created,
+                "selected_chapters": list(preparation.selected_chapters),
                 "settings_source": preflight.settings_source,
                 "settings_saved": preflight.settings_saved,
                 "synthesis": asdict(preflight.synthesis),
-                "output": str(result.output_path) if result.output_path else None,
-                "format": (
-                    result.format
-                    if isinstance(result, AudiobookExportResult)
-                    else preflight.format
-                ),
-                "result": asdict(result),
+                "output": str(result.output) if result.output else None,
+                "format": result.details.get("format", preflight.request.format),
+                "result": dict(result.details),
             }
         )
         return
@@ -637,7 +600,7 @@ def preview(
 ) -> None:
     """Render a preview through the same Readio project pipeline as conversion."""
 
-    def action() -> tuple[ProjectSetup, PreviewResult]:
+    def action() -> tuple[ProjectSetup, Any]:
         converter = _converter(json_mode)
         inspection = converter.inspect(source)
         options = _options(
@@ -710,9 +673,12 @@ def voices(
 ) -> None:
     """List voices from Readio's discovery catalog."""
     result = _run(
-        lambda: _readio().catalog.voices_listing(
-            VoiceQuery(language=language, model=model, engine=engine, gender=gender),
-            discovery=DiscoveryOptions(offline=offline, refresh=refresh),
+        lambda: _readio().voices_listing(
+            language=language,
+            model=model,
+            engine=engine,
+            gender=gender,
+            discovery=DiscoveryRequest(offline=offline, refresh=refresh),
         ),
         debug=debug,
     )
@@ -740,9 +706,11 @@ def models(
 ) -> None:
     """List models and synthesis targets from Readio's discovery catalog."""
     result = _run(
-        lambda: _readio().catalog.models_listing(
-            ModelQuery(engine=engine, language=language, status=status),
-            discovery=DiscoveryOptions(offline=offline, refresh=refresh),
+        lambda: _readio().models_listing(
+            engine=engine,
+            language=language,
+            status=status,
+            discovery=DiscoveryRequest(offline=offline, refresh=refresh),
         ),
         debug=debug,
     )
@@ -764,7 +732,7 @@ def engines(
     debug: Annotated[bool, typer.Option("--debug")] = False,
 ) -> None:
     """Show synthesis engines known to Readio."""
-    result = _run(lambda: _readio().catalog.engines(), debug=debug)
+    result = _run(lambda: _readio().engines(), debug=debug)
     if json_mode:
         _json_dump([asdict(item) for item in result])
         return
@@ -781,7 +749,7 @@ def formats(
     debug: Annotated[bool, typer.Option("--debug")] = False,
 ) -> None:
     """List Readio generic audio formats and audiobook export formats."""
-    result = _run(lambda: _readio().catalog.audio_formats(), debug=debug)
+    result = _run(lambda: _readio().audio_formats(), debug=debug)
     rows = [asdict(item) for item in result]
     rows.extend(
         {
@@ -816,7 +784,7 @@ def doctor(
     debug: Annotated[bool, typer.Option("--debug")] = False,
 ) -> None:
     """Report Readio runtime, dependency, engine, path, and format diagnostics."""
-    report = _run(lambda: _readio().diagnostics.run(), debug=debug)
+    report = _run(lambda: _readio().diagnostics(), debug=debug)
     if json_mode:
         _json_dump(asdict(report))
         return
@@ -854,7 +822,7 @@ def config_path(
     debug: Annotated[bool, typer.Option("--debug")] = False,
 ) -> None:
     """Show the active Readio configuration path."""
-    path = _run(lambda: _readio().configuration.path(), debug=debug)
+    path = _run(lambda: _readio().configuration_path(), debug=debug)
     _json_dump({"path": str(path)}) if json_mode else _output.print(str(path))
 
 
@@ -866,10 +834,10 @@ def config_show(
 ) -> None:
     """Show persisted Readio configuration (not a TTSForge shadow config)."""
 
-    def action() -> tuple[Path, ReadioConfig]:
+    def action() -> tuple[Path, Any]:
         api = _readio()
-        active_path = api.configuration.path() if path is None else path
-        return active_path, api.configuration.load(path)
+        active_path = api.configuration_path() if path is None else path
+        return active_path, api.configuration_load(path)
 
     active_path, config = _run(action, debug=debug)
     if not json_mode:
@@ -892,8 +860,8 @@ def config_set(
             parsed: object = json.loads(value)
         except json.JSONDecodeError:
             parsed = value
-        api.configuration.set_value(key, parsed, path=path)
-        active_path = api.configuration.path() if path is None else path
+        api.configuration_set_value(key, parsed, path=path)
+        active_path = api.configuration_path() if path is None else path
         return active_path
 
     active_path = _run(action, debug=debug)
@@ -908,7 +876,7 @@ def config_init(
 ) -> None:
     """Initialize Readio's persistent configuration and standard directories."""
     result = _run(
-        lambda: _readio().configuration.initialize(overwrite=overwrite),
+        lambda: _readio().configuration_initialize(overwrite=overwrite),
         debug=debug,
     )
     if json_mode:
@@ -925,7 +893,7 @@ def config_languages(
     debug: Annotated[bool, typer.Option("--debug")] = False,
 ) -> None:
     """List configured Readio language profiles."""
-    profiles = _run(lambda: _readio().configuration.language_profiles(), debug=debug)
+    profiles = _run(lambda: _readio().configuration_language_profiles(), debug=debug)
     payload = {language: asdict(settings) for language, settings in profiles.items()}
     _json_dump(payload) if json_mode else _output.print_json(data=payload)
 
@@ -938,13 +906,13 @@ def config_language(
 ) -> None:
     """Resolve the exact or base-language Readio profile for a locale."""
     result = _run(
-        lambda: _readio().configuration.resolve_language_profile(language),
+        lambda: _readio().configuration_resolve_language_profile(language),
         debug=debug,
     )
     _json_dump(asdict(result)) if json_mode else _output.print_json(data=asdict(result))
 
 
-def _show_ssmd_analysis(analysis: SSMDAnalysis) -> None:
+def _show_ssmd_analysis(analysis: Any) -> None:
     _output.print(f"Provider: {analysis.provider}")
     if analysis.voice_references:
         references = Table("Voice reference", "Uses", "Lines", "Resolved")
@@ -985,7 +953,7 @@ def ssmd_check(
 ) -> None:
     """Check SSMD through Readio and optionally perform a roundtrip check."""
     result = _run(
-        lambda: _readio().ssmd.check(source, roundtrip=roundtrip),
+        lambda: _readio().ssmd_check(source, roundtrip=roundtrip),
         debug=debug,
     )
     _show_ssmd_check(result, json_mode=json_mode)
@@ -1000,7 +968,7 @@ def ssmd_validate(
 ) -> None:
     """Require resolvable SSMD voices and report Readio diagnostics."""
     result = _run(
-        lambda: _readio().ssmd.validate(source, roundtrip=roundtrip),
+        lambda: _readio().ssmd_validate(source, roundtrip=roundtrip),
         debug=debug,
     )
     _show_ssmd_check(result, json_mode=json_mode)
@@ -1013,7 +981,7 @@ def ssmd_analyze(
     debug: Annotated[bool, typer.Option("--debug")] = False,
 ) -> None:
     """Analyze SSMD voice references through Readio."""
-    result = _run(lambda: _readio().ssmd.analyze(source), debug=debug)
+    result = _run(lambda: _readio().ssmd_analyze(source), debug=debug)
     if json_mode:
         _json_dump(asdict(result))
     else:
@@ -1030,7 +998,7 @@ def ssmd_roundtrip(
     debug: Annotated[bool, typer.Option("--debug")] = False,
 ) -> None:
     """Run Readio's SSMD authoring roundtrip check."""
-    result = _run(lambda: _readio().ssmd.roundtrip_check(source), debug=debug)
+    result = _run(lambda: _readio().ssmd_roundtrip_check(source), debug=debug)
     _show_ssmd_check(result, json_mode=json_mode)
 
 
@@ -1049,7 +1017,7 @@ def ssmd_materialize(
 ) -> None:
     """Materialize explicit SSMD voice bindings via Readio's authoring API."""
 
-    def action() -> SSMDMaterializeResult:
+    def action() -> Any:
         try:
             parsed = json.loads(bindings)
         except json.JSONDecodeError as error:
@@ -1059,7 +1027,7 @@ def ssmd_materialize(
             for key, value in parsed.items()
         ):
             raise ValueError("--bindings must map string references to string voices")
-        return _readio().ssmd.materialize_bindings(
+        return _readio().ssmd_materialize_bindings(
             source, parsed, provider=provider, output=output, in_place=in_place
         )
 

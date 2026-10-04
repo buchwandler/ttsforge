@@ -6,7 +6,7 @@ rather than installing a TTSForge-specific backend.
 
 ## Requirements
 
-TTSForge requires Readio `>=0.3.5`, which provides the public audiobook project,
+TTSForge requires Readio `>=0.4.0,<0.5`, which provides the public audiobook project,
 persisted project-settings, expanded synthesis-resolution, and M4B export APIs used by
 the CLI. This is the declared dependency floor; a local Readio checkout is not required
 for a normal installation.

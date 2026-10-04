@@ -20,13 +20,15 @@ from readio.api import (
 )
 from typer.testing import CliRunner
 
+from ttsforge.readio_backend import ReadioBackend
+
 cli_module = import_module("ttsforge.cli.app")
 runner = CliRunner()
 
 
 def test_voices_and_models_delegate_queries_to_catalog(monkeypatch) -> None:
     voice = VoiceInfo(
-        selector="en-us:af_heart",
+        ref="kokoro:kokoro-v1/af_heart",
         id="af_heart",
         gender="female",
         language="en",
@@ -79,9 +81,10 @@ def test_voices_and_models_delegate_queries_to_catalog(monkeypatch) -> None:
             voices_listing=voices_listing,
             models_listing=models_listing,
             engines=lambda: (engine,),
+            normalize_engine=lambda value: value,
         )
     )
-    monkeypatch.setattr(cli_module, "_readio", lambda: api)
+    monkeypatch.setattr(cli_module, "_readio", lambda: ReadioBackend(api))
 
     voices = runner.invoke(
         cli_module.app,
@@ -100,7 +103,7 @@ def test_voices_and_models_delegate_queries_to_catalog(monkeypatch) -> None:
     assert models.exit_code == 0, models.output
     assert json.loads(voices.stdout)["items"][0]["id"] == "af_heart"
     assert json.loads(models.stdout)["items"][0]["id"] == "kokoro-v1"
-    assert json.loads(voices.stdout)["items"][0]["selector"] == "en-us:af_heart"
+    assert json.loads(voices.stdout)["items"][0]["ref"] == "kokoro:kokoro-v1/af_heart"
     assert engines_json.exit_code == 0, engines_json.output
     assert json.loads(engines_json.stdout)[0]["runnable"] is False
     assert all(
@@ -108,7 +111,7 @@ def test_voices_and_models_delegate_queries_to_catalog(monkeypatch) -> None:
     )
     assert "Voices (1)" in human_voices.output
     assert human_voices.output.index("af_heart") < human_voices.output.index(
-        "selector: en-us:af_heart"
+        "ref: kokoro:kokoro-v1/af_heart"
     )
     assert "Models (1)" in human_models.output
     assert "kokoro-v1" in human_models.output
@@ -149,7 +152,7 @@ def test_config_set_uses_readio_configuration_service(
             set_value=set_value,
         )
     )
-    monkeypatch.setattr(cli_module, "_readio", lambda: api)
+    monkeypatch.setattr(cli_module, "_readio", lambda: ReadioBackend(api))
 
     result = runner.invoke(
         cli_module.app,
@@ -159,6 +162,26 @@ def test_config_set_uses_readio_configuration_service(
     assert result.exit_code == 0, result.output
     assert changes == [("reader.speed", 1.25, path)]
     assert "Updated Readio setting" in result.stdout
+
+
+def test_config_show_preserves_readio_migration_guidance(monkeypatch) -> None:
+    message = (
+        "unsupported Readio config schema 2; migrate v0.3 data with "
+        "`readio config migrate`"
+    )
+
+    def load(_path=None):
+        raise ValueError(message)
+
+    api = SimpleNamespace(
+        configuration=SimpleNamespace(path=lambda: Path("readio.toml"), load=load)
+    )
+    monkeypatch.setattr(cli_module, "_readio", lambda: ReadioBackend(api))
+
+    result = runner.invoke(cli_module.app, ["config", "show"])
+
+    assert result.exit_code == 1
+    assert message in result.output
 
 
 def test_doctor_formats_and_ssmd_commands_use_public_services() -> None:
@@ -201,7 +224,7 @@ def test_ssmd_materialize_passes_bindings_to_readio(
         return expected
 
     api = SimpleNamespace(ssmd=SimpleNamespace(materialize_bindings=materialize))
-    monkeypatch.setattr(cli_module, "_readio", lambda: api)
+    monkeypatch.setattr(cli_module, "_readio", lambda: ReadioBackend(api))
 
     result = runner.invoke(
         cli_module.app,

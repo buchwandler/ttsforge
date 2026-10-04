@@ -11,13 +11,19 @@ from readio.api import (
     AudiobookInspection,
     AudiobookProjectChapter,
     AudiobookProjectResult,
+    ProjectFormatError,
     ProjectRef,
     ProjectSettings,
     SynthesisRequest,
     SynthesisResolution,
 )
 
-from ttsforge.audiobook import AudiobookConverter, LegacyWorkspaceError, ProjectSetup
+from ttsforge.audiobook import (
+    AudiobookConverter,
+    LegacyWorkspaceError,
+    ProjectMigrationRequiredError,
+    ProjectSetup,
+)
 from ttsforge.options import AudiobookOptions
 
 
@@ -38,10 +44,10 @@ def _inspection(source: Path) -> AudiobookInspection:
             source_id=f"chapter-{number}",
             title=title,
             href=f"chapter-{number}.xhtml",
+            source_parent_id=None,
             parent_id=None,
             level=0,
             char_count=length,
-            markdown=f"# {title}",
         )
         for number, title, length in (
             (1, "First", 20),
@@ -60,7 +66,7 @@ def test_create_project_uses_inspection_and_persists_normalized_chapters(
     tmp_path: Path,
 ) -> None:
     source = tmp_path / "book.epub"
-    project_path = tmp_path / "book.readio"
+    project_path = tmp_path / "book.ssmdbook"
     project = _project(project_path)
     calls: list[tuple[Path, str, Path]] = []
     created = AudiobookProjectResult(
@@ -155,13 +161,42 @@ def test_legacy_workspace_is_preserved_and_requires_fresh_project(
     assert project_path.is_dir()
 
 
+def test_v03_readio_project_gets_migration_guidance_not_fresh_workspace_error(
+    tmp_path: Path,
+) -> None:
+    source = tmp_path / "book.epub"
+    project_path = tmp_path / "book.readio"
+    project_path.mkdir()
+    error = ProjectFormatError(
+        "unsupported project schema_version; run `readio project migrate` for v0.3 data"
+    )
+
+    def find_project(path: Path) -> None:
+        if path == project_path:
+            raise error
+
+    app = SimpleNamespace(
+        audiobooks=SimpleNamespace(),
+        projects=SimpleNamespace(find=find_project),
+    )
+
+    with pytest.raises(ProjectMigrationRequiredError) as raised:
+        AudiobookConverter(app=app).create_or_open_project(
+            AudiobookOptions(source=source)
+        )
+
+    assert 'readio project migrate "' + str(project_path) + '"' in str(raised.value)
+    assert "will not migrate or overwrite" in str(raised.value)
+    assert project_path.is_dir()
+
+
 def test_fresh_project_uses_new_path_without_deleting_legacy_directory(
     tmp_path: Path,
 ) -> None:
     source = tmp_path / "book.epub"
     project_path = tmp_path / "book.readio"
     project_path.mkdir()
-    fresh_path = tmp_path / "book.fresh.readio"
+    fresh_path = tmp_path / "book.fresh.ssmdbook"
     project = _project(fresh_path)
     created = AudiobookProjectResult(project=project, source=source, chapters=())
     calls: list[Path] = []
@@ -223,7 +258,7 @@ def test_preflight_resolves_and_retains_one_shared_synthesis_request(
     project = _project(tmp_path / "book.readio")
     request = SynthesisRequest(language="en-us", voice="af_heart")
     resolution = SynthesisResolution(
-        engine="pykokoro",
+        engine="kokoro",
         language="en-us",
         voice="af_heart",
         model="kokoro-v1",

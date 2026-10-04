@@ -15,8 +15,8 @@ ttsforge info novel.epub --json > book.json
 
 ```bash
 ttsforge convert novel.epub --chapters 1-8
-ttsforge status novel.readio --json
-ttsforge convert novel.epub --project novel.readio
+ttsforge status novel.ssmdbook --json
+ttsforge convert novel.epub --project novel.ssmdbook
 ```
 
 The selected chapter scope is persisted in the project. Use a second project path for
@@ -24,7 +24,7 @@ another selection rather than expecting a reused project's scope to change:
 
 ```bash
 ttsforge convert novel.epub --chapters 9-12 \
-  --project novel-part-two.readio
+  --project novel-part-two.ssmdbook
 ```
 
 ## Preview and export

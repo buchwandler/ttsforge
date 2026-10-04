@@ -14,9 +14,9 @@ TTSForge does not implement or bundle a parallel speech engine. Use Readio's pub
 application API and its engine integrations; TTSForge maps audiobook choices to those
 services.
 
-TTSForge requires Readio `>=0.3.5`, which provides the public audiobook API, expanded
-synthesis-resolution contract, and persisted project settings used by guided setup.
-Install TTSForge normally, then add a Readio engine integration as needed; see
+TTSForge requires Readio `>=0.4.0,<0.5`, which provides the public audiobook API,
+expanded synthesis-resolution contract, and persisted project settings used by guided
+setup. Install TTSForge normally, then add a Readio engine integration as needed; see
 [Installation](docs/installation.md) for setup and development instructions.
 
 ## What it does
@@ -55,13 +55,13 @@ non-interactive runs include all chapters for a new project. Useful follow-up co
 ```bash
 ttsforge list novel.epub
 ttsforge convert novel.epub --chapters 5-17 --fresh
-ttsforge status novel.readio
+ttsforge status novel.ssmdbook
 ttsforge preview novel.epub
 ttsforge voices --language en-us
 ttsforge doctor
 ```
 
-By default, the project is `novel.readio` beside `novel.epub`; the default output is
+By default, the project is `novel.ssmdbook` beside `novel.epub`; the default output is
 `novel.m4b`. Re-running the command reuses that Readio project's chapter scope and saved
 synthesis/export settings. See [Projects and outputs](docs/projects.md) for reuse, fresh
 projects, and legacy workspaces.

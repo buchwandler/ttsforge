@@ -24,7 +24,7 @@ data and `--output` to place the final audiobook:
 
 ```bash
 ttsforge convert novel.epub \
-  --project novel-custom.readio \
+  --project novel-custom.ssmdbook \
   --output novel.m4b
 ```
 

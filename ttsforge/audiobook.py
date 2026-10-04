@@ -3,59 +3,39 @@
 from __future__ import annotations
 
 from collections.abc import Callable
-from dataclasses import dataclass, replace
+from dataclasses import dataclass
 from pathlib import Path
-from typing import cast
+from typing import Any
 
-from readio.api import (
-    AUDIOBOOK_EXPORT_FORMAT,
-    SUPPORTED_AUDIO_FORMATS,
-    SUPPORTED_AUDIOBOOK_FORMATS,
-    AudiobookExportResult,
-    AudiobookInspection,
-    AudiobookProjectChapter,
-    CatalogListing,
-    DiscoveryOptions,
-    EngineInfo,
-    LexiconInfo,
-    LexiconQuery,
-    ModelInfo,
-    ModelQuery,
-    PreviewRequest,
-    PreviewResult,
-    ProjectBuildRequest,
-    ProjectBuildResult,
-    ProjectFormatError,
-    ProjectPlanResult,
-    ProjectRef,
-    ProjectSettings,
-    ProjectStatus,
-    Readio,
-    ReadioEvent,
-    SynthesisRequest,
-    SynthesisResolution,
-    VoiceInfo,
-    VoiceQuery,
-)
-
+from .application.errors import LegacyWorkspaceError, ProjectMigrationRequiredError
+from .application.events import ApplicationEvent
+from .application.service import AudiobookApplicationService
 from .chapter_selection import parse_chapter_selection
 from .options import AudiobookOptions
 from .readio_backend import (
     BuildTarget,
-    composition_options,
+    ReadioBackend,
     create_readio,
     project_build_request,
-    synthesis_request,
 )
+
+__all__ = [
+    "AudiobookConverter",
+    "AudiobookOptions",
+    "ConversionPreflight",
+    "LegacyWorkspaceError",
+    "ProjectMigrationRequiredError",
+    "ProjectSetup",
+]
 
 
 @dataclass(frozen=True, slots=True)
 class ProjectSetup:
     """Result of TTSForge's create-or-reuse audiobook project workflow."""
 
-    project: ProjectRef
+    project: Any
     created: bool
-    chapters: tuple[AudiobookProjectChapter, ...] = ()
+    chapters: tuple[Any, ...] = ()
 
     @property
     def selected_chapters(self) -> tuple[int, ...]:
@@ -69,14 +49,14 @@ class ConversionPreflight:
     source: Path
     title: str | None
     author: str | None
-    project: ProjectRef
+    project: Any
     project_created: bool
     available_chapters: int
-    chapters: tuple[AudiobookProjectChapter, ...]
+    chapters: tuple[Any, ...]
     output: Path | None
     format: str
-    synthesis_request: SynthesisRequest | None
-    synthesis: SynthesisResolution
+    synthesis_request: Any | None
+    synthesis: Any
     bitrate: str | None
     target_lufs: float | None
     offline: bool
@@ -86,63 +66,67 @@ class ConversionPreflight:
     settings_saved: bool = False
 
 
-class LegacyWorkspaceError(ValueError):
-    """Raised when an existing TTSForge workspace cannot be a Readio project."""
-
-
 class AudiobookConverter:
     """Small product service for EPUB inspection and Readio project workflows."""
 
     def __init__(
         self,
-        app: Readio | None = None,
+        app: Any | None = None,
         *,
-        on_event: Callable[[ReadioEvent], None] | None = None,
+        on_event: Callable[[ApplicationEvent], None] | None = None,
     ) -> None:
         if app is not None and on_event is not None:
             raise ValueError("Pass an app or an event handler, not both.")
-        self._app = app if app is not None else create_readio(on_event=on_event)
+        self._backend = ReadioBackend(
+            app if app is not None else create_readio(on_event=on_event)
+        )
 
-    def inspect(self, source: Path) -> AudiobookInspection:
-        """Inspect an EPUB using Readio's audiobook service."""
-        return self._app.audiobooks.inspect(source)
+    def application_service(self) -> AudiobookApplicationService:
+        """Create the frontend-neutral service over this converter's adapter."""
+        return AudiobookApplicationService(self._backend)
+
+    def normalize_engine(self, engine: str) -> str:
+        """Normalize an engine alias through Readio's public catalog API."""
+        return self._backend.normalize_engine(engine)
+
+    def inspect(self, source: Path) -> Any:
+        """Inspect an EPUB through the Readio adapter."""
+        return self._backend.inspect(source)
 
     def resolve_synthesis(
         self,
-        project: ProjectRef | Path,
-        request: SynthesisRequest,
+        project: Any | Path,
+        request: Any,
         *,
         use_saved_settings: bool = True,
-    ) -> SynthesisResolution:
-        """Resolve request defaults through Readio's public project service."""
-        return self._app.projects.resolve_synthesis(
+    ) -> Any:
+        """Resolve request defaults through the Readio adapter."""
+        return self._backend.resolve_synthesis_raw(
             project, request, use_saved_settings=use_saved_settings
         )
 
-    def project_settings(self, project: ProjectRef | Path) -> ProjectSettings:
-        """Read desired build settings through Readio's public project service."""
-        return self._app.projects.settings(project)
+    def project_settings(self, project: Any | Path) -> Any:
+        """Read desired build settings through the Readio adapter."""
+        return self._backend.project_settings(project)
 
-    def save_project_settings(
-        self, project: ProjectRef | Path, settings: ProjectSettings
-    ) -> ProjectSettings:
-        """Persist desired build settings through Readio's public project service."""
-        return self._app.projects.configure(project, settings)
+    def save_project_settings(self, project: Any | Path, settings: Any) -> Any:
+        """Persist desired build settings through the Readio adapter."""
+        return self._backend.configure_project(project, settings)
 
-    def engines(self) -> tuple[EngineInfo, ...]:
+    def engines(self) -> tuple[Any, ...]:
         """List engines known to this converter's Readio application."""
-        return cast(tuple[EngineInfo, ...], self._app.catalog.engines())
+        return self._backend.engines()
 
     def models(
         self,
         *,
         language: str | None,
         engine: str | None,
-        discovery: DiscoveryOptions,
-    ) -> CatalogListing[ModelInfo]:
+        discovery: Any,
+    ) -> Any:
         """List models through the shared Readio catalog."""
-        return self._app.catalog.models_listing(
-            ModelQuery(language=language, engine=engine), discovery=discovery
+        return self._backend.models_listing(
+            language=language, engine=engine, discovery=discovery
         )
 
     def voices(
@@ -151,12 +135,11 @@ class AudiobookConverter:
         language: str | None,
         engine: str | None,
         model: str | None,
-        discovery: DiscoveryOptions,
-    ) -> CatalogListing[VoiceInfo]:
+        discovery: Any,
+    ) -> Any:
         """List voices through the shared Readio catalog."""
-        return self._app.catalog.voices_listing(
-            VoiceQuery(language=language, engine=engine, model=model),
-            discovery=discovery,
+        return self._backend.voices_listing(
+            language=language, engine=engine, model=model, discovery=discovery
         )
 
     def lexicons(
@@ -165,46 +148,40 @@ class AudiobookConverter:
         language: str | None,
         engine: str | None,
         model: str | None,
-        discovery: DiscoveryOptions,
-    ) -> CatalogListing[LexiconInfo]:
+        discovery: Any,
+    ) -> Any:
         """List lexicons through the shared Readio catalog."""
-        return self._app.catalog.lexicons_listing(
-            LexiconQuery(language=language, engine=engine, model=model),
-            discovery=discovery,
+        return self._backend.lexicons_listing(
+            language=language, engine=engine, model=model, discovery=discovery
         )
 
     @staticmethod
     def default_project_path(source: Path) -> Path:
         """Return the stable sibling project path for an EPUB."""
-        return source.with_suffix(".readio")
+        return source.with_suffix(".ssmdbook")
 
-    def find_project(self, options: AudiobookOptions) -> ProjectRef | None:
-        """Find the selected project, refusing an opaque legacy directory."""
+    def find_project(self, options: AudiobookOptions) -> Any | None:
+        """Find the selected project through the Readio adapter."""
         if options.fresh:
             return None
-        project_path = options.project or self.default_project_path(options.source)
-        try:
-            existing = self._app.projects.find(project_path)
-        except ProjectFormatError as exc:
-            raise LegacyWorkspaceError(
-                "This directory is not a Readio project and cannot resume a "
-                "legacy TTSForge workspace. Start a new Readio project with "
-                "--fresh."
-            ) from exc
-        if existing is None and project_path.exists():
-            raise LegacyWorkspaceError(
-                f"The existing directory is not a Readio project: {project_path}. "
-                "Legacy TTSForge workspaces cannot be resumed; use --fresh "
-                "to create a separate Readio project."
-            )
-        return existing
+        if options.project is not None:
+            return self._backend.find_project_ref(options.project)
+        project = self._backend.find_project_ref(
+            self.default_project_path(options.source)
+        )
+        if project is not None:
+            return project
+        legacy_path = options.source.with_suffix(".readio")
+        if legacy_path.exists():
+            return self._backend.find_project_ref(legacy_path)
+        return None
 
     def create_or_open_project(
         self,
         options: AudiobookOptions,
         *,
-        inspection: AudiobookInspection | None = None,
-        existing_project: ProjectRef | None = None,
+        inspection: Any | None = None,
+        existing_project: Any | None = None,
         project_checked: bool = False,
     ) -> ProjectSetup:
         """Create an EPUB project once, then reuse its persisted chapter scope."""
@@ -217,8 +194,8 @@ class AudiobookConverter:
                 existing_project if project_checked else self.find_project(options)
             )
             if existing is not None:
-                project = self._app.projects.open(existing.root)
-                description = self._app.audiobooks.describe_project(project)
+                project = self._backend.open_project_ref(existing)
+                description = self._backend.describe_project(project)
                 return ProjectSetup(
                     project=project,
                     created=False,
@@ -236,7 +213,7 @@ class AudiobookConverter:
                 raise ValueError("Chapter selection must include at least one chapter.")
             chapter_selection = ",".join(str(index + 1) for index in indices)
 
-        created = self._app.audiobooks.create_project_result(
+        created = self._backend.create_project_result(
             options.source,
             chapters=chapter_selection,
             output=project_path,
@@ -250,14 +227,14 @@ class AudiobookConverter:
     def preflight(
         self,
         setup: ProjectSetup,
-        inspection: AudiobookInspection,
+        inspection: Any,
         options: AudiobookOptions,
         *,
-        synthesis: SynthesisRequest | None = None,
+        synthesis: Any | None = None,
     ) -> ConversionPreflight:
         """Resolve and collect the exact settings planned for the build."""
         request = synthesis
-        resolved = self._app.projects.resolve_synthesis(setup.project, request)
+        resolved = self.resolve_synthesis(setup.project, request)
         title_value = inspection.metadata.get("title")
         title = title_value if isinstance(title_value, str) else None
         authors_value = inspection.metadata.get("authors")
@@ -287,73 +264,36 @@ class AudiobookConverter:
             refresh=options.refresh,
         )
 
-    def status(self, project: ProjectRef | Path) -> ProjectStatus:
-        """Report authoritative project state from Readio."""
-        return self._app.projects.status(project)
+    def status(self, project: Any | Path) -> Any:
+        """Report authoritative project state through the Readio adapter."""
+        return self._backend.status_raw(project)
 
-    def plan(self, project: ProjectRef | Path) -> ProjectPlanResult:
-        """Generate/refresh speech plans through Readio's project service."""
-        return self._app.projects.plan(project)
+    def plan(self, project: Any | Path) -> Any:
+        """Generate or refresh speech plans through the Readio adapter."""
+        return self._backend.plan_raw(project)
 
-    def build_and_export(
-        self, project: ProjectRef | Path, options: AudiobookOptions
-    ) -> AudiobookExportResult | ProjectBuildResult:
-        """Build and export using Readio's persisted desired-state settings."""
-        output_format = options.format.lower()
-        if output_format in SUPPORTED_AUDIOBOOK_FORMATS:
-            if output_format != AUDIOBOOK_EXPORT_FORMAT:
-                raise ValueError(f"Unsupported audiobook format: {output_format}")
-            self._app.projects.build(project)
-            export_options = None
-            if options.force:
-                saved = self.project_settings(project).audiobook_export
-                if saved is None:
-                    raise ValueError(
-                        "No saved audiobook export settings are available."
-                    )
-                export_options = replace(saved, force=True)
-            return self._app.audiobooks.export(project, export_options)
-        if output_format not in SUPPORTED_AUDIO_FORMATS:
-            supported = (*SUPPORTED_AUDIO_FORMATS, *SUPPORTED_AUDIOBOOK_FORMATS)
-            raise ValueError(
-                f"Unsupported audio format {output_format!r}; "
-                f"choose from {', '.join(supported)}."
-            )
-        if options.force:
-            saved = self.project_settings(project).export
-            if saved is None:
-                raise ValueError("No saved export settings are available.")
-            request = ProjectBuildRequest(
-                target="export",
-                selection="all",
-                export=replace(saved, force=True),
-            )
-            return self._app.projects.build(project, request)
-        return self._app.projects.build(project)
+    def build_and_export(self, project: Any | Path, options: AudiobookOptions) -> Any:
+        """Build and export through the Readio adapter."""
+        return self._backend.build_and_export(project, options)
 
     def preview(
         self,
-        project: ProjectRef | Path,
+        project: Any | Path,
         options: AudiobookOptions,
         *,
         selection: str = "first:3",
-    ) -> PreviewResult:
-        """Render a preview using the same public synthesis/composition policy."""
-        request = PreviewRequest(
-            selection=selection,
-            synthesis=synthesis_request(options),
-            composition=composition_options(options),
-        )
-        return self._app.projects.preview(project, request)
+    ) -> Any:
+        """Render a preview through the Readio adapter."""
+        return self._backend.preview_raw(project, options, selection)
 
     @staticmethod
     def build_request(
         options: AudiobookOptions,
         *,
         target: BuildTarget,
-        synthesis: SynthesisRequest | None = None,
-    ) -> ProjectBuildRequest:
-        """Map an audiobook choice and optional shared request to Readio."""
+        synthesis: Any | None = None,
+    ) -> Any:
+        """Map an audiobook choice and optional request through the adapter."""
         return project_build_request(options, target=target, synthesis=synthesis)
 
     @staticmethod

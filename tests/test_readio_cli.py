@@ -25,16 +25,32 @@ from readio.api import (
     ProjectRef,
     ProjectSettings,
     ProjectStatus,
-    SynthesisRequest,
     SynthesisResolution,
     VoiceInfo,
 )
 from rich.console import Console
 from typer.testing import CliRunner
 
+from ttsforge.application.models import (
+    BookInspectionView,
+    ChapterView,
+    OperationResultView,
+    SetupOrigins,
+    SynthesisView,
+)
+from ttsforge.application.models import (
+    ProjectView as ApplicationProjectView,
+)
 from ttsforge.audiobook import ConversionPreflight, ProjectSetup
 from ttsforge.chapter_selection import parse_chapter_selection
 from ttsforge.options import AudiobookOptions
+from ttsforge.readio_backend import (
+    apply_project_settings,
+    has_synthesis_setup,
+    project_setting_sources,
+    project_settings,
+    synthesis_request,
+)
 from ttsforge.synthesis_setup import SetupSources
 from ttsforge.ui.catalog import engine_item
 from ttsforge.ui.interaction import InteractionMode
@@ -71,7 +87,7 @@ def _pinned_setup_args() -> list[str]:
         "--language",
         "en-us",
         "--engine",
-        "pykokoro",
+        "kokoro",
         "--model",
         "v1.0",
         "--model-source",
@@ -111,10 +127,10 @@ def _inspection(source: Path) -> AudiobookInspection:
                 source_id=f"chapter-{number}",
                 title=f"Chapter {number}",
                 href=f"chapter-{number}.xhtml",
+                source_parent_id=None,
                 parent_id=None,
                 level=0,
                 char_count=12 * number,
-                markdown=f"# Chapter {number}",
             )
             for number in range(1, 4)
         ),
@@ -140,7 +156,7 @@ class _FakeConverter:
         self.resolution_requests: list[object] = []
         self.catalog_calls: list[tuple[str, object, DiscoveryOptions | None]] = []
         capabilities = EngineCapabilities(
-            id="pykokoro",
+            id="kokoro",
             supports_named_voices=True,
             supports_lexicons=True,
             supports_model_sources=True,
@@ -149,7 +165,7 @@ class _FakeConverter:
         )
         self.engine_rows = (
             EngineInfo(
-                id="pykokoro",
+                id="kokoro",
                 version="1.0",
                 registered=True,
                 installed=True,
@@ -182,12 +198,12 @@ class _FakeConverter:
                 experimental=False,
                 runtime_available=True,
                 redistribution_allowed=True,
-                backend="pykokoro",
+                engine="kokoro",
             ),
         )
         self.voice_rows = (
             VoiceInfo(
-                selector="en_us-ko-10",
+                ref="kokoro:v1.0/af_sarah",
                 id="af_sarah",
                 gender="female",
                 language="en",
@@ -199,10 +215,10 @@ class _FakeConverter:
                 status="ready",
                 experimental=False,
                 runtime_available=True,
-                engine="pykokoro",
+                engine="kokoro",
             ),
             VoiceInfo(
-                selector="en_us-ko-12",
+                ref="kokoro:v1.0/am_adam",
                 id="am_adam",
                 gender="male",
                 language="en",
@@ -214,10 +230,10 @@ class _FakeConverter:
                 status="ready",
                 experimental=False,
                 runtime_available=True,
-                engine="pykokoro",
+                engine="kokoro",
             ),
             VoiceInfo(
-                selector="en_us-ko-3",
+                ref="kokoro:v1.0/af_bella",
                 id="af_bella",
                 gender="female",
                 language="en",
@@ -229,10 +245,10 @@ class _FakeConverter:
                 status="ready",
                 experimental=False,
                 runtime_available=True,
-                engine="pykokoro",
+                engine="kokoro",
             ),
             VoiceInfo(
-                selector="en_us-ko-4",
+                ref="kokoro:v1.0/af_heart",
                 id="af_heart",
                 gender="female",
                 language="en",
@@ -244,13 +260,13 @@ class _FakeConverter:
                 status="ready",
                 experimental=False,
                 runtime_available=True,
-                engine="pykokoro",
+                engine="kokoro",
             ),
         )
         self.lexicon_rows = (
             LexiconInfo(
                 selector="crane",
-                engine="pykokoro",
+                engine="kokoro",
                 language="en",
                 locale="en-us",
                 asset_id="crane",
@@ -265,14 +281,136 @@ class _FakeConverter:
             ),
         )
 
+    @staticmethod
+    def normalize_engine(engine: str) -> str:
+        return "kokoro" if engine == "pykokoro" else engine
+
     def inspect(self, source: Path) -> AudiobookInspection:
         self.calls.append("inspect")
         return self.inspection
 
+    def inspect_book(self, source: Path) -> BookInspectionView:
+        inspection = self.inspect(source)
+        return BookInspectionView(
+            source=inspection.source,
+            metadata=inspection.metadata,
+            chapters=tuple(
+                ChapterView(
+                    number=chapter.number,
+                    title=chapter.title,
+                    source_id=chapter.source_id,
+                    parent_id=chapter.parent_id,
+                    level=chapter.level,
+                    char_count=chapter.char_count,
+                )
+                for chapter in inspection.chapters
+            ),
+        )
+
+    def _application_project(
+        self, project: ProjectRef, chapter_numbers: tuple[int, ...]
+    ) -> ApplicationProjectView:
+        return ApplicationProjectView(
+            path=project.root,
+            project_id=project.project_id,
+            name=project.name,
+            kind=project.kind,
+            source_format=project.source_format,
+            chapters=tuple(
+                ChapterView(
+                    number=number,
+                    title=f"Chapter {number}",
+                    scope_id=f"chapter-{number:04d}",
+                )
+                for number in chapter_numbers
+            ),
+        )
+
+    def open_project(self, project: ApplicationProjectView) -> ApplicationProjectView:
+        self.create_or_open_project(
+            AudiobookOptions(source=self.inspection.source, project=project.path),
+            inspection=self.inspection,
+            existing_project=self.project,
+            project_checked=True,
+        )
+        return self._application_project(self.project, self.setup.selected_chapters)
+
+    def create_project(
+        self,
+        inspection: BookInspectionView,
+        path: Path,
+        chapter_numbers: tuple[int, ...],
+    ) -> ApplicationProjectView:
+        self.project = replace(self.project, root=path)
+        options = AudiobookOptions(
+            source=inspection.source,
+            project=path,
+            chapters=",".join(str(number) for number in chapter_numbers),
+        )
+        self.create_or_open_project(
+            options, inspection=self.inspection, project_checked=True
+        )
+        return self._application_project(self.project, self.setup.selected_chapters)
+
+    def load_setup(
+        self, project: ApplicationProjectView, request: AudiobookOptions
+    ) -> tuple[AudiobookOptions, SetupOrigins, bool]:
+        settings = self.project_settings(project.path)
+        return (
+            apply_project_settings(request, settings),
+            SetupOrigins(project=project_setting_sources(settings)),
+            has_synthesis_setup(settings),
+        )
+
+    def save_synthesis_setup(
+        self,
+        project: ApplicationProjectView,
+        request: AudiobookOptions,
+        synthesis: SynthesisView,
+    ) -> AudiobookOptions:
+        resolution = SynthesisResolution(
+            engine=synthesis.engine,
+            language=synthesis.language,
+            voice=synthesis.voice,
+            model=synthesis.model,
+            model_source=synthesis.model_source,
+            quality=synthesis.quality,
+            speed=synthesis.speed,
+            unit=synthesis.unit,
+            pause_mode=synthesis.pause_mode,
+            voice_level=synthesis.voice_level,
+            spacy=synthesis.spacy,
+            short_sentence=synthesis.short_sentence,
+            lexicons=synthesis.lexicons,
+            g2p_fallback=synthesis.g2p_fallback,
+            lexicon_data_policy=synthesis.lexicon_data_policy,
+            allow_experimental=synthesis.allow_experimental,
+        )
+        settings = project_settings(request, resolution)
+        persisted = self.save_project_settings(project.path, settings)
+        self.options = apply_project_settings(request, persisted)
+        return self.options
+
+    def build(
+        self, project: ApplicationProjectView, request: AudiobookOptions
+    ) -> OperationResultView:
+        result = self.build_and_export(project.path, request)
+        return OperationResultView(
+            operation="build",
+            project=project,
+            output=result.output_path,
+            details=result.to_dict(),
+        )
+
     def resolve_synthesis(self, project, request, *, use_saved_settings=True):  # type: ignore[no-untyped-def]
+        service_project = isinstance(project, ApplicationProjectView)
+        received_request = request
+        if service_project:
+            request = synthesis_request(request)
+            project = self.project
         self.calls.append("resolve_synthesis")
         self.resolve_settings_flags.append(use_saved_settings)
-        self.resolution_requests.append(request)
+        self.resolution_requests.append(received_request)
         saved = self.settings.synthesis if use_saved_settings else None
 
         def value(name, default):  # type: ignore[no-untyped-def]
@@ -282,8 +420,8 @@ class _FakeConverter:
             persisted = getattr(saved, name, None) if saved is not None else None
             return default if persisted is None else persisted
 
-        return SynthesisResolution(
-            engine=value("engine", "pykokoro"),
+        resolution = SynthesisResolution(
+            engine=value("engine", "kokoro"),
             language=value("language", "en-us"),
             voice=value("voice", "af_sarah"),
             model=value("model", "v1.0"),
@@ -299,6 +437,26 @@ class _FakeConverter:
             g2p_fallback=value("g2p_fallback", "espeak"),
             lexicon_data_policy=value("lexicon_data_policy", "auto"),
             allow_experimental=value("allow_experimental", False),
+        )
+        if not service_project:
+            return resolution
+        return SynthesisView(
+            engine=resolution.engine,
+            language=resolution.language,
+            voice=resolution.voice,
+            model=resolution.model,
+            speed=resolution.speed,
+            unit=resolution.unit,
+            pause_mode=resolution.pause_mode,
+            model_source=resolution.model_source,
+            quality=resolution.quality,
+            spacy=resolution.spacy,
+            short_sentence=resolution.short_sentence,
+            lexicons=resolution.lexicons,
+            g2p_fallback=resolution.g2p_fallback,
+            lexicon_data_policy=resolution.lexicon_data_policy,
+            voice_level=resolution.voice_level,
+            allow_experimental=resolution.allow_experimental,
         )
 
     def project_settings(self, project):  # type: ignore[no-untyped-def]
@@ -328,6 +486,12 @@ class _FakeConverter:
 
     def find_project(self, options):  # type: ignore[no-untyped-def]
         self.calls.append("find_project")
+        if isinstance(options, Path):
+            if self.existing_project is None:
+                return None
+            return self._application_project(
+                self.existing_project, self.existing_chapters
+            )
         return self.existing_project
 
     def create_or_open_project(
@@ -422,8 +586,8 @@ class _FakeConverter:
     (
         ("4", "af_heart"),
         ("af_heart", "af_heart"),
-        ("en_us-ko-4", "af_heart"),
-        ("pykokoro:v1.0:af_heart", "af_heart"),
+        ("kokoro:v1.0/af_heart", "af_heart"),
+        ("kokoro:v1.0:af_heart", "af_heart"),
     ),
 )
 def test_guided_voice_selection_normalizes_catalog_identity(
@@ -448,7 +612,7 @@ def test_guided_voice_selection_normalizes_catalog_identity(
         baseline,
         converter.model_rows[0],
         "en-us",
-        "pykokoro",
+        "kokoro",
         DiscoveryOptions(),
         Console(file=StringIO(), width=40, force_terminal=False, color_system=None),
     )
@@ -479,7 +643,7 @@ def test_guided_voice_selection_preserves_text_when_catalog_is_empty(
         baseline,
         converter.model_rows[0],
         "en-us",
-        "pykokoro",
+        "kokoro",
         DiscoveryOptions(),
         Console(file=StringIO(), width=40, force_terminal=False, color_system=None),
     )
@@ -498,7 +662,7 @@ def test_model_catalog_does_not_use_incompatible_baseline_as_enter_default(
             converter.model_rows[0],
             id=f"piper-{suffix}",
             source="piper",
-            backend="piper",
+            engine="piper",
         )
         for suffix in ("a", "b")
     )
@@ -544,7 +708,7 @@ def test_voice_default_uses_compatible_model_voice_not_old_baseline(
     converter.voice_rows = tuple(
         replace(
             voice,
-            selector=name,
+            ref=f"pocket:pocket-b/{name}",
             id=name,
             model="pocket-b",
             source="pocket",
@@ -613,14 +777,14 @@ def test_piper_interactive_setup_selects_bundle_before_singleton_voice(
             g2p_backend=None,
             lexicons=(),
             frontend="piper",
-            backend="piper",
+            engine="piper",
         )
         for suffix in ("a", "b")
     )
     converter.voice_rows = (
         replace(
             converter.voice_rows[0],
-            selector="en-pi-12",
+            ref="piper:piper-b",
             id="piper-b",
             model="piper-b",
             source="piper",
@@ -693,7 +857,7 @@ def test_piper_interactive_setup_selects_bundle_before_singleton_voice(
     assert "Using voice piper-b." in output.getvalue()
     assert len(converter.resolution_requests) == 1
     baseline_request = converter.resolution_requests[0]
-    assert isinstance(baseline_request, SynthesisRequest)
+    assert isinstance(baseline_request, AudiobookOptions)
     assert baseline_request.engine is None
     assert baseline_request.model is None
     assert baseline_request.voice is None
@@ -737,14 +901,14 @@ def test_pocket_interactive_setup_selects_bundle_then_voice_and_defaults_speed(
             g2p_backend=None,
             lexicons=(),
             frontend="pocket",
-            backend="pocket",
+            engine="pocket",
         )
         for suffix in ("a", "b")
     )
     converter.voice_rows = tuple(
         replace(
             voice,
-            selector=name,
+            ref=f"pocket:pocket-b/{name}",
             id=name,
             model="pocket-b",
             source="pocket",
@@ -817,7 +981,7 @@ def test_pocket_interactive_setup_selects_bundle_then_voice_and_defaults_speed(
     assert "Available voices for en-us / pocket / pocket-b" in output.getvalue()
     assert len(converter.resolution_requests) == 1
     baseline_request = converter.resolution_requests[0]
-    assert isinstance(baseline_request, SynthesisRequest)
+    assert isinstance(baseline_request, AudiobookOptions)
     assert baseline_request.engine is None
     assert baseline_request.model is None
     assert baseline_request.voice is None
@@ -831,10 +995,8 @@ def test_guided_catalog_lists_wrap_at_narrow_width(tmp_path: Path) -> None:
     console = Console(file=output, width=40, force_terminal=False, color_system=None)
 
     synthesis_ui._show_engines(converter.engine_rows, console)
-    synthesis_ui._show_models(converter.model_rows, "en-us", "pykokoro", console)
-    synthesis_ui._show_voices(
-        converter.voice_rows, "en-us", "pykokoro", "v1.0", console
-    )
+    synthesis_ui._show_models(converter.model_rows, "en-us", "kokoro", console)
+    synthesis_ui._show_voices(converter.voice_rows, "en-us", "kokoro", "v1.0", console)
     synthesis_ui._show_lexicons(converter.lexicon_rows, console)
 
     rendered = output.getvalue()
@@ -850,15 +1012,15 @@ def test_guided_catalog_lists_wrap_at_narrow_width(tmp_path: Path) -> None:
     assert all(
         value in rendered
         for value in (
-            "pykokoro",
+            "kokoro",
             "v1.0",
             "af_heart",
-            "en_us-ko-4",
+            "kokoro:v1.0/af_heart",
             "Crane",
             "selector: crane",
         )
     )
-    assert rendered.index("af_heart") < rendered.index("selector: en_us-ko-4")
+    assert rendered.index("af_heart") < rendered.index("ref: kokoro:v1.0/af_heart")
     assert not any(border in rendered for border in ("┏", "┓", "┃", "┡", "└"))
 
 
@@ -920,7 +1082,7 @@ def test_convert_initializes_readio_project_and_keeps_json_stdout_clean(
 ) -> None:
     source = tmp_path / "book.epub"
     source.touch()
-    project = ProjectRef(tmp_path / "book.readio", "id", "book", "audiobook", "epub")
+    project = ProjectRef(tmp_path / "book.ssmdbook", "id", "book", "audiobook", "epub")
     converter = _FakeConverter(source, project)
     _set_mode(monkeypatch, interactive=False, json_mode=True)
     monkeypatch.setattr(
@@ -992,8 +1154,6 @@ def test_convert_initializes_readio_project_and_keeps_json_stdout_clean(
         "project_settings",
         "resolve_synthesis",
         "save_project_settings",
-        "preflight",
-        "resolve_synthesis",
         "build_and_export",
     ]
     assert result.stderr == ""
@@ -1018,7 +1178,7 @@ def test_interactive_new_project_prompts_retries_and_preflights_before_build(
         "1",
         "",
         "wrong-voice",
-        "en_us-ko-10",
+        "kokoro:v1.0/af_sarah",
         "",
         "lg",
         "",
@@ -1050,13 +1210,13 @@ def test_interactive_new_project_prompts_retries_and_preflights_before_build(
     assert "Unknown selection 'wrong-voice'" in result.output
     assert "Runnable Readio engines" in result.output
     assert result.output.index("Runnable Readio engines") < result.output.index(
-        "Engine [pykokoro]"
+        "Engine [kokoro]"
     )
     assert result.output.count("Chapters to include") == 2
     assert "Create this audiobook?" in result.output
     assert "2-3" in result.output
     assert result.output.index(
-        "Available voices for en-us / pykokoro"
+        "Available voices for en-us / kokoro"
     ) < result.output.index("Voice [af_sarah]")
     assert "v1.0" in result.output
     assert "Short sentences" in result.output
@@ -1074,25 +1234,26 @@ def test_interactive_new_project_prompts_retries_and_preflights_before_build(
     assert converter.options.lexicons == ("crane",)
     assert converter.options.pause_mode == "tts"
     assert converter.options.unit == "paragraph"
-    assert converter.catalog_calls[0][1] == ("en-us", "pykokoro")
-    assert converter.catalog_calls[1][1] == ("en-us", "pykokoro", "v1.0")
-    assert converter.catalog_calls[2][1] == ("en-us", "pykokoro", "v1.0")
+    assert converter.catalog_calls[0][1] == ("en-us", "kokoro")
+    assert converter.catalog_calls[1][1] == ("en-us", "kokoro", "v1.0")
+    assert converter.catalog_calls[2][1] == ("en-us", "kokoro", "v1.0")
     assert all(call[2].offline and call[2].refresh for call in converter.catalog_calls)
     assert all(call[2].preference == "github" for call in converter.catalog_calls)
     assert "resolve_synthesis" in converter.calls
-    assert converter.calls.index("preflight") < converter.calls.index(
+    assert converter.calls.index("save_project_settings") < converter.calls.index(
         "build_and_export"
     )
+    assert "Audiobook Setup" in result.output
     assert converter.build_synthesis is converter.preflight_synthesis
-    assert converter.resolve_settings_flags == [False, False, True]
+    assert converter.resolve_settings_flags == [False, False]
     resolution_positions = [
         index
         for index, call in enumerate(converter.calls)
         if call == "resolve_synthesis"
     ]
     save_position = converter.calls.index("save_project_settings")
-    assert len(resolution_positions) == 3
-    assert resolution_positions[1] < save_position < resolution_positions[2]
+    assert len(resolution_positions) == 2
+    assert resolution_positions[-1] < save_position
     assert "Model [" not in result.output
     assert "Using model v1.0." in result.output
 
@@ -1205,7 +1366,7 @@ def test_capability_gates_skip_irrelevant_prompts_but_keep_explicit_pins(
     _set_mode(monkeypatch, interactive=True, confirm=False)
 
     args = _pinned_setup_args()
-    args[args.index("pykokoro")] = "piper"
+    args[args.index("kokoro")] = "piper"
     for option in (
         "--lexicon",
         "--g2p-fallback",
@@ -1269,7 +1430,7 @@ def test_non_interactive_uses_all_without_prompting(
     assert converter.options.chapters == "all"
     assert converter.setup is not None
     assert converter.setup.selected_chapters == (1, 2, 3)
-    assert converter.calls.count("resolve_synthesis") == 2
+    assert converter.calls.count("resolve_synthesis") == 1
     assert "save_project_settings" in converter.calls
     assert converter.catalog_calls == []
 
@@ -1511,11 +1672,10 @@ def test_failed_synthesis_saves_setup_for_prompt_free_retry(
     assert converter.build_count == 1
     assert converter.setup is not None
     assert converter.setup.selected_chapters == (2, 3)
-    assert (
-        converter.calls.index("save_project_settings")
-        < converter.calls.index("preflight")
-        < converter.calls.index("build_and_export")
+    assert converter.calls.index("save_project_settings") < converter.calls.index(
+        "build_and_export"
     )
+    assert "Audiobook Setup" in failed.output
 
     converter.fail_build = None
     call_start = len(converter.calls)
@@ -1530,10 +1690,8 @@ def test_failed_synthesis_saves_setup_for_prompt_free_retry(
     assert "Voice (" not in retried.output
     assert converter.setup is not None
     assert converter.setup.selected_chapters == (2, 3)
-    assert (
-        retry_calls.index("save_project_settings")
-        < retry_calls.index("preflight")
-        < retry_calls.index("build_and_export")
+    assert retry_calls.index("save_project_settings") < retry_calls.index(
+        "build_and_export"
     )
     assert converter.build_count == 2
 

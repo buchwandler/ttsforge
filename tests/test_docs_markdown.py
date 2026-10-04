@@ -30,12 +30,23 @@ def test_install_docs_describe_released_readio_floor() -> None:
     testing = (DOCS / "testing.md").read_text(encoding="utf-8")
 
     for document in (readme, installation, index, testing):
-        assert "Readio `>=0.3.5`" in document
+        assert "Readio `>=0.4.0,<0.5`" in document
         assert "not yet available" not in document
     assert "Readio checkout is not required for a normal installation" in " ".join(
         installation.split()
     )
     assert "python -m pip install ttsforge" in installation
+
+
+def test_migration_docs_explain_readio_v03_to_v04_commands() -> None:
+    migration = (DOCS / "migration-readio.md").read_text(encoding="utf-8")
+
+    assert "readio config migrate" in migration
+    assert "readio project migrate PROJECT" in migration
+    assert (
+        "does not migrate or overwrite Readio configuration "
+        "or project data automatically" in migration
+    )
 
 
 def test_user_docs_cover_interaction_progress_and_persisted_chapter_scope() -> None:

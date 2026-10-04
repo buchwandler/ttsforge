@@ -24,14 +24,14 @@ print([chapter.title for chapter in inspection.chapters])
 created = app.audiobooks.create_project_result(
     source,
     chapters="1-5",
-    output=Path("novel.readio"),
+    output=Path("novel.ssmdbook"),
 )
 status = app.projects.status(created.project)
 print(status.next_actions)
 ```
 
-Readio `>=0.3.5` provides this public API, including expanded synthesis resolution and
-persisted project settings. See [Installation](../installation.md) for the standard
+Readio `>=0.4.0,<0.5` provides this public API, including expanded synthesis resolution
+and persisted project settings. See [Installation](../installation.md) for the standard
 package install and optional source-development setup.
 
 ## Audiobook export

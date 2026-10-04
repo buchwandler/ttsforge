@@ -7,12 +7,12 @@ workspace or duplicate Readio's project schema.
 
 ## Default project and reuse
 
-For `novel.epub`, TTSForge uses a sibling project directory named `novel.readio` unless
-`--project` supplies another path:
+For `novel.epub`, TTSForge uses a sibling project directory named `novel.ssmdbook`
+unless `--project` supplies another path:
 
 ```bash
 ttsforge convert novel.epub
-ttsforge status novel.readio
+ttsforge status novel.ssmdbook
 ```
 
 The first conversion creates the project and records its chapter scope. Later
@@ -47,7 +47,7 @@ Use `--project` to choose an explicit project location. This is useful for multi
 audiobook variants or when project files should live outside the source directory:
 
 ```bash
-ttsforge convert novel.epub --project novel-en.readio
+ttsforge convert novel.epub --project novel-en.ssmdbook
 ```
 
 ## Chapter selection is project scope
@@ -82,9 +82,9 @@ EPUB without creating a project.
 ## Fresh projects and outputs
 
 `--fresh` preserves the current project and chooses a new sibling project path. If
-`novel.readio` already exists, the fresh project is typically `novel.fresh.readio`; if
-that path exists, TTSForge chooses another available numbered path. Use `--project` when
-an exact path is required.
+`novel.ssmdbook` already exists, the fresh project is typically `novel.fresh.ssmdbook`;
+if that path exists, TTSForge chooses another available numbered path. Use `--project`
+when an exact path is required.
 
 The default output for the default M4B format is `novel.m4b`. Supply `--output` to
 choose another path, or `--format` to select a generic Readio export format.
@@ -112,10 +112,10 @@ replacement is requested.
 Use Readio-backed commands to inspect and advance project state:
 
 ```bash
-ttsforge status novel.readio
-ttsforge plan novel.readio
-ttsforge preview novel.epub --project novel.readio --selection first:3
-ttsforge convert novel.epub --project novel.readio
+ttsforge status novel.ssmdbook
+ttsforge plan novel.ssmdbook
+ttsforge preview novel.epub --project novel.ssmdbook --selection first:3
+ttsforge convert novel.epub --project novel.ssmdbook
 ```
 
 `status` reports stage states and next actions. `plan` creates or refreshes Readio
