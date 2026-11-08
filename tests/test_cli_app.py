@@ -105,7 +105,7 @@ def _invoke(monkeypatch, backend: _Backend, args: list[str]):
     )
     monkeypatch.setattr(cli_app, "_service", lambda: (backend, service))
     monkeypatch.setattr(cli_app, "resolve_interaction_mode", lambda **kwargs: mode)
-    return CliRunner().invoke(app, args)
+    return CliRunner().invoke(app, args, color=False, env={"FORCE_COLOR": ""})
 
 
 def test_convert_persists_setup_before_preflight_and_uses_m4b(

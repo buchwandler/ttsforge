@@ -6,7 +6,9 @@ from ttsforge.cli import app
 
 
 def test_convert_help_documents_current_audiobook_controls() -> None:
-    result = CliRunner().invoke(app, ["convert", "--help"])
+    result = CliRunner().invoke(
+        app, ["convert", "--help"], color=False, env={"FORCE_COLOR": ""}
+    )
 
     assert result.exit_code == 0, result.output
     for option in (
