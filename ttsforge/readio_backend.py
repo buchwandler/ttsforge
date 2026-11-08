@@ -1,969 +1,427 @@
-"""The single, public-API integration seam between TTSForge and Readio."""
+"""The single public-API integration seam between TTSForge and Readio."""
 
 from __future__ import annotations
 
 from collections.abc import Callable, Mapping
-from dataclasses import replace
 from pathlib import Path
-from typing import Any, Literal, cast
+from typing import Any, cast
 
-from readio.api import (
-    AUDIOBOOK_EXPORT_FORMAT,
-    G2P_FALLBACKS,
-    LEXICON_DATA_POLICIES,
-    SHORT_SENTENCE_POLICIES,
-    SPACY_POLICIES,
-    SUPPORTED_AUDIO_FORMATS,
-    SUPPORTED_AUDIOBOOK_FORMATS,
-    VOICE_LEVEL_MODES,
-    AudiobookExportOptions,
-    AudiobookExportResult,
-    AudiobookInspection,
-    AudiobookProjectChapter,
-    AudioFormat,
-    CatalogListing,
-    CompositionOptions,
-    DiscoveryOptions,
-    EngineInfo,
-    ExportOptions,
-    LexiconInfo,
-    LexiconQuery,
-    ModelInfo,
-    ModelQuery,
-    PreviewRequest,
-    PreviewResult,
-    ProjectBuildRequest,
-    ProjectBuildResult,
-    ProjectFormatError,
-    ProjectPlanResult,
-    ProjectRef,
-    ProjectSettings,
-    ProjectStatus,
-    ProjectSynthesisSettings,
-    Readio,
-    ReadioError,
-    ReadioEvent,
-    SynthesisRequest,
-    SynthesisResolution,
-    VoiceInfo,
-    VoiceQuery,
-)
+import readio.api as readio_api
 
-from .application.errors import LegacyWorkspaceError, ProjectMigrationRequiredError
+from .application.errors import WorkflowFailureError
 from .application.events import ApplicationEvent
 from .application.models import (
-    AudiobookRequest as AudiobookOptions,
-)
-from .application.models import (
+    AudiobookRequest,
+    BookChapterView,
     BookInspectionView,
-    CatalogItemView,
-    ChapterView,
-    DiscoveryRequest,
-    OperationResultView,
-    PreviewView,
-    ProjectPlanView,
-    ProjectStatusView,
-    ProjectView,
-    SetupOrigins,
-    SynthesisView,
+    ConversionResultView,
+    ProjectPaths,
+    WorkflowPlanView,
+    WorkflowStepView,
 )
 
-__all__ = [
-    "G2P_FALLBACKS",
-    "LEXICON_DATA_POLICIES",
-    "SHORT_SENTENCE_POLICIES",
-    "SPACY_POLICIES",
-    "SUPPORTED_AUDIOBOOK_FORMATS",
-    "SUPPORTED_AUDIO_FORMATS",
-    "VOICE_LEVEL_MODES",
-    "ReadioBackend",
-    "ReadioError",
-    "create_readio",
-]
+__all__ = ["ReadioBackend", "ReadioError", "create_readio"]
 
-BuildTarget = Literal["composition", "export"]
+ReadioError = readio_api.ReadioError
 
 
-def translate_readio_event(event: ReadioEvent) -> ApplicationEvent:
-    """Translate one public Readio event into the application event contract."""
+def _workflow_failure(
+    error: readio_api.ReadioError,
+    *,
+    category: str,
+) -> WorkflowFailureError:
+    if isinstance(error, readio_api.OutputCollisionError):
+        category = "output collision"
+    elif isinstance(error, readio_api.WorkflowStageError):
+        category = "render-stage failure"
+    elif isinstance(error, readio_api.WorkflowError):
+        category = "workflow preflight failure"
+    details = getattr(error, "details", {})
+    return WorkflowFailureError(
+        str(error),
+        category=category,
+        stage=getattr(error, "stage", None),
+        package=getattr(error, "package", None),
+        selector=getattr(error, "selector", None),
+        code=getattr(error, "code", None),
+        details=details if isinstance(details, Mapping) else {},
+    )
+
+
+def normalize_readio_error(
+    error: Exception,
+    *,
+    category: str = "runtime/backend unavailable",
+) -> WorkflowFailureError | None:
+    """Translate a public Readio error to TTSForge's structured error view."""
+    if not isinstance(error, readio_api.ReadioError):
+        return None
+    return _workflow_failure(error, category=category)
+
+
+def _application_event(event: readio_api.WorkflowEvent) -> ApplicationEvent:
     return ApplicationEvent(
+        stage=_value(event.stage),
         kind=event.kind,
-        operation=event.operation,
-        stage=event.stage,
-        progress_kind=event.progress_kind,
         message=event.message,
-        completed=event.completed,
+        package=event.package,
+        selector=event.selector,
+        current=event.current,
         total=event.total,
-        sample_count=event.sample_count,
-        sample_rate=event.sample_rate,
-        audio_seconds=event.audio_seconds,
-        total_audio_seconds=event.total_audio_seconds,
-        scope_id=event.scope_id,
-        unit_id=event.unit_id,
-        segment_id=event.segment_id,
+        elapsed_seconds=event.elapsed_seconds,
         details=dict(event.details),
     )
 
 
-def create_readio(
-    on_event: Callable[[ApplicationEvent], None] | None = None,
-) -> Readio:
-    """Construct Readio and adapt its events to the application contract."""
-    if on_event is None:
-        return Readio()
-    return Readio(on_event=lambda event: on_event(translate_readio_event(event)))
+def _value(value: object) -> str:
+    return str(getattr(value, "value", value))
 
 
-def normalize_engine(app: Readio, engine: str) -> str:
-    """Normalize an engine alias through Readio's public catalog API."""
-    return app.catalog.normalize_engine(engine)
-
-
-def is_readio_project_migration_required(exc: ProjectFormatError) -> bool:
-    """Identify Readio's public v0.3 project migration error message."""
-    return "readio project migrate" in str(exc)
-
-
-def synthesis_request(options: AudiobookOptions) -> SynthesisRequest:
-    """Translate the small audiobook UX model to Readio synthesis options."""
-    return SynthesisRequest(
-        language=options.language,
-        model=options.model,
-        model_source=options.model_source,
-        quality=options.quality,
-        voice=options.voice,
-        lexicons=options.lexicons,
-        clear_lexicons=options.clear_lexicons,
-        auto_lexicons=options.auto_lexicons,
-        spacy=options.spacy,
-        short_sentence=options.short_sentence,
-        g2p_fallback=options.g2p_fallback,
-        lexicon_data_policy=options.lexicon_data_policy,
-        allow_experimental=options.allow_experimental,
-        speed=options.speed,
-        voice_level=options.voice_level,
-        pause_mode=options.pause_mode,
-        unit=options.unit,
-        offline=options.offline,
-        refresh=options.refresh,
-        engine=options.engine,
-    )
-
-
-def project_settings(
-    options: AudiobookOptions,
-    resolution: SynthesisResolution,
-) -> ProjectSettings:
-    """Materialize frontend choices as durable Readio project settings."""
-    lexicons: tuple[str, ...] | None
-    clear_lexicons: bool
-    auto_lexicons: bool
-    if options.auto_lexicons:
-        lexicons = None
-        clear_lexicons = False
-        auto_lexicons = True
-    elif options.clear_lexicons:
-        lexicons = ()
-        clear_lexicons = True
-        auto_lexicons = False
-    elif options.lexicons is not None:
-        lexicons = options.lexicons
-        clear_lexicons = False
-        auto_lexicons = False
-    elif resolution.lexicons is not None:
-        lexicons = resolution.lexicons
-        clear_lexicons = False
-        auto_lexicons = False
-    else:
-        lexicons = ()
-        clear_lexicons = True
-        auto_lexicons = False
-
-    synthesis = ProjectSynthesisSettings(
-        language=resolution.language,
-        engine=resolution.engine,
-        model=resolution.model,
-        model_source=resolution.model_source,
-        quality=resolution.quality,
-        voice=resolution.voice,
-        speed=resolution.speed,
-        spacy=resolution.spacy,
-        short_sentence=resolution.short_sentence,
-        lexicons=lexicons,
-        clear_lexicons=clear_lexicons,
-        auto_lexicons=auto_lexicons,
-        g2p_fallback=resolution.g2p_fallback,
-        lexicon_data_policy=resolution.lexicon_data_policy,
-        allow_experimental=resolution.allow_experimental,
-        voice_level=resolution.voice_level,
-        pause_mode=resolution.pause_mode,
-        unit=resolution.unit,
-        offline=options.offline,
-    )
-    if options.format.lower() == AUDIOBOOK_EXPORT_FORMAT:
-        return ProjectSettings(
-            synthesis=synthesis,
-            composition=composition_options(options),
-            audiobook_export=AudiobookExportOptions(
-                format=AUDIOBOOK_EXPORT_FORMAT,
-                output=options.output,
-                title=options.title,
-                author=options.author,
-                cover=options.cover,
-                bitrate=options.bitrate,
-                force=False,
-            ),
-        )
-    return ProjectSettings(
-        synthesis=synthesis,
-        composition=composition_options(options),
-        export=ExportOptions(
-            format=cast(AudioFormat, options.format.lower()),
-            output=options.output,
-            bitrate=options.bitrate,
-            force=False,
-        ),
-    )
-
-
-def apply_project_settings(
-    options: AudiobookOptions,
-    settings: ProjectSettings,
-) -> AudiobookOptions:
-    """Apply durable Readio settings without changing invocation-only flags."""
-    updates: dict[str, Any] = {}
-    synthesis = settings.synthesis
-    if synthesis is not None:
-        for name in (
-            "language",
-            "engine",
-            "model",
-            "model_source",
-            "quality",
-            "voice",
-            "speed",
-            "spacy",
-            "short_sentence",
-            "g2p_fallback",
-            "lexicon_data_policy",
-            "voice_level",
-            "pause_mode",
-            "unit",
-            "offline",
-            "allow_experimental",
-        ):
-            value = getattr(synthesis, name)
-            if value is not None:
-                updates[name] = value
-        if synthesis.auto_lexicons is True:
-            updates.update(lexicons=None, clear_lexicons=False, auto_lexicons=True)
-        elif synthesis.clear_lexicons is True:
-            updates.update(lexicons=(), clear_lexicons=True, auto_lexicons=False)
-        elif synthesis.lexicons is not None:
-            updates.update(
-                lexicons=synthesis.lexicons,
-                clear_lexicons=False,
-                auto_lexicons=False,
-            )
-    if settings.composition is not None:
-        updates["target_lufs"] = settings.composition.target_lufs
-    if settings.audiobook_export is not None:
-        export = settings.audiobook_export
-        updates.update(
-            format=export.format,
-            output=export.output,
-            title=export.title,
-            author=export.author,
-            cover=export.cover,
-            bitrate=export.bitrate,
-        )
-    elif settings.export is not None:
-        export = settings.export
-        updates.update(
-            format=export.format,
-            output=export.output,
-            bitrate=export.bitrate,
-        )
-    return replace(options, **updates)
-
-
-SYNTHESIS_SETUP_FIELDS = frozenset(
-    {
-        "language",
-        "engine",
-        "model",
-        "model_source",
-        "quality",
-        "voice",
-        "speed",
-        "spacy",
-        "short_sentence",
-        "lexicons",
-        "g2p_fallback",
-        "lexicon_data_policy",
-        "allow_experimental",
-        "voice_level",
-        "pause_mode",
-        "unit",
-        "offline",
-    }
-)
-
-
-def has_synthesis_setup(settings: ProjectSettings) -> bool:
-    """Whether saved settings contain a resolved, resumable synthesis profile."""
-    synthesis = settings.synthesis
-    if synthesis is None:
-        return False
-    return all(
-        getattr(synthesis, field) is not None
-        for field in (
-            "language",
-            "engine",
-            "model",
-            "voice",
-            "speed",
-            "unit",
-            "pause_mode",
-        )
-    )
-
-
-def project_setting_sources(settings: ProjectSettings) -> frozenset[str]:
-    """Return frontend field names represented by public Readio settings."""
-    fields: set[str] = set()
-    synthesis = settings.synthesis
-    if synthesis is not None:
-        if has_synthesis_setup(settings):
-            fields.update(SYNTHESIS_SETUP_FIELDS)
-        else:
-            for name in SYNTHESIS_SETUP_FIELDS - {"lexicons"}:
-                if getattr(synthesis, name) is not None:
-                    fields.add(name)
-            if (
-                synthesis.lexicons is not None
-                or synthesis.clear_lexicons is not None
-                or synthesis.auto_lexicons is not None
-            ):
-                fields.add("lexicons")
-    if (
-        settings.composition is not None
-        and settings.composition.target_lufs is not None
-    ):
-        fields.add("target_lufs")
-    if settings.audiobook_export is not None:
-        fields.update({"format", "output", "bitrate", "title", "author", "cover"})
-    elif settings.export is not None:
-        fields.update({"format", "output", "bitrate"})
-    return frozenset(fields)
-
-
-def composition_options(options: AudiobookOptions) -> CompositionOptions:
-    """Map composition preferences without implementing audio processing."""
-    return CompositionOptions(target_lufs=options.target_lufs)
-
-
-def generic_export_options(options: AudiobookOptions) -> ExportOptions:
-    """Create Readio's generic audio export request."""
-    if options.format == AUDIOBOOK_EXPORT_FORMAT:
-        raise ValueError("M4B uses audiobook_export_options(), not generic export.")
-    return ExportOptions(
-        format=cast(AudioFormat, options.format),
-        output=options.output,
-        bitrate=options.bitrate,
-        force=options.force,
-    )
-
-
-def audiobook_export_options(options: AudiobookOptions) -> AudiobookExportOptions:
-    """Create Readio's distinct M4B/audiobook export request."""
-    return AudiobookExportOptions(
-        format=AUDIOBOOK_EXPORT_FORMAT,
-        output=options.output,
-        title=options.title,
-        author=options.author,
-        cover=options.cover,
-        bitrate=options.bitrate,
-        force=options.force,
-    )
-
-
-def project_build_request(
-    options: AudiobookOptions,
-    *,
-    target: BuildTarget,
-    synthesis: SynthesisRequest | None = None,
-) -> ProjectBuildRequest:
-    """Build the public project request for composition or generic export."""
-    resolved_synthesis = synthesis or synthesis_request(options)
-    if target == "composition":
-        return ProjectBuildRequest(
-            target=target,
-            selection="all",
-            synthesis=resolved_synthesis,
-            composition=composition_options(options),
-        )
-    return ProjectBuildRequest(
-        target=target,
-        selection="all",
-        synthesis=resolved_synthesis,
-        composition=composition_options(options),
-        export=generic_export_options(options),
-    )
+def _metadata_text(metadata: Mapping[str, object], key: str) -> str | None:
+    value = metadata.get(key)
+    if key == "author" and value is None:
+        value = metadata.get("authors")
+    if isinstance(value, str) and value.strip():
+        return value.strip()
+    if key == "author" and isinstance(value, (list, tuple)):
+        authors = [
+            item.strip() for item in value if isinstance(item, str) and item.strip()
+        ]
+        return ", ".join(authors) or None
+    return None
 
 
 class ReadioBackend:
-    """Translate frontend-neutral operations to the public Readio API."""
+    """Delegate workflow and discovery operations to Readio's public API."""
 
-    def __init__(self, app: Readio) -> None:
-        self._app = app
+    def __init__(self, app: readio_api.Readio | None = None) -> None:
+        self._app = app if app is not None else create_readio()
 
-    @staticmethod
-    def _project_view(
-        project: ProjectRef, chapters: tuple[ChapterView, ...] = ()
-    ) -> ProjectView:
-        return ProjectView(
-            path=project.root,
-            project_id=project.project_id,
-            name=project.name,
-            kind=project.kind,
-            source_format=project.source_format,
-            chapters=chapters,
-        )
-
-    @staticmethod
-    def _chapter_views(
-        chapters: tuple[AudiobookProjectChapter, ...],
-    ) -> tuple[ChapterView, ...]:
-        return tuple(
-            ChapterView(
-                number=chapter.number,
-                title=chapter.title,
-                scope_id=chapter.scope_id,
-            )
-            for chapter in chapters
-        )
-
-    def inspect_book(self, source: Path) -> BookInspectionView:
-        inspection = self._app.audiobooks.inspect(source)
-        chapters = tuple(
-            ChapterView(
-                number=chapter.number,
-                title=chapter.title,
-                source_id=chapter.source_id,
-                parent_id=chapter.parent_id,
-                level=chapter.level,
-                char_count=chapter.char_count,
-            )
-            for chapter in inspection.chapters
-        )
+    def inspect_source(self, source: Path) -> BookInspectionView:
+        try:
+            inspection = readio_api.inspect_source(source)
+        except readio_api.ReadioError as error:
+            raise _workflow_failure(
+                error,
+                category="source inspection failure",
+            ) from error
+        metadata = inspection.metadata
         return BookInspectionView(
             source=inspection.source,
-            metadata=dict(inspection.metadata),
-            chapters=chapters,
-        )
-
-    def find_project(self, path: Path) -> ProjectView | None:
-        try:
-            project = self._app.projects.find(path)
-        except ProjectFormatError as exc:
-            if is_readio_project_migration_required(exc):
-                raise ProjectMigrationRequiredError(
-                    "This Readio project uses the v0.3 schema and must be migrated "
-                    "before TTSForge can open it.\nRun:\n"
-                    f'    readio project migrate "{path}"\n'
-                    "TTSForge will not migrate or overwrite it automatically."
-                ) from exc
-            raise LegacyWorkspaceError(
-                "This directory is not a Readio project and cannot resume a legacy "
-                "TTSForge workspace. Start a separate project with --fresh."
-            ) from exc
-        if project is None and path.exists():
-            raise LegacyWorkspaceError(
-                f"The existing directory is not a Readio project: {path}. "
-                "Legacy TTSForge workspaces cannot be resumed; use --fresh "
-                "to create a separate Readio project."
-            )
-        return self._project_view(project) if project is not None else None
-
-    def open_project(self, project: ProjectView) -> ProjectView:
-        opened = self._app.projects.open(project.path)
-        description = self._app.audiobooks.describe_project(opened)
-        return self._project_view(opened, self._chapter_views(description.chapters))
-
-    def create_project(
-        self,
-        inspection: BookInspectionView,
-        path: Path,
-        chapter_numbers: tuple[int, ...],
-    ) -> ProjectView:
-        chapter_selection = ",".join(str(number) for number in chapter_numbers)
-        created = self._app.audiobooks.create_project_result(
-            inspection.source,
-            chapters=chapter_selection,
-            output=path,
-        )
-        return self._project_view(
-            created.project, self._chapter_views(created.chapters)
-        )
-
-    def resolve_synthesis(
-        self,
-        project: ProjectView,
-        request: AudiobookOptions,
-        *,
-        use_saved_settings: bool,
-    ) -> SynthesisView:
-        request = self._canonical_request(request)
-        resolved = self._app.projects.resolve_synthesis(
-            project.path,
-            synthesis_request(request),
-            use_saved_settings=use_saved_settings,
-        )
-        return SynthesisView(
-            engine=resolved.engine,
-            language=resolved.language,
-            voice=resolved.voice,
-            model=resolved.model,
-            model_source=resolved.model_source,
-            quality=resolved.quality,
-            speed=resolved.speed,
-            unit=resolved.unit,
-            pause_mode=resolved.pause_mode,
-            spacy=resolved.spacy,
-            short_sentence=resolved.short_sentence,
-            lexicons=resolved.lexicons,
-            g2p_fallback=resolved.g2p_fallback,
-            lexicon_data_policy=resolved.lexicon_data_policy,
-            voice_level=resolved.voice_level,
-            allow_experimental=resolved.allow_experimental,
-        )
-
-    def save_synthesis_setup(
-        self,
-        project: ProjectView,
-        request: AudiobookOptions,
-        synthesis: SynthesisView,
-    ) -> AudiobookOptions:
-        resolved = SynthesisResolution(
-            engine=synthesis.engine,
-            language=synthesis.language,
-            voice=synthesis.voice,
-            model=synthesis.model,
-            model_source=synthesis.model_source,
-            quality=synthesis.quality,
-            speed=synthesis.speed,
-            unit=synthesis.unit,
-            pause_mode=synthesis.pause_mode,
-            voice_level=synthesis.voice_level,
-            spacy=synthesis.spacy,
-            short_sentence=synthesis.short_sentence,
-            lexicons=synthesis.lexicons,
-            g2p_fallback=synthesis.g2p_fallback,
-            lexicon_data_policy=synthesis.lexicon_data_policy,
-            allow_experimental=synthesis.allow_experimental,
-        )
-        settings = project_settings(request, resolved)
-        self._app.projects.configure(project.path, settings)
-        return apply_project_settings(request, settings)
-
-    def load_setup(
-        self, project: ProjectView, request: AudiobookOptions
-    ) -> tuple[AudiobookOptions, SetupOrigins, bool]:
-        settings = self._app.projects.settings(project.path)
-        return (
-            apply_project_settings(request, settings),
-            SetupOrigins(project=project_setting_sources(settings)),
-            has_synthesis_setup(settings),
-        )
-
-    def build(
-        self, project: ProjectView, request: AudiobookOptions
-    ) -> OperationResultView:
-        output_format = request.format.lower()
-        if output_format in SUPPORTED_AUDIOBOOK_FORMATS:
-            if output_format != AUDIOBOOK_EXPORT_FORMAT:
-                raise ValueError(f"Unsupported audiobook format: {output_format}")
-            self._app.projects.build(project.path)
-            export_options = None
-            if request.force:
-                saved = self._app.projects.settings(project.path).audiobook_export
-                if saved is None:
-                    raise ValueError(
-                        "No saved audiobook export settings are available."
-                    )
-                export_options = replace(saved, force=True)
-            result = self._app.audiobooks.export(project.path, export_options)
-        else:
-            if output_format not in SUPPORTED_AUDIO_FORMATS:
-                supported = (*SUPPORTED_AUDIO_FORMATS, *SUPPORTED_AUDIOBOOK_FORMATS)
-                raise ValueError(
-                    f"Unsupported audio format {output_format!r}; "
-                    f"choose from {', '.join(supported)}."
+            kind=inspection.kind,
+            title=_metadata_text(metadata, "title"),
+            author=_metadata_text(metadata, "author"),
+            language=_metadata_text(metadata, "language"),
+            chapters=tuple(
+                BookChapterView(
+                    number=chapter.number,
+                    title=chapter.title,
+                    source_id=chapter.source_id,
+                    char_count=chapter.char_count,
                 )
-            if request.force:
-                saved = self._app.projects.settings(project.path).export
-                if saved is None:
-                    raise ValueError("No saved export settings are available.")
-                build_request = ProjectBuildRequest(
-                    target="export",
-                    selection="all",
-                    export=replace(saved, force=True),
-                )
-                result = self._app.projects.build(project.path, build_request)
-            else:
-                result = self._app.projects.build(project.path)
-        return OperationResultView(
-            operation="build",
-            project=project,
-            output=result.output_path,
-            details=result.to_dict(),
-        )
-
-    def preview(
-        self, project: ProjectView, request: AudiobookOptions, selection: str
-    ) -> PreviewView:
-        request = self._canonical_request(request)
-        result = self._app.projects.preview(
-            project.path,
-            PreviewRequest(
-                selection=selection,
-                synthesis=synthesis_request(request),
-                composition=composition_options(request),
+                for chapter in inspection.chapters
             ),
         )
-        return PreviewView(
-            project=project,
-            items=result.items,
-            frames=result.frames,
-            sample_rate=result.sample_rate,
-        )
 
-    def status(self, project: ProjectView | Path) -> ProjectStatusView:
-        result = self._app.projects.status(
-            project.path if isinstance(project, ProjectView) else project
-        )
-        view = self._project_view(result.project)
-        return ProjectStatusView(
-            project=view,
-            status="ready" if not result.issues else "needs_attention",
-            details=result.to_dict(),
-        )
+    def list_engines(self) -> tuple[dict[str, object], ...]:
+        try:
+            return tuple(readio_api.list_engines())
+        except readio_api.ReadioError as error:
+            raise _workflow_failure(
+                error,
+                category="runtime/backend unavailable",
+            ) from error
 
-    def plan(self, project: ProjectView | Path) -> ProjectPlanView:
-        result = self._app.projects.plan(
-            project.path if isinstance(project, ProjectView) else project
-        )
-        return ProjectPlanView(
-            project=self._project_view(result.project),
-            details=result.to_dict(),
-        )
-
-    def catalog_choices(
-        self, kind: str, query: Mapping[str, object]
-    ) -> tuple[CatalogItemView, ...]:
-        if kind == "engines":
-            return tuple(
-                CatalogItemView(item.id, item.id, engine=item.id)
-                for item in self._app.catalog.engines()
-            )
-        discovery = DiscoveryOptions(
-            offline=bool(query.get("offline", False)),
-            refresh=bool(query.get("refresh", False)),
-        )
-        language = _string_query(query, "language")
-        engine = _string_query(query, "engine")
-        if engine is not None:
-            engine = normalize_engine(self._app, engine)
-        if kind == "models":
-            listing: CatalogListing[ModelInfo] = self._app.catalog.models_listing(
-                ModelQuery(language=language, engine=engine), discovery=discovery
-            )
-            return tuple(
-                CatalogItemView(
-                    item.id,
-                    item.id,
-                    engine=item.engine,
+    def list_targets(
+        self,
+        *,
+        engine: str,
+        language: str | None = None,
+        offline: bool = False,
+        refresh: bool = False,
+    ) -> tuple[object, ...]:
+        try:
+            return cast(
+                tuple[object, ...],
+                readio_api.discover_engine_targets(
+                    engine,
                     language=language,
-                )
-                for item in listing.items
+                    offline=offline,
+                    refresh=refresh,
+                ),
             )
-        model = _string_query(query, "model")
-        if kind == "voices":
-            listing: CatalogListing[VoiceInfo] = self._app.catalog.voices_listing(
-                VoiceQuery(language=language, engine=engine, model=model),
-                discovery=discovery,
-            )
-            return tuple(
-                CatalogItemView(
-                    item.id,
-                    item.id,
-                    engine=item.engine,
-                    language=item.locale,
-                )
-                for item in listing.items
-            )
-        if kind == "lexicons":
-            listing: CatalogListing[LexiconInfo] = self._app.catalog.lexicons_listing(
-                LexiconQuery(language=language, engine=engine, model=model),
-                discovery=discovery,
-            )
-            return tuple(
-                CatalogItemView(
-                    item.selector,
-                    item.display_name or item.selector,
-                    engine=item.engine,
-                    language=item.locale,
-                )
-                for item in listing.items
-            )
-        raise ValueError(f"Unknown catalog choice kind: {kind}")
+        except readio_api.ReadioError as error:
+            raise _workflow_failure(
+                error,
+                category="runtime/backend unavailable",
+            ) from error
 
-    def _canonical_request(self, request: AudiobookOptions) -> AudiobookOptions:
-        if request.engine is None:
-            return request
-        return replace(request, engine=normalize_engine(self._app, request.engine))
-
-    def normalize_engine(self, engine: str) -> str:
-        return normalize_engine(self._app, engine)
-
-    def inspect(self, source: Path) -> AudiobookInspection:
-        return self._app.audiobooks.inspect(source)
-
-    def resolve_synthesis_raw(
-        self,
-        project: ProjectRef | Path,
-        request: SynthesisRequest | AudiobookOptions | None,
-        *,
-        use_saved_settings: bool = True,
-    ) -> SynthesisResolution:
-        if isinstance(request, AudiobookOptions):
-            request = synthesis_request(request)
-        if request is not None and request.engine is not None:
-            request = replace(request, engine=self.normalize_engine(request.engine))
-        if use_saved_settings:
-            return self._app.projects.resolve_synthesis(project, request)
-        return self._app.projects.resolve_synthesis(
-            project, request, use_saved_settings=False
+    def list_engine_options(
+        self, engine: str, *, target: str | None = None
+    ) -> tuple[object, ...]:
+        return cast(
+            tuple[object, ...],
+            readio_api.list_engine_options(engine, target=target),
         )
 
-    def project_settings(self, project: ProjectRef | Path) -> ProjectSettings:
-        return self._app.projects.settings(project)
-
-    def configure_project(
-        self, project: ProjectRef | Path, settings: ProjectSettings
-    ) -> ProjectSettings:
-        return self._app.projects.configure(project, settings)
-
-    def engines(self) -> tuple[EngineInfo, ...]:
-        return cast(tuple[EngineInfo, ...], self._app.catalog.engines())
-
-    @staticmethod
-    def _discovery_options(
-        discovery: DiscoveryRequest | DiscoveryOptions,
-    ) -> DiscoveryOptions:
-        if isinstance(discovery, DiscoveryOptions):
-            return discovery
-        return DiscoveryOptions(
-            offline=discovery.offline,
-            refresh=discovery.refresh,
-            preference=discovery.preference,
-        )
-
-    def models_listing(
+    def list_voices(
         self,
         *,
-        language: str | None,
-        engine: str | None,
-        discovery: DiscoveryRequest | DiscoveryOptions,
-        status: str | None = None,
-    ) -> CatalogListing[ModelInfo]:
-        return self._app.catalog.models_listing(
-            ModelQuery(
-                language=language,
-                engine=self.normalize_engine(engine) if engine is not None else None,
-                status=status,
-            ),
-            discovery=self._discovery_options(discovery),
-        )
-
-    def voices_listing(
-        self,
-        *,
-        language: str | None,
-        engine: str | None,
-        model: str | None,
-        discovery: DiscoveryRequest | DiscoveryOptions,
-        gender: str | None = None,
-    ) -> CatalogListing[VoiceInfo]:
-        return self._app.catalog.voices_listing(
-            VoiceQuery(
-                language=language,
-                engine=self.normalize_engine(engine) if engine is not None else None,
-                model=model,
-                gender=gender,
-            ),
-            discovery=self._discovery_options(discovery),
-        )
-
-    def lexicons_listing(
-        self,
-        *,
-        language: str | None,
-        engine: str | None,
-        model: str | None,
-        discovery: DiscoveryRequest | DiscoveryOptions,
-    ) -> CatalogListing[LexiconInfo]:
-        return self._app.catalog.lexicons_listing(
-            LexiconQuery(
-                language=language,
-                engine=self.normalize_engine(engine) if engine is not None else None,
-                model=model,
-            ),
-            discovery=self._discovery_options(discovery),
-        )
-
-    def audio_formats(self) -> tuple[Any, ...]:
-        return self._app.catalog.audio_formats()
-
-    def diagnostics(self) -> Any:
-        return self._app.diagnostics.run()
-
-    def configuration_path(self) -> Path:
-        return self._app.configuration.path()
-
-    def configuration_load(self, path: Path | None = None) -> Any:
-        return self._app.configuration.load(path)
-
-    def configuration_set_value(
-        self, key: str, value: object, *, path: Path | None = None
-    ) -> None:
-        self._app.configuration.set_value(key, value, path=path)
-
-    def configuration_initialize(self, *, overwrite: bool = False) -> Any:
-        return self._app.configuration.initialize(overwrite=overwrite)
-
-    def configuration_language_profiles(self) -> Any:
-        return self._app.configuration.language_profiles()
-
-    def configuration_resolve_language_profile(self, language: str) -> Any:
-        return self._app.configuration.resolve_language_profile(language)
-
-    def ssmd_check(self, source: Path, *, roundtrip: bool = False) -> Any:
-        return self._app.ssmd.check(source, roundtrip=roundtrip)
-
-    def ssmd_validate(self, source: Path, *, roundtrip: bool = False) -> Any:
-        return self._app.ssmd.validate(source, roundtrip=roundtrip)
-
-    def ssmd_analyze(self, source: Path) -> Any:
-        return self._app.ssmd.analyze(source)
-
-    def ssmd_roundtrip_check(self, source: Path) -> Any:
-        return self._app.ssmd.roundtrip_check(source)
-
-    def ssmd_materialize_bindings(
-        self,
-        source: Path,
-        bindings: Mapping[str, str],
-        *,
-        provider: str | None = None,
-        output: Path | None = None,
-        in_place: bool = False,
-    ) -> Any:
-        return self._app.ssmd.materialize_bindings(
-            source, bindings, provider=provider, output=output, in_place=in_place
-        )
-
-    def find_project_ref(self, path: Path) -> ProjectRef | None:
+        engine: str | None = None,
+        target: str | None = None,
+        language: str | None = None,
+        offline: bool = False,
+        refresh: bool = False,
+    ) -> tuple[object, ...]:
         try:
-            existing = self._app.projects.find(path)
-        except ProjectFormatError as exc:
-            if is_readio_project_migration_required(exc):
-                raise ProjectMigrationRequiredError(
-                    "This Readio project uses the v0.3 schema and must be migrated "
-                    "before TTSForge can open it.\nRun:\n"
-                    f'    readio project migrate "{path}"\n'
-                    "TTSForge will not migrate or overwrite it automatically."
-                ) from exc
-            raise LegacyWorkspaceError(
-                "This directory is not a Readio project and cannot resume a legacy "
-                "TTSForge workspace. Start a separate project with --fresh."
-            ) from exc
-        if existing is None and path.exists():
-            raise LegacyWorkspaceError(
-                f"The existing directory is not a Readio project: {path}. "
-                "Legacy TTSForge workspaces cannot be resumed; use --fresh "
-                "to create a separate Readio project."
+            return cast(
+                tuple[object, ...],
+                readio_api.list_voices(
+                    engine=engine,
+                    target=target,
+                    language=language,
+                    offline=offline,
+                    refresh=refresh,
+                ),
             )
-        return existing
+        except readio_api.ReadioError as error:
+            raise _workflow_failure(
+                error,
+                category="runtime/backend unavailable",
+            ) from error
 
-    def open_project_ref(self, project: ProjectRef | Path) -> ProjectRef:
-        path = project.root if isinstance(project, ProjectRef) else project
-        return self._app.projects.open(path)
+    def inspect_voice(self, selector: str, *, language: str | None = None) -> object:
+        return readio_api.inspect_voice(selector, language=language)
 
-    def describe_project(self, project: ProjectRef | Path) -> object:
-        return self._app.audiobooks.describe_project(project)
-
-    def create_project_result(
-        self, source: Path, *, chapters: str, output: Path
+    def create_profile(
+        self,
+        *,
+        output: Path,
+        engine: str,
+        target: str,
+        language: str,
+        voice: str | None,
+        options: Mapping[str, object],
+        offline: bool = False,
+        refresh: bool = False,
+        force: bool = False,
     ) -> object:
-        return self._app.audiobooks.create_project_result(
-            source, chapters=chapters, output=output
+        return readio_api.create_profile(
+            output=output,
+            engine=engine,
+            target=target,
+            language=language,
+            voice=voice,
+            options=dict(options),
+            offline=offline,
+            refresh=refresh,
+            force=force,
         )
 
-    def status_raw(self, project: ProjectRef | Path) -> ProjectStatus:
-        return self._app.projects.status(project)
+    def load_profile(self, path: Path) -> object:
+        return readio_api.load_profile(path)
 
-    def plan_raw(self, project: ProjectRef | Path) -> ProjectPlanResult:
-        return self._app.projects.plan(project)
+    def validate_profile(self, path: Path) -> object:
+        return readio_api.validate_profile(path)
 
-    def build_and_export(
-        self, project: ProjectRef | Path, options: AudiobookOptions
-    ) -> AudiobookExportResult | ProjectBuildResult:
-        output_format = options.format.lower()
-        if output_format in SUPPORTED_AUDIOBOOK_FORMATS:
-            if output_format != AUDIOBOOK_EXPORT_FORMAT:
-                raise ValueError(f"Unsupported audiobook format: {output_format}")
-            self._app.projects.build(project)
-            export_options = None
-            if options.force:
-                saved = self.project_settings(project).audiobook_export
-                if saved is None:
-                    raise ValueError(
-                        "No saved audiobook export settings are available."
-                    )
-                export_options = replace(saved, force=True)
-            return self._app.audiobooks.export(project, export_options)
-        if output_format not in SUPPORTED_AUDIO_FORMATS:
-            supported = (*SUPPORTED_AUDIO_FORMATS, *SUPPORTED_AUDIOBOOK_FORMATS)
-            raise ValueError(
-                f"Unsupported audio format {output_format!r}; "
-                f"choose from {', '.join(supported)}."
+    def create_book_intent(
+        self,
+        *,
+        source: Path,
+        profile: Path,
+        bundle: Path,
+        chapters: str,
+        language: str | None,
+        output: Path,
+        bitrate: str | int | None,
+        cover: Path | None,
+        metadata: Mapping[str, str],
+        target_lufs: float | None = -18.0,
+    ) -> readio_api.RenderIntent:
+        return readio_api.create_book_intent(
+            source,
+            profile=profile,
+            bundle=bundle,
+            chapters=chapters,
+            language=language,
+            output_format="m4b",
+            output=output,
+            bitrate=bitrate,
+            cover=cover,
+            metadata=dict(metadata),
+            target_lufs=target_lufs,
+        )
+
+    def load_intent(self, path: Path) -> readio_api.RenderIntent:
+        return readio_api.load_render_intent(path)
+
+    def save_intent(self, intent: readio_api.RenderIntent, path: Path) -> Path:
+        return cast(
+            Path,
+            readio_api.save_render_intent(intent, path, force=True),
+        )
+
+    def load_setup(self, paths: ProjectPaths) -> AudiobookRequest:
+        intent = self.load_intent(paths.intent)
+        profile = cast(Any, self.load_profile(paths.profile))
+        self.validate_profile(paths.profile)
+        source = intent.input.source
+        if source is None:
+            raise ValueError(f"Saved render intent has no source: {paths.intent}")
+
+        role = profile.roles[profile.default_role]
+        binding = role.binding
+        options = dict(binding.get("options", {}))
+        speed_value = options.pop("speed", None)
+        speed = speed_value if isinstance(speed_value, (int, float)) else None
+        output_metadata = intent.output.metadata
+        return AudiobookRequest(
+            source=source,
+            project=paths.root,
+            chapters=intent.input.chapters,
+            output=intent.output.path,
+            language=role.language,
+            engine=str(binding["renderer"]),
+            target=str(binding["target_id"]),
+            voice=binding.get("voice"),
+            engine_options=options,
+            speed=speed,
+            bitrate=intent.output.bitrate,
+            target_lufs=intent.compose.target_lufs,
+            title=output_metadata.get("title"),
+            author=output_metadata.get("author"),
+            cover=intent.output.cover,
+        )
+
+    def save_setup(self, paths: ProjectPaths, request: AudiobookRequest) -> None:
+        if request.language is None or request.engine is None or request.target is None:
+            raise ValueError("Language, engine, and target are required to save setup.")
+        if request.output is None:
+            raise ValueError("Output path is required to save setup.")
+
+        options = dict(request.engine_options)
+        if request.speed is not None:
+            options["speed"] = request.speed
+        metadata = {
+            key: value
+            for key, value in (("title", request.title), ("author", request.author))
+            if value is not None
+        }
+        try:
+            intent = self.create_book_intent(
+                source=request.source,
+                profile=paths.profile,
+                bundle=paths.bundle,
+                chapters=request.chapters or "all",
+                language=request.language,
+                output=request.output,
+                bitrate=request.bitrate,
+                cover=request.cover,
+                metadata=metadata,
+                target_lufs=(
+                    request.target_lufs if request.target_lufs is not None else -18.0
+                ),
             )
-        if options.force:
-            saved = self.project_settings(project).export
-            if saved is None:
-                raise ValueError("No saved export settings are available.")
-            request = ProjectBuildRequest(
-                target="export", selection="all", export=replace(saved, force=True)
+            self.create_profile(
+                output=paths.profile,
+                engine=request.engine,
+                target=request.target,
+                language=request.language,
+                voice=request.voice,
+                options=options,
+                offline=request.offline,
+                refresh=request.refresh,
+                force=paths.profile.exists(),
             )
-            return self._app.projects.build(project, request)
-        return self._app.projects.build(project)
+            self.save_intent(intent, paths.intent)
+        except readio_api.ReadioError as error:
+            raise _workflow_failure(
+                error,
+                category="configuration / setup invalid",
+            ) from error
 
-    def preview_raw(
-        self, project: ProjectRef | Path, options: AudiobookOptions, selection: str
-    ) -> PreviewResult:
-        options = self._canonical_request(options)
-        return self._app.projects.preview(
-            project,
-            PreviewRequest(
-                selection=selection,
-                synthesis=synthesis_request(options),
-                composition=composition_options(options),
+    def request_from_intent(
+        self, paths: ProjectPaths, request: AudiobookRequest
+    ) -> object:
+        try:
+            intent = self.load_intent(paths.intent)
+            return readio_api.render_request_from_intent(
+                intent,
+                source=request.source,
+                bundle=paths.bundle,
+                profile=paths.profile,
+                rebuild_from=request.rebuild_from,
+                replace_output=request.replace_output,
+            )
+        except readio_api.ReadioError as error:
+            raise _workflow_failure(
+                error,
+                category="configuration / setup invalid",
+            ) from error
+
+    def inspect(self, request: object) -> WorkflowPlanView:
+        try:
+            plan = self._app.inspect(cast(readio_api.RenderRequest, request))
+        except readio_api.ReadioError as error:
+            raise _workflow_failure(
+                error,
+                category="workflow preflight failure",
+            ) from error
+        return WorkflowPlanView(
+            source=plan.source,
+            workspace=plan.workspace,
+            workspace_mode=_value(plan.workspace_mode),
+            output=plan.output,
+            steps=tuple(
+                WorkflowStepView(
+                    stage=_value(step.stage),
+                    package=step.package,
+                    action=_value(step.action),
+                    selector=step.selector,
+                    reason=step.reason,
+                    state=_value(step.state),
+                )
+                for step in plan.steps
             ),
+            warnings=tuple(plan.warnings),
+        )
+
+    def render(
+        self,
+        request: object,
+        *,
+        on_progress: Callable[[ApplicationEvent], None] | None = None,
+    ) -> ConversionResultView:
+        def forward(event: readio_api.WorkflowEvent) -> None:
+            if on_progress is not None:
+                on_progress(_application_event(event))
+
+        try:
+            result = self._app.render(
+                cast(readio_api.RenderRequest, request),
+                on_progress=forward if on_progress is not None else None,
+            )
+        except readio_api.ReadioError as error:
+            failure = _workflow_failure(
+                error,
+                category="runtime/backend unavailable",
+            )
+            profile = cast(readio_api.RenderRequest, request).profile
+            failure.details["saved_setup"] = {
+                "project": str(profile.parent),
+                "intent": str(profile.parent / "render.readio.toml"),
+                "profile": str(profile),
+            }
+            raise failure from error
+        return ConversionResultView(
+            output=result.output,
+            workspace=result.workspace,
+            workspace_mode=_value(result.workspace_mode),
+            executed_stages=tuple(result.executed_stages),
+            reused_stages=tuple(result.reused_stages),
+            warnings=tuple(result.warnings),
         )
 
 
-def _string_query(query: Mapping[str, object], name: str) -> str | None:
-    value = query.get(name)
-    return value if isinstance(value, str) else None
+def create_readio() -> readio_api.Readio:
+    return readio_api.Readio()

@@ -21,12 +21,12 @@ def _project() -> dict[str, object]:
 
 
 def test_setuptools_scm_has_intentional_fallback() -> None:
-    assert _project()["tool"]["setuptools_scm"]["fallback_version"] == "0.4.0"
+    assert _project()["tool"]["setuptools_scm"]["fallback_version"] == "0.5.0"
 
 
 def test_readio_requirement_uses_the_released_preflight_api_floor() -> None:
     dependencies = _project()["project"]["dependencies"]
-    assert "readio>=0.4.0,<0.5" in dependencies
+    assert "readio>=0.6.1,<0.7" in dependencies
     assert "readio" not in dependencies
 
 

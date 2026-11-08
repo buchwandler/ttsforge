@@ -1,13 +1,11 @@
 # TTSForge documentation
 
-TTSForge is an audiobook-focused command-line frontend for Readio. Readio owns the
-persistent project lifecycle, synthesis engines, composition, reuse, and exports;
-TTSForge presents an EPUB audiobook workflow and maps choices to Readio's public
-services.
+TTSForge is an audiobook-oriented command-line frontend for Readio. It inspects EPUBs,
+saves audiobook setup in a TTSForge project directory, and delegates workflow planning
+and M4B rendering to Readio.
 
-TTSForge requires Readio `>=0.4.0,<0.5`, whose public API supplies its audiobook
-project, expanded synthesis resolution, and persisted project settings. See
-[Installation](installation.md) for user and development setup.
+TTSForge requires Readio `>=0.6.1,<0.7`. The base installation remains provider-neutral;
+engine integrations are installed separately. See [Installation](installation.md).
 
 ```{toctree}
 :maxdepth: 2
@@ -26,6 +24,7 @@ filename_templates
 testing
 application-architecture
 changelog
+Documentation sources <README>
 ```
 
 ```{toctree}
@@ -39,21 +38,18 @@ api/index
 
 ```bash
 ttsforge list novel.epub
-ttsforge preview novel.epub
 ttsforge convert novel.epub
-ttsforge status novel.ssmdbook
+ttsforge status novel.ttsforge
 ```
 
-TTSForge creates or reuses a Readio project, normally `<book-stem>.ssmdbook` beside the
-EPUB. Readio manages project state and decides which work can be reused. M4B is produced
-through Readio's audiobook export service; generic formats use its project export
-service.
+The default project is `novel.ttsforge/` beside the EPUB. It contains a Readio render
+intent, narrator profile, and persistent SSMD bundle. The default final output is
+`novel.m4b`. Readio owns workflow state, reuse decisions, and rendering.
 
 See the [Readio API guide](https://github.com/buchwandler/readio/blob/main/docs/api.md)
 and [project guide](https://github.com/buchwandler/readio/blob/main/docs/projects.md)
-for service details. TTSForge deliberately does not duplicate Readio's internal project
-schema or engine documentation. For reproducible command-line recipes, see the
-[TTSForge examples](https://github.com/buchwandler/ttsforge/blob/main/examples/README.md).
+for service details. TTSForge does not duplicate Readio's internal project schema or
+engine documentation.
 
 ## License
 

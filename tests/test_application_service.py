@@ -1,251 +1,334 @@
 from __future__ import annotations
 
+from dataclasses import replace
 from pathlib import Path
 
 import pytest
 
-from ttsforge.application.errors import ProjectScopeConflictError
-from ttsforge.application.models import (
+from ttsforge.application import (
+    AudiobookApplicationService,
     AudiobookRequest,
+    BookChapterView,
     BookInspectionView,
-    CatalogItemView,
-    ChapterView,
+    ConversionResultView,
     InputOverrides,
-    OperationResultView,
-    PreviewView,
-    ProjectPlanView,
-    ProjectStatusView,
-    ProjectView,
-    SetupOrigins,
-    SynthesisView,
+    InputValidationError,
+    LegacyWorkspaceError,
+    OperationConflictError,
+    ProjectPaths,
+    WorkflowPlanView,
 )
-from ttsforge.application.service import AudiobookApplicationService
 
 
-def _chapters() -> tuple[ChapterView, ...]:
-    return tuple(
-        ChapterView(number=index, title=f"Chapter {index}", source_id=f"c{index}")
-        for index in range(1, 4)
+def _inspection(source: Path) -> BookInspectionView:
+    return BookInspectionView(
+        source=source,
+        kind="book",
+        title="A title",
+        author="An author",
+        language="en-US",
+        chapters=(BookChapterView(number=1, title="Opening", source_id="c1"),),
     )
 
 
-def _project(path: Path, chapters: tuple[ChapterView, ...] = ()) -> ProjectView:
-    return ProjectView(
-        path=path,
-        project_id="project-id",
-        name="A book",
-        kind="audiobook",
-        source_format="epub",
-        chapters=chapters,
+def _saved_request(source: Path) -> AudiobookRequest:
+    return AudiobookRequest(
+        source=source,
+        language="de-DE",
+        engine="engine-a",
+        target="target-a",
+        voice="voice-a",
+        chapters="2-4",
+        output=Path("saved.m4b"),
+        engine_options={"quality": "high"},
+        speed=1.1,
+        bitrate="128k",
+        target_lufs=-19.0,
+        title="Saved title",
+        author="Saved author",
     )
 
 
 class _FakeBackend:
-    def __init__(self, existing: ProjectView | None = None) -> None:
-        self.existing = existing
+    def __init__(self) -> None:
+        self.saved: AudiobookRequest | None = None
         self.calls: list[tuple[object, ...]] = []
-        self.inspection = BookInspectionView(
-            source=Path("book.epub"),
-            metadata={"title": "A title", "authors": ["One", "Two"]},
-            chapters=_chapters(),
-        )
-        self.synthesis = SynthesisView(
-            engine="kokoro",
-            language="en-us",
-            voice="af_sarah",
-            model="v1.0",
-            speed=1.0,
-            unit="sentence",
-            pause_mode="auto",
-        )
+        self.fail_render = False
 
-    def inspect_book(self, source: Path) -> BookInspectionView:
-        self.calls.append(("inspect", source))
-        return self.inspection
+    def inspect_source(self, source: Path) -> BookInspectionView:
+        self.calls.append(("inspect_source", source))
+        return _inspection(source)
 
-    def find_project(self, path: Path) -> ProjectView | None:
-        self.calls.append(("find", path))
-        return self.existing
+    def load_setup(self, paths: ProjectPaths) -> AudiobookRequest:
+        self.calls.append(("load_setup", paths.root))
+        assert self.saved is not None
+        return self.saved
 
-    def open_project(self, project: ProjectView) -> ProjectView:
-        self.calls.append(("open", project.path))
-        return project
+    def save_setup(self, paths: ProjectPaths, request: AudiobookRequest) -> None:
+        self.calls.append(("save_setup", paths.root, request))
+        paths.intent.touch()
+        paths.profile.touch()
+        self.saved = request
 
-    def create_project(
-        self,
-        inspection: BookInspectionView,
-        path: Path,
-        chapter_numbers: tuple[int, ...],
-    ) -> ProjectView:
-        self.calls.append(("create", path, chapter_numbers))
-        chapters = tuple(
-            chapter
-            for chapter in inspection.chapters
-            if chapter.number in chapter_numbers
-        )
-        return _project(path, chapters)
+    def request_from_intent(
+        self, paths: ProjectPaths, request: AudiobookRequest
+    ) -> object:
+        self.calls.append(("request_from_intent", paths.root, request))
+        return (paths, request)
 
-    def resolve_synthesis(
-        self,
-        project: ProjectView,
-        request: AudiobookRequest,
-        *,
-        use_saved_settings: bool,
-    ) -> SynthesisView:
-        self.calls.append(("resolve", project.path, use_saved_settings))
-        return self.synthesis
-
-    def save_synthesis_setup(
-        self, project: ProjectView, request: AudiobookRequest, synthesis: SynthesisView
-    ) -> AudiobookRequest:
-        self.calls.append(("save", project.path))
-        return request
-
-    def load_setup(self, project: ProjectView, request: AudiobookRequest):
-        self.calls.append(("load_setup", project.path))
-        return (
-            AudiobookRequest(source=request.source, engine="kokoro", language="en-us"),
-            SetupOrigins(project=frozenset({"engine", "language"})),
-            True,
+    def inspect(self, request: object) -> WorkflowPlanView:
+        self.calls.append(("preflight", request))
+        paths, selected = request  # type: ignore[misc]
+        return WorkflowPlanView(
+            source=selected.source,
+            workspace=paths.bundle,
+            workspace_mode="bundle",
+            output=selected.output,
+            steps=(),
         )
 
-    def build(
-        self, project: ProjectView, request: AudiobookRequest
-    ) -> OperationResultView:
-        self.calls.append(("build", project.path))
-        return OperationResultView("build", project)
-
-    def preview(
-        self, project: ProjectView, request: AudiobookRequest, selection: str
-    ) -> PreviewView:
-        self.calls.append(("preview", project.path, selection))
-        return PreviewView(project, items=3, frames=100, sample_rate=24000)
-
-    def status(self, project: ProjectView | Path) -> ProjectStatusView:
-        self.calls.append(("status", project))
-        resolved = project if isinstance(project, ProjectView) else _project(project)
-        return ProjectStatusView(resolved, "ready")
-
-    def plan(self, project: ProjectView | Path) -> ProjectPlanView:
-        self.calls.append(("plan", project))
-        resolved = project if isinstance(project, ProjectView) else _project(project)
-        return ProjectPlanView(resolved)
-
-    def catalog_choices(self, kind: str, query) -> tuple[CatalogItemView, ...]:
-        self.calls.append(("catalog", kind, query))
-        return (CatalogItemView("kokoro", "Kokoro", engine="kokoro"),)
+    def render(self, request: object, *, on_progress=None) -> ConversionResultView:
+        self.calls.append(("render", request, on_progress))
+        if self.fail_render:
+            self.fail_render = False
+            raise RuntimeError("temporary renderer failure")
+        paths, selected = request  # type: ignore[misc]
+        assert selected.output is not None
+        return ConversionResultView(
+            output=selected.output,
+            workspace=paths.bundle,
+            workspace_mode="bundle",
+            executed_stages=("render",),
+            reused_stages=(),
+        )
 
 
-def test_prepare_new_project_applies_selected_chapter_scope() -> None:
+def test_prepare_setup_uses_source_defaults_and_ttsforge_paths(tmp_path: Path) -> None:
     backend = _FakeBackend()
     service = AudiobookApplicationService(backend)
-    request = AudiobookRequest(source=Path("book.epub"))
+    source = tmp_path / "book.epub"
 
-    preparation = service.prepare_project(request, chapter_selection="1,3")
+    preparation = service.prepare_setup(
+        AudiobookRequest(source=source), InputOverrides()
+    )
 
-    assert preparation.created
-    assert preparation.selected_chapters == (1, 3)
-    assert ("create", Path("book.ssmdbook"), (1, 3)) in backend.calls
-
-
-def test_prepare_reuses_project_and_rejects_a_scope_change() -> None:
-    existing = _project(Path("book.readio"), (_chapters()[0], _chapters()[2]))
-    backend = _FakeBackend(existing)
-    service = AudiobookApplicationService(backend)
-    request = AudiobookRequest(source=Path("book.epub"))
-
-    preparation = service.prepare_project(request)
-    assert preparation.project is existing
-    assert not preparation.created
-    assert preparation.selected_chapters == (1, 3)
-
-    with pytest.raises(
-        ProjectScopeConflictError, match="Existing project uses chapters"
-    ):
-        service.prepare_project(request, chapter_selection="1-2")
+    assert preparation.paths.root == tmp_path / "book.ttsforge"
+    assert preparation.paths.intent.name == "render.readio.toml"
+    assert preparation.paths.profile.name == "narrator.renderprofile.toml"
+    assert preparation.paths.bundle.name == "book.ssmd-bundle"
+    assert preparation.request.chapters == "all"
+    assert preparation.request.output == tmp_path / "book.m4b"
+    assert preparation.request.language == "en-US"
+    assert preparation.request.title == "A title"
+    assert preparation.origins.needs_input("engine")
+    assert not preparation.origins.needs_input("language")
 
 
-def test_fresh_project_uses_a_separate_nonexisting_path(tmp_path: Path) -> None:
-    current = tmp_path / "book.readio"
-    current.touch()
-    first_fresh = tmp_path / "book.fresh.readio"
-    first_fresh.touch()
+def test_saved_setup_precedence_and_dependent_choice_invalidation(
+    tmp_path: Path,
+) -> None:
     backend = _FakeBackend()
     service = AudiobookApplicationService(backend)
+    source = tmp_path / "book.epub"
+    project = tmp_path / "custom.ttsforge"
+    paths = ProjectPaths.for_root(project)
+    paths.root.mkdir()
+    paths.intent.touch()
+    paths.profile.touch()
+    backend.saved = _saved_request(source)
+    explicit_output = tmp_path / "explicit.m4b"
     request = AudiobookRequest(
-        source=tmp_path / "book.epub", project=current, fresh=True
+        source=source,
+        project=project,
+        engine="engine-b",
+        output=explicit_output,
     )
 
-    preparation = service.prepare_project(request)
-
-    assert preparation.created
-    assert preparation.project.path == tmp_path / "book.fresh-2.readio"
-    assert not any(call[0] == "find" for call in backend.calls)
-
-
-def test_setup_is_resolved_before_persistence_and_persisted_before_build() -> None:
-    backend = _FakeBackend()
-    service = AudiobookApplicationService(backend)
-    request = AudiobookRequest(source=Path("book.epub"))
-    preparation = service.prepare_project(request)
-
-    resolved = service.resolve_and_save_setup(preparation, request)
-    preflight = service.preflight(resolved)
-
-    assert preflight.settings_saved
-    assert preflight.title == "A title"
-    assert preflight.author == "One, Two"
-    assert [call[0] for call in backend.calls[-2:]] == ["resolve", "save"]
-
-    service.build(resolved)
-    assert [call[0] for call in backend.calls[-3:]] == ["resolve", "save", "build"]
-
-
-def test_cancel_after_setup_persistence_does_not_build() -> None:
-    backend = _FakeBackend()
-    service = AudiobookApplicationService(backend)
-    request = AudiobookRequest(source=Path("book.epub"))
-    preparation = service.prepare_project(request)
-    service.resolve_and_save_setup(preparation, request)
-
-    assert "save" in [call[0] for call in backend.calls]
-    assert "build" not in [call[0] for call in backend.calls]
-
-
-def test_preview_status_plan_and_catalog_delegate_through_backend() -> None:
-    backend = _FakeBackend()
-    service = AudiobookApplicationService(backend)
-    request = AudiobookRequest(source=Path("book.epub"))
-    preparation = service.prepare_project(request)
-
-    preview = service.preview(preparation, request, selection="first:2")
-    status = service.status(preparation.project)
-    plan = service.plan(preparation.project)
-    catalog = service.catalog_choices("engines", {"language": "en-us"})
-
-    assert preview.items == 3
-    assert status.status == "ready"
-    assert plan.project == preparation.project
-    assert catalog[0].id == "kokoro"
-    assert ("preview", preparation.project.path, "first:2") in backend.calls
-
-
-def test_saved_setup_merge_keeps_explicit_choices_and_tracks_origins() -> None:
-    backend = _FakeBackend()
-    service = AudiobookApplicationService(backend)
-    request = AudiobookRequest(source=Path("book.epub"), language="de")
-
-    merged = service.merge_saved_settings(
-        _project(Path("book.readio")),
+    preparation = service.prepare_setup(
         request,
-        InputOverrides(fields=frozenset({"language"})),
-        created=False,
-        interactive=True,
+        InputOverrides(frozenset({"engine", "output"})),
     )
 
-    assert merged.request.language == "de"
-    assert merged.request.engine is None
-    assert merged.origins.project == frozenset({"engine", "language"})
-    assert merged.has_saved_synthesis
-    assert merged.settings_source == "project+cli"
-    assert backend.calls[0][0] == "load_setup"
+    assert preparation.reused
+    assert preparation.request.engine == "engine-b"
+    assert preparation.request.language == "de-DE"
+    assert preparation.request.output == explicit_output
+    assert preparation.request.chapters == "2-4"
+    assert preparation.request.target is None
+    assert preparation.request.voice is None
+    assert preparation.request.engine_options == {}
+    assert preparation.request.speed is None
+    assert not preparation.origins.needs_input("chapters")
+    assert preparation.origins.needs_input("target")
+
+
+def test_setup_is_persisted_before_preflight_and_render(tmp_path: Path) -> None:
+    backend = _FakeBackend()
+    service = AudiobookApplicationService(backend)
+    source = tmp_path / "book.epub"
+    request = AudiobookRequest(
+        source=source,
+        language="en-US",
+        engine="engine-a",
+        target="target-a",
+    )
+    preparation = service.prepare_setup(request, InputOverrides())
+
+    resolved = service.save_setup(preparation)
+    preflight = service.preflight(resolved)
+    result = service.render(resolved)
+
+    assert preflight.workflow.source == source
+    assert preflight.workflow.workspace == preparation.paths.bundle
+    assert result.output == tmp_path / "book.m4b"
+    assert [call[0] for call in backend.calls[-4:]] == [
+        "save_setup",
+        "request_from_intent",
+        "preflight",
+        "render",
+    ]
+
+
+def test_status_inspects_saved_state_without_rewriting_it(tmp_path: Path) -> None:
+    backend = _FakeBackend()
+    service = AudiobookApplicationService(backend)
+    source = tmp_path / "book.epub"
+    paths = ProjectPaths.for_root(tmp_path / "book.ttsforge")
+    paths.root.mkdir()
+    paths.intent.touch()
+    paths.profile.touch()
+    backend.saved = _saved_request(source)
+
+    status = service.status(paths)
+
+    assert status.source == source
+    assert [call[0] for call in backend.calls] == [
+        "load_setup",
+        "request_from_intent",
+        "preflight",
+    ]
+
+
+def test_fresh_setup_uses_a_separate_project_directory(tmp_path: Path) -> None:
+    old_root = tmp_path / "book.ttsforge"
+    old_root.mkdir()
+    (old_root / "user-data.txt").write_text("keep", encoding="utf-8")
+    service = AudiobookApplicationService(_FakeBackend())
+
+    preparation = service.prepare_setup(
+        AudiobookRequest(source=tmp_path / "book.epub", fresh=True),
+        InputOverrides(),
+    )
+
+    assert preparation.paths.root == tmp_path / "book.fresh.ttsforge"
+    assert (old_root / "user-data.txt").read_text(encoding="utf-8") == "keep"
+
+
+def test_legacy_workspace_is_rejected_without_mutation(tmp_path: Path) -> None:
+    legacy = tmp_path / "book.ssmdbook"
+    legacy.mkdir()
+    marker = legacy / "project.toml"
+    marker.write_text("legacy", encoding="utf-8")
+    backend = _FakeBackend()
+    service = AudiobookApplicationService(backend)
+
+    with pytest.raises(LegacyWorkspaceError, match="TTSForge/Readio 0.4 project"):
+        service.prepare_setup(
+            AudiobookRequest(source=tmp_path / "book.epub", project=legacy),
+            InputOverrides(),
+        )
+
+    assert marker.read_text(encoding="utf-8") == "legacy"
+    assert backend.calls == []
+
+    with pytest.raises(LegacyWorkspaceError, match="TTSForge/Readio 0.4 project"):
+        service.status(ProjectPaths.for_root(legacy))
+    assert marker.read_text(encoding="utf-8") == "legacy"
+    assert backend.calls == []
+
+
+def test_partial_saved_setup_is_rejected(tmp_path: Path) -> None:
+    paths = ProjectPaths.for_root(tmp_path / "book.ttsforge")
+    paths.root.mkdir()
+    paths.intent.touch()
+    service = AudiobookApplicationService(_FakeBackend())
+
+    with pytest.raises(OperationConflictError, match="intent and profile"):
+        service.prepare_setup(
+            AudiobookRequest(source=tmp_path / "book.epub"), InputOverrides()
+        )
+
+
+def test_failed_render_keeps_saved_setup_for_retry(tmp_path: Path) -> None:
+    backend = _FakeBackend()
+    backend.fail_render = True
+    service = AudiobookApplicationService(backend)
+    source = tmp_path / "book.epub"
+    original = AudiobookRequest(
+        source=source,
+        language="en-US",
+        engine="engine-a",
+        target="target-a",
+    )
+    preparation = service.prepare_setup(original, InputOverrides())
+    resolved = service.save_setup(preparation)
+
+    with pytest.raises(RuntimeError, match="temporary renderer failure"):
+        service.render(resolved)
+
+    assert preparation.paths.intent.is_file()
+    assert preparation.paths.profile.is_file()
+    retry = service.prepare_setup(AudiobookRequest(source=source), InputOverrides())
+
+    assert retry.reused
+    assert retry.request.language == "en-US"
+    assert retry.request.engine == "engine-a"
+    assert retry.request.target == "target-a"
+    assert not retry.origins.needs_input("engine")
+    assert not retry.origins.needs_input("target")
+    result = service.render(service.save_setup(retry))
+
+    assert result.output == tmp_path / "book.m4b"
+
+
+def test_saved_default_voice_is_not_prompted_again(tmp_path: Path) -> None:
+    backend = _FakeBackend()
+    service = AudiobookApplicationService(backend)
+    source = tmp_path / "book.epub"
+    paths = ProjectPaths.for_root(tmp_path / "book.ttsforge")
+    paths.root.mkdir()
+    paths.intent.touch()
+    paths.profile.touch()
+    backend.saved = replace(_saved_request(source), voice=None)
+
+    preparation = service.prepare_setup(
+        AudiobookRequest(source=source), InputOverrides()
+    )
+
+    assert preparation.request.voice is None
+    assert "voice" in preparation.origins.project
+    assert not preparation.origins.needs_input("voice")
+
+
+def test_non_m4b_output_is_rejected_before_project_persistence(
+    tmp_path: Path,
+) -> None:
+    backend = _FakeBackend()
+    service = AudiobookApplicationService(backend)
+    source = tmp_path / "book.epub"
+    preparation = service.prepare_setup(
+        AudiobookRequest(
+            source=source,
+            language="en-US",
+            engine="engine-a",
+            target="target-a",
+            output=tmp_path / "book.mp3",
+        ),
+        InputOverrides(),
+    )
+
+    with pytest.raises(InputValidationError, match=".m4b extension"):
+        service.save_setup(preparation)
+
+    assert not preparation.paths.root.exists()
+    assert not any(call[0] == "save_setup" for call in backend.calls)

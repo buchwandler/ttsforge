@@ -5,111 +5,91 @@
 
 # TTSForge
 
-**TTSForge is an audiobook-focused command-line frontend for
-[Readio](https://github.com/buchwandler/readio).** It gives EPUB audiobook workflows a
-concise CLI; Readio owns the persistent project, speech planning, synthesis,
-composition, progress, and export.
+**TTSForge is an audiobook-oriented command-line frontend for Readio.** It turns EPUBs
+into M4B audiobooks while Readio owns workflow planning, synthesis, composition,
+progress, and export.
 
-TTSForge does not implement or bundle a parallel speech engine. Use Readio's public
-application API and its engine integrations; TTSForge maps audiobook choices to those
-services.
-
-TTSForge requires Readio `>=0.4.0,<0.5`, which provides the public audiobook API,
-expanded synthesis-resolution contract, and persisted project settings used by guided
-setup. Install TTSForge normally, then add a Readio engine integration as needed; see
-[Installation](docs/installation.md) for setup and development instructions.
+TTSForge requires `readio>=0.6.1,<0.7`. Its base dependencies are provider-neutral.
+Install and configure a Readio engine integration separately when you want to synthesize
+speech; use Readio's installation documentation for the integrations supported by your
+platform.
 
 ## What it does
 
-- Inspect EPUB metadata and chapter structure.
-- Create or reuse a persistent Readio project for an audiobook.
-- Select chapters, preview speech, plan a project, and check authoritative project
-  status.
-- Export M4B audiobooks or formats supported by Readio's generic export service.
-- Discover voices, models, engines, and formats through Readio.
-- Use Readio's configuration and SSMD authoring/checking services.
+- Inspect EPUB metadata and chapters without creating a project.
+- Guide audiobook setup and persist it for retries.
+- Render and export an M4B through Readio's public workflow API.
+- Inspect workflow status and discover Readio engines, targets, and voices.
+- Keep existing TTSForge/Readio 0.4 project data untouched instead of attempting an
+  automatic migration.
 
 ## Quick start
 
-Install TTSForge and a Readio engine integration using the Readio extra for your
-platform; see [Installation](docs/installation.md) for details. Then run:
+Install TTSForge, then inspect and convert a book:
 
 ```bash
+python -m pip install ttsforge
+ttsforge list novel.epub
 ttsforge convert novel.epub
 ```
 
-In an interactive terminal, a new project shows the detected chapters and prompts for a
-selection, then guides you through synthesis settings not supplied by CLI or already
-saved in the project. Readio's model and voice choices appear only when a choice is
-needed. The resolved setup is saved to the Readio project before confirmation or build.
-Later runs reuse those values, so a failed build can be retried without repeating setup
-prompts. Use `--reconfigure` to review saved choices with their current values as
-defaults; explicit CLI options pin and update their corresponding settings. Build
-progress updates live by chapter.
+In an interactive terminal, conversion guides you through missing chapter and voice
+setup, shows a read-only preflight, then asks before rendering. Setup is saved before
+rendering, so a failed attempt can be retried with the saved choices.
 
-For automation, specify `--chapters` and any synthesis options that should override the
-project. `--yes` skips only final confirmation; `--non-interactive` and `--json` never
-prompt and reuse saved setup when available. Without an explicit chapter selection,
-non-interactive runs include all chapters for a new project. Useful follow-up commands:
+For automation, specify the chapter selection and any setup values you want to pin:
 
 ```bash
-ttsforge list novel.epub
-ttsforge convert novel.epub --chapters 5-17 --fresh
-ttsforge status novel.ssmdbook
-ttsforge preview novel.epub
-ttsforge voices --language en-us
-ttsforge doctor
+ttsforge convert novel.epub --chapters 1-5 --engine ENGINE --target TARGET --voice VOICE --non-interactive
 ```
 
-By default, the project is `novel.ssmdbook` beside `novel.epub`; the default output is
-`novel.m4b`. Re-running the command reuses that Readio project's chapter scope and saved
-synthesis/export settings. See [Projects and outputs](docs/projects.md) for reuse, fresh
-projects, and legacy workspaces.
+`--json` is also prompt-free. See [Quick start](docs/quickstart.md) and the
+[CLI reference](docs/cli.md) for details.
 
-## Readio engines and configuration
+## Projects and output
 
-Engine availability and voices depend on Readio's installed optional engine integrations
-and local configuration. Discover the active catalog and diagnose the environment with:
+For `novel.epub`, the default project is `novel.ttsforge/` beside the source, and the
+default output is `novel.m4b`. The project contains Readio's saved render intent and
+narrator profile plus the persistent `book.ssmd-bundle/` workspace. Use `--project` to
+choose another location or `--fresh` to start in a separate project directory. See
+[Projects and outputs](docs/projects.md).
+
+Output replacement and stage rebuild are separate explicit controls: use
+`--replace-output` to authorize replacing an existing M4B, and `--rebuild-from STAGE` to
+ask Readio to rebuild from a selected workflow stage.
+
+## Discover engines and voices
 
 ```bash
 ttsforge engines
-ttsforge models
-ttsforge voices --engine kokoro
-ttsforge formats
-ttsforge doctor
+ttsforge targets --engine ENGINE --language en-us
+ttsforge voices --engine ENGINE --target TARGET --language en-us
 ```
 
-TTSForge reads and updates Readio configuration rather than keeping a separate TTSForge
-backend configuration:
+Catalog contents and runtime availability depend on installed Readio integrations and
+local configuration.
 
-```bash
-ttsforge config show
-ttsforge config set reader.voice af_heart
-ttsforge config set reader.speed 1.1
-```
+## Migration from TTSForge 0.4
 
-## Migration notes
+TTSForge 0.5 uses Readio's 0.6.1 workflow-gateway API and a new `.ttsforge/` project
+layout. Existing TTSForge or Readio 0.4 workspaces cannot be resumed by this version.
+They are rejected without automatic migration or mutation. Keep them as-is and start a
+separate project with `--fresh` or an explicit new `--project` path. See the
+[migration guide](docs/migration-readio.md).
 
-This is a breaking change from the former TTSForge-owned Kokoro conversion pipeline. Old
-renderer workspaces are not Readio projects and cannot be resumed by this frontend. They
-are left untouched; use `--fresh` or an explicit new `--project` path to start
-separately. Backend-specific commands such as `read`, `sample`, `demo`, `download`, and
-`phonemes` are no longer part of TTSForge. See the
-[migration guide](docs/migration-readio.md) before switching an existing setup.
+The former backend-specific commands and configuration interface are not part of the
+audiobook CLI. TTSForge's supported interface is the command line; Python integrations
+should use Readio's public `readio.api` directly. See the
+[API boundary](docs/api/index.md).
 
 ## Documentation
 
 - [Installation](docs/installation.md)
 - [Quick start](docs/quickstart.md)
 - [CLI reference](docs/cli.md)
-- [Project and output lifecycle](docs/projects.md)
-- [Readio configuration](docs/configuration.md)
-- [Voices and discovery](docs/voices.md)
-- [SSMD tools](docs/ssmd.md)
+- [Project lifecycle](docs/projects.md)
+- [Saved setup](docs/configuration.md)
+- [Engine and voice discovery](docs/voices.md)
 - [Migration guide](docs/migration-readio.md)
 - [Python API boundary](docs/api/index.md)
-- [Command-line examples](examples/README.md)
-
-Implementation details and the public service contracts are documented in
-[Readio's API guide](https://github.com/buchwandler/readio/blob/main/docs/api.md) and
-[project guide](https://github.com/buchwandler/readio/blob/main/docs/projects.md).
+- [Examples](examples/README.md)

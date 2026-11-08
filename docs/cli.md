@@ -1,203 +1,97 @@
 # CLI reference
 
-TTSForge exposes a focused audiobook workflow over Readio's public services. Run
-`ttsforge --help` or `ttsforge COMMAND --help` for help from the installed build. Use
-`--json` on supported commands for machine-readable results and `--debug` for a
-traceback after an error.
+TTSForge exposes a focused audiobook workflow over Readio's public API. Run
+`ttsforge --help` or `ttsforge COMMAND --help` for the installed build. `--json` selects
+structured output on supported commands, and `--debug` includes a traceback after an
+error.
 
 ## `convert`
 
-Inspect an EPUB, create or reuse its Readio project, and build/export an audiobook:
+Inspect an EPUB, create or reuse its TTSForge project, inspect the workflow, then
+render/export an M4B:
 
 ```bash
 ttsforge convert novel.epub
 ```
 
-| Option                                 | Meaning                                                                           |
-| -------------------------------------- | --------------------------------------------------------------------------------- |
-| `-o, --output PATH`                    | Output file path; defaults to the source stem and selected format.                |
-| `-f, --format FORMAT`                  | Output format; default `m4b`. Use `ttsforge formats` for available formats.       |
-| `--project PATH`                       | Project directory; default is `<source-stem>.ssmdbook` beside the EPUB.           |
-| `--chapters SELECTION`                 | Chapter scope for a new project, such as `1-5`, `1,3,5`, or `all`.                |
-| `--interactive-chapters`               | Deprecated compatibility flag; interactive terminals now prompt automatically.    |
-| `--voice VOICE`                        | Engine voice ID/reference supported by Readio.                                    |
-| `--language LANG`                      | Synthesis language/profile override.                                              |
-| `--engine ENGINE`                      | Readio synthesis engine.                                                          |
-| `--model MODEL`                        | Model selector forwarded to Readio.                                               |
-| `--model-source SOURCE`                | Model-source selector forwarded to Readio.                                        |
-| `--quality QUALITY`                    | Quality value forwarded to Readio.                                                |
-| `--speed FLOAT`                        | Synthesis speed from `0.5` to `2.0`; Pocket currently supports `1.0`.             |
-| `--spacy POLICY`                       | Readio spaCy policy for text processing.                                          |
-| `--short-sentence POLICY`              | Readio short-sentence handling policy.                                            |
-| `--lexicon SELECTOR`                   | Select a lexicon; repeatable for multiple selectors.                              |
-| `--no-lexicons`                        | Disable lexicons; mutually exclusive with `--lexicon` and `--auto-lexicons`.      |
-| `--auto-lexicons`                      | Let Readio select lexicons; mutually exclusive with explicit/disabled modes.      |
-| `--g2p-fallback POLICY`                | Readio grapheme-to-phoneme fallback policy.                                       |
-| `--lexicon-data-policy POLICY`         | Readio lexicon data selection policy.                                             |
-| `--allow-experimental`                 | Permit experimental catalog choices where Readio supports them.                   |
-| `--voice-level MODE`                   | Voice-level calibration, when supported by the selected engine.                   |
-| `--pause-mode MODE`                    | Readio pause-handling policy.                                                     |
-| `--unit UNIT`, `--synthesis-unit UNIT` | Choose sentence or paragraph synthesis units.                                     |
-| `--bitrate VALUE`                      | Export bitrate where the selected format supports it.                             |
-| `--target-lufs FLOAT`                  | Composition loudness target.                                                      |
-| `--offline` / `--refresh`              | Control Readio's offline/resource-refresh behavior for this request.              |
-| `--title TEXT`, `--author TEXT`        | Audiobook metadata overrides.                                                     |
-| `--cover PATH`                         | Explicit cover image for audiobook export.                                        |
-| `--force`                              | Ask Readio to replace an existing output it owns.                                 |
-| `--fresh`                              | Create a separate project and preserve the existing one.                          |
-| `-y, --yes`                            | Skip final confirmation; does not disable chapter or synthesis setup prompts.     |
-| `--non-interactive`                    | Disable prompts; use saved setup and Readio defaults.                             |
-| `--reconfigure`                        | Revisit unpinned saved synthesis choices, using their current values as defaults. |
-| `--json`                               | Emit one JSON result, including saved-setup provenance; no prompts or progress.   |
+| Option                          | Meaning                                                                                           |
+| ------------------------------- | ------------------------------------------------------------------------------------------------- |
+| `--project PATH`                | Project directory. Defaults to `<source-stem>.ttsforge` beside the EPUB.                          |
+| `--chapters SELECTOR`           | Chapter selection for the book workflow, for example `1-5`, `1,3,5`, or `all`.                    |
+| `-o, --output PATH`             | M4B output path; defaults to `<source-stem>.m4b`.                                                 |
+| `--language LANG`               | Language used for the audiobook setup.                                                            |
+| `--engine ENGINE`               | Readio synthesis engine.                                                                          |
+| `--target TARGET`               | Runnable target exposed by the selected engine.                                                   |
+| `--voice VOICE`                 | Voice selector supported by the selected target.                                                  |
+| `--engine-option KEY=VALUE`     | Engine-specific option; repeatable. Use options exposed by Readio for that engine and target.     |
+| `--speed FLOAT`                 | Speech speed in the range shown by help; the selected engine may impose stricter support.         |
+| `--bitrate VALUE`               | M4B export bitrate.                                                                               |
+| `--target-lufs FLOAT`           | Composition loudness target.                                                                      |
+| `--title TEXT`, `--author TEXT` | Audiobook metadata overrides.                                                                     |
+| `--cover PATH`                  | Cover image for the audiobook.                                                                    |
+| `--offline` / `--refresh`       | Control Readio discovery/resource behavior for this request.                                      |
+| `--rebuild-from STAGE`          | Ask Readio to rebuild from `convert`, `compile`, `render_plan`, `render`, `compose`, or `export`. |
+| `--replace-output`              | Explicitly authorize replacing an existing M4B output.                                            |
+| `--fresh`                       | Use a separate new TTSForge project directory. Does not replace output or force a rebuild.        |
+| `-y, --yes`                     | Skip final confirmation only.                                                                     |
+| `--non-interactive`             | Disable prompts and use saved setup and Readio defaults.                                          |
+| `--json`                        | Emit structured output without prompts or progress prose.                                         |
+| `--debug`                       | Show a traceback after an error.                                                                  |
 
-## Conversion interaction and progress
+TTSForge saves the resolved render intent and narrator profile before rendering. A
+failed render can be retried with the saved setup. Readio owns preflight decisions,
+stage reuse, and rendering. See [Projects and outputs](projects.md) for persistence and
+precedence.
 
-When stdin, stdout, and stderr are terminals, conversion is interactive unless `--json`
-or `--non-interactive` is selected. A new project without `--chapters` shows the
-detected chapter table and prompts for a selection. An existing project uses its saved
-chapter scope and does not prompt again.
+## `list`
 
-Before preflight, `convert` merges saved project settings with explicitly supplied CLI
-values and guides users through missing synthesis settings. Catalog discovery is allowed
-while engine, target, and voice choices are incomplete. Readio strictly resolves the
-completed synthesis target only after those selections are gathered. Project settings
-are saved through Readio's public API only after that resolution succeeds, before
-confirmation or build. A failed build can be retried without repeating setup. Readio
-remains the sole owner of persisted project state.
-
-Use `--reconfigure` to revisit unpinned setup fields with saved values as defaults.
-Explicit CLI values pin and update only their corresponding settings. Changing language,
-engine, or model causes dependent unpinned choices to be selected again; CLI-pinned
-dependents remain.
-
-Interactive catalogs provide choices for the selected engine. Kokoro uses model then
-voice; Piper uses a target-bound voice bundle, and its matching canonical voice is
-selected automatically; Pocket uses a bundle followed by a predefined named voice.
-TTSForge stores these choices in Readio's neutral `model` and `voice` request fields.
-The wizard gathers catalog selections before strict resolution of the complete synthesis
-target.
-
-Remaining questions cover supported quality and speed, spaCy and short-sentence
-policies, lexicons, G2P fallback and lexicon data, supported voice-level calibration,
-pause mode, and synthesis unit. Pocket speed defaults automatically to `1.0`. An
-explicit `--speed` value is preserved and may be rejected by Readio's final resolution.
-Readio owns catalogs, capabilities, and resolution rules; the `Audiobook Setup` table
-shows the effective values used.
-
-Interactive catalog discovery happens before strict synthesis resolution. TTSForge
-collects the required engine, target, and voice choices first, then strictly resolves
-the complete request through Readio before saving synthesis settings. If that resolution
-fails, the incomplete or invalid setup is not persisted. Piper is target-bound: choose
-its voice bundle once, and the matching canonical voice is selected automatically.
-Pocket uses bundle then predefined named voice; unpinned speed is `1.0`. An explicit
-`--speed` pin is preserved for Readio to validate.
-
-Explicit synthesis options pin and update their corresponding saved settings. `--yes`
-skips only final confirmation; it does not skip any setup questions still needed.
-`--reconfigure` reopens unpinned saved setup questions with their current values as
-defaults.
-
-For a new project in non-interactive mode, chapter selection defaults to `all` unless
-`--chapters` is explicit. Non-interactive runs reuse valid project settings and let
-Readio resolve any unspecified values without prompting; CLI options override saved
-values. JSON mode never prompts or emits progress prose on stdout; its single result
-includes `settings_source` and `settings_saved` metadata. Existing projects keep their
-persisted chapter scope. If an explicit `--chapters` value conflicts with that saved
-scope, conversion fails with guidance to use `--fresh` or another `--project` path.
-
-A TTY conversion uses a live, chapter-aware progress display. Redirected/non-interactive
-runs print milestone lines rather than every segment; JSON mode has no human-readable
-progress.
-
-Chapter selection is project scope: it is persisted when the project is first created.
-Reusing a project does not replace its saved chapter scope. Use another `--project` or
-`--fresh` for a different selection. See [Projects and outputs](projects.md).
-
-M4B is exported through Readio's audiobook service; generic formats use Readio's project
-export. TTSForge does not encode audio itself. Readio's public API determines output
-reuse and replacement safety.
-
-## Inspecting and managing projects
+List the chapters discovered in a source EPUB without creating a project:
 
 ```bash
 ttsforge list novel.epub
+```
+
+Supports `--json` and `--debug`.
+
+## `info`
+
+Show source metadata and any saved audiobook setup:
+
+```bash
 ttsforge info novel.epub
-ttsforge status novel.ssmdbook
-ttsforge plan novel.ssmdbook
+ttsforge info novel.epub --project novel.ttsforge
 ```
 
-- `list EPUB` displays chapters and character counts.
-- `info EPUB` displays EPUB metadata and chapter count.
-- `status [PROJECT]` reports Readio's stage states and next actions. The argument
-  defaults to the current directory.
-- `plan PROJECT` creates or updates speech plans through Readio.
+Supports `--project PATH`, `--json`, and `--debug`.
 
-## `preview`
+## `status`
 
-Render a small preview through the project pipeline:
+Inspect the saved workflow for a source or project directory:
 
 ```bash
-ttsforge preview novel.epub --selection first:3
+ttsforge status novel.ttsforge
 ```
 
-Options include `--project`, `--chapters`, `--selection`, `--voice`, `--language`,
-`--engine`, `--speed`, `--target-lufs`, and `--json`. The default selection is
-`first:3`. If no project exists, preview creates the default project; subsequent
-conversion reuses it. `preview` has a smaller option set and does not run the guided
-`convert` setup wizard.
+The source argument is optional; `--project PATH` can select a project explicitly.
+Supports `--json` and `--debug`.
 
-## Readio discovery
+## Discovery commands
 
 ```bash
-ttsforge voices [--engine ENGINE] [--language LANG] [--model MODEL] [--gender GENDER]
-ttsforge models [--engine ENGINE] [--language LANG] [--status STATUS]
 ttsforge engines
-ttsforge formats
-ttsforge doctor
+ttsforge targets --engine ENGINE [--language LANG] [--offline] [--refresh]
+ttsforge voices [--engine ENGINE] [--target TARGET] [--language LANG] [--offline] [--refresh]
 ```
 
-`voices` and `models` accept `--offline`, `--refresh`, and `--json`. Catalog contents
-and runtime availability depend on the installed Readio engines and local environment.
-`doctor` reports Readio version, configuration, engines, dependencies, formats, and
-paths.
-
-## `config`
-
-All configuration operations use Readio's persisted settings; TTSForge does not maintain
-a duplicate settings file:
-
-```bash
-ttsforge config path
-ttsforge config show
-ttsforge config set reader.voice af_heart
-ttsforge config init
-ttsforge config languages
-ttsforge config language en-us
-```
-
-`config set KEY VALUE` accepts one value; JSON values such as numbers, booleans, arrays,
-and objects are parsed as JSON, otherwise the value is stored as text. `--path PATH`
-selects an alternate configuration file on `show` and `set`.
-
-## `ssmd`
-
-Readio-backed SSMD commands are:
-
-```bash
-ttsforge ssmd check FILE [--roundtrip]
-ttsforge ssmd validate FILE [--roundtrip]
-ttsforge ssmd analyze FILE
-ttsforge ssmd roundtrip FILE
-ttsforge ssmd materialize FILE --bindings '{"narrator":"af_heart"}' [--output OUT]
-```
-
-`validate` additionally requires resolvable voice references. `materialize` writes
-explicit bindings to a new file by default; `--in-place` opts into updating the source
-file. These commands use Readio's SSMD authoring API; see [SSMD tools](ssmd.md).
+`engines` lists engines exposed by Readio. `targets` requires an engine and lists its
+runnable targets. `voices` lists voices available for the optional
+engine/target/language filters. Discovery results depend on the installed Readio
+integrations and local environment. All three commands support `--json` and `--debug`.
 
 ## Removed commands
 
-`read`, `sample`, `demo`, `download`, and `phonemes` belonged to the former TTSForge
-rendering backend and are no longer registered. TTSForge does not maintain compatibility
-aliases or a parallel engine implementation. See the
-[migration guide](migration-readio.md).
+The TTSForge 0.5 CLI focuses on `convert`, `list`, `info`, `status`, `engines`,
+`targets`, and `voices`. Earlier commands such as `preview`, `plan`, `config`, `models`,
+`formats`, `doctor`, and `ssmd` are not registered in this workflow. The former
+backend-specific `read`, `sample`, `demo`, `download`, and `phonemes` commands are also
+removed. See the [migration guide](migration-readio.md).

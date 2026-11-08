@@ -1,52 +1,57 @@
-"""Audiobook-focused Typer CLI backed by Readio's public application API."""
+"""Audiobook-focused CLI over Readio's public workflow gateway."""
 
 from __future__ import annotations
 
 import json
 import traceback
-from collections.abc import Callable
-from dataclasses import asdict, replace
+from collections.abc import Callable, Mapping
+from dataclasses import asdict, is_dataclass, replace
 from pathlib import Path
-from typing import Annotated, Any, TypeVar
+from typing import Annotated, Any, TypeVar, cast
 
 import typer
 from rich.console import Console
-from rich.table import Table
 
+from ..application.errors import (
+    ApplicationError,
+    InputValidationError,
+    OperationConflictError,
+    WorkflowFailureError,
+)
 from ..application.models import (
+    AudiobookRequest,
     BookInspectionView,
-    DiscoveryRequest,
+    CatalogItemView,
+    ConversionResultView,
     InputOverrides,
-    OperationResultView,
     PreflightView,
-    ProjectPreparation,
+    ProjectPaths,
+    SetupPreparation,
+    WorkflowPlanView,
 )
 from ..application.service import AudiobookApplicationService
-from ..audiobook import AudiobookConverter, ProjectSetup
-from ..options import AudiobookOptions
-from ..readio_backend import (
-    SUPPORTED_AUDIO_FORMATS,
-    SUPPORTED_AUDIOBOOK_FORMATS,
-    ReadioBackend,
-    ReadioError,
-    create_readio,
+from .interaction import resolve_interaction_mode
+from .presenters import (
+    render_catalog,
+    render_completion,
+    render_preflight,
+    render_source_info,
+    render_source_list,
+    render_workflow,
 )
-from ..synthesis_setup import SetupSources
-from .catalog import engine_item, model_item, render_catalog_list, voice_item
-from .chapters import chapter_table, choose_chapters
-from .interaction import InteractionMode, resolve_interaction_mode
-from .preflight import render_completion, render_preflight
-from .progress import (
-    LineReadioProgress,
-    LiveReadioProgress,
-    NullReadioProgress,
-    ProgressRenderer,
-    RichReadioProgress,
-)
-from .synthesis import configure_synthesis_interactively
+from .progress import LineReadioProgress, LiveReadioProgress, NullReadioProgress
+
+_output = Console(stderr=False, highlight=False, markup=False)
 
 T = TypeVar("T")
-_output = Console(stderr=False, highlight=False)
+_REBUILD_STAGES = (
+    "convert",
+    "compile",
+    "render_plan",
+    "render",
+    "compose",
+    "export",
+)
 
 
 def _version_callback(value: bool) -> None:
@@ -63,13 +68,6 @@ app = typer.Typer(
     help="A user-friendly audiobook frontend powered by Readio.",
 )
 
-config_app = typer.Typer(
-    no_args_is_help=True, help="Inspect and update Readio configuration."
-)
-ssmd_app = typer.Typer(
-    no_args_is_help=True, help="Check and author SSMD through Readio."
-)
-
 
 @app.callback()
 def root(
@@ -78,86 +76,185 @@ def root(
         typer.Option("--version", callback=_version_callback, is_eager=True),
     ] = False,
 ) -> None:
-    """Convert EPUB books using reusable Readio projects."""
+    """Convert EPUB books using persistent TTSForge projects."""
     del version
+
+
+def _service() -> tuple[Any, AudiobookApplicationService]:
+    from ..readio_backend import ReadioBackend, create_readio
+
+    backend = ReadioBackend(create_readio())
+    return backend, AudiobookApplicationService(backend)
+
+
+def _is_expected_error(error: Exception) -> bool:
+    return isinstance(error, (ApplicationError, ValueError, OSError, ImportError))
 
 
 def _run(action: Callable[[], T], *, debug: bool) -> T:
     try:
         return action()
-    except (ReadioError, ValueError, OSError) as exc:
+    except Exception as error:
+        expected: Exception = error
+        if not _is_expected_error(error):
+            from ..readio_backend import normalize_readio_error
+
+            normalized = normalize_readio_error(error)
+            if normalized is None:
+                raise
+            expected = normalized
         if debug:
-            traceback.print_exc()
+            traceback.print_exception(error)
+        elif isinstance(expected, WorkflowFailureError):
+            typer.echo(f"Error ({expected.category}): {expected}", err=True)
+            for label, value in (
+                ("Stage", expected.stage),
+                ("Package", expected.package),
+                ("Selector", expected.selector),
+                ("Code", expected.code),
+            ):
+                if value:
+                    typer.echo(f"{label}: {value}", err=True)
+            saved_setup = expected.details.get("saved_setup")
+            if isinstance(saved_setup, Mapping):
+                project = saved_setup.get("project")
+                intent = saved_setup.get("intent")
+                profile = saved_setup.get("profile")
+                if project:
+                    typer.echo(
+                        f"Saved setup remains available in {project}.",
+                        err=True,
+                    )
+                if intent:
+                    typer.echo(f"  Intent: {intent}", err=True)
+                if profile:
+                    typer.echo(f"  Profile: {profile}", err=True)
+                if expected.category == "output collision":
+                    typer.echo(
+                        "Pass --replace-output only when replacing the "
+                        "existing M4B is intentional.",
+                        err=True,
+                    )
+                else:
+                    typer.echo(
+                        "Resolve the issue, then rerun the same convert command.",
+                        err=True,
+                    )
+            if expected.details:
+                typer.echo(
+                    json.dumps(expected.details, ensure_ascii=False, default=str),
+                    err=True,
+                )
+            typer.echo("Use --debug for a traceback.", err=True)
         else:
-            typer.echo(f"Error: {exc}", err=True)
-            code = getattr(exc, "code", None)
+            typer.echo(f"Error: {expected}", err=True)
+            code = getattr(expected, "code", None)
             if code:
                 typer.echo(f"Code: {code}", err=True)
-            details = getattr(exc, "details", None)
+            details = getattr(expected, "details", None)
             if details:
                 typer.echo(
                     json.dumps(details, ensure_ascii=False, default=str),
                     err=True,
                 )
             typer.echo("Use --debug for a traceback.", err=True)
-        raise typer.Exit(code=1) from exc
+        raise typer.Exit(code=1) from error
 
 
-def _converter(
-    json_mode: bool,
-    progress: ProgressRenderer | None = None,
-) -> AudiobookConverter:
-    handler = (
-        progress if progress is not None else RichReadioProgress(json_mode=json_mode)
+def _json_dump(payload: object) -> None:
+    typer.echo(json.dumps(payload, ensure_ascii=False, indent=2, default=str))
+
+
+def _record(item: object) -> dict[str, object]:
+    if is_dataclass(item) and not isinstance(item, type):
+        return asdict(item)
+    if isinstance(item, Mapping):
+        return dict(item)
+    names = (
+        "id",
+        "selector",
+        "qualified_id",
+        "target_id",
+        "name",
+        "display_name",
+        "label",
+        "engine",
+        "language",
+        "locale",
+        "description",
     )
-    return AudiobookConverter(on_event=handler)
+    return {name: getattr(item, name) for name in names if hasattr(item, name)}
 
 
-def _workflow(
-    json_mode: bool, progress: ProgressRenderer | None = None
-) -> tuple[AudiobookConverter, AudiobookApplicationService]:
-    converter = _converter(json_mode, progress=progress)
-    service_factory = getattr(converter, "application_service", None)
-    service = (
-        service_factory()
-        if service_factory is not None
-        else AudiobookApplicationService(converter)
-    )
-    return converter, service
-
-
-def _progress_renderer(interaction: InteractionMode) -> ProgressRenderer:
-    if interaction.json:
-        return NullReadioProgress()
-    if interaction.live_progress:
-        return LiveReadioProgress()
-    return LineReadioProgress()
-
-
-def _readio() -> ReadioBackend:
-    return ReadioBackend(create_readio())
-
-
-def _validate_output_format(output_format: str) -> None:
-    supported = (*SUPPORTED_AUDIO_FORMATS, *SUPPORTED_AUDIOBOOK_FORMATS)
-    if output_format.lower() not in supported:
-        raise ValueError(
-            f"Unsupported audio format {output_format!r}; "
-            f"choose from {', '.join(supported)}."
+def _catalog_views(items: tuple[object, ...]) -> tuple[CatalogItemView, ...]:
+    views: list[CatalogItemView] = []
+    for item in items:
+        data = _record(item)
+        identifier = next(
+            (
+                data[key]
+                for key in ("id", "selector", "qualified_id", "target_id", "name")
+                if data.get(key) is not None
+            ),
+            str(item),
         )
-
-
-def _validate_lexicon_modes(
-    lexicons: list[str] | None, *, no_lexicons: bool, auto_lexicons: bool
-) -> None:
-    selected_modes = sum((bool(lexicons), no_lexicons, auto_lexicons))
-    if selected_modes > 1:
-        raise typer.BadParameter(
-            "--lexicon, --no-lexicons, and --auto-lexicons are mutually exclusive."
+        label = next(
+            (
+                data[key]
+                for key in ("label", "display_name", "name", "id")
+                if data.get(key) is not None
+            ),
+            identifier,
         )
+        known = {
+            "id",
+            "selector",
+            "qualified_id",
+            "target_id",
+            "name",
+            "display_name",
+            "label",
+            "engine",
+            "language",
+            "locale",
+        }
+        views.append(
+            CatalogItemView(
+                id=str(identifier),
+                label=str(label),
+                engine=_optional_string(data.get("engine")),
+                language=_optional_string(data.get("language", data.get("locale"))),
+                details={key: value for key, value in data.items() if key not in known},
+            )
+        )
+    return tuple(views)
 
 
-def _input_overrides(**values: object) -> InputOverrides:
+def _optional_string(value: object) -> str | None:
+    return value if isinstance(value, str) else None
+
+
+def _parse_engine_options(values: list[str] | None) -> dict[str, object]:
+    options: dict[str, object] = {}
+    for value in values or ():
+        key, separator, raw_value = value.partition("=")
+        if not separator or not key.strip():
+            raise InputValidationError(
+                f"Invalid engine option {value!r}; use KEY=VALUE."
+            )
+        key = key.strip()
+        if key in options:
+            raise InputValidationError(
+                f"Engine option {key!r} was provided more than once."
+            )
+        try:
+            options[key] = json.loads(raw_value)
+        except json.JSONDecodeError:
+            options[key] = raw_value
+    return options
+
+
+def _overrides(**values: object) -> InputOverrides:
     return InputOverrides(
         frozenset(
             name
@@ -167,368 +264,276 @@ def _input_overrides(**values: object) -> InputOverrides:
     )
 
 
-def _options(
-    source: Path,
+def _choose_catalog_value(
+    label: str,
+    items: tuple[CatalogItemView, ...],
     *,
-    project: Path | None,
-    chapters: str,
-    output: Path | None,
-    output_format: str,
-    voice: str | None,
-    language: str | None,
-    engine: str | None,
-    model: str | None = None,
-    model_source: str | None = None,
-    quality: str | None = None,
-    speed: float | None,
-    bitrate: str | None,
-    target_lufs: float | None,
-    offline: bool,
-    refresh: bool,
-    force: bool,
-    fresh: bool,
-    title: str | None = None,
-    author: str | None = None,
-    cover: Path | None = None,
-    lexicons: tuple[str, ...] | None = None,
-    no_lexicons: bool = False,
-    auto_lexicons: bool = False,
-    spacy: str | None = None,
-    short_sentence: str | None = None,
-    g2p_fallback: str | None = None,
-    lexicon_data_policy: str | None = None,
-    allow_experimental: bool = False,
-    voice_level: str | None = None,
-    pause_mode: str | None = None,
-    unit: str | None = None,
-) -> AudiobookOptions:
-    resolved_output = output or source.with_suffix(f".{output_format}")
-    return AudiobookOptions(
-        source=source,
-        project=project,
-        chapters=chapters,
-        output=resolved_output,
-        format=output_format,
+    optional: bool = False,
+) -> str | None:
+    if items:
+        render_catalog(label, items, _output)
+    identifiers = tuple(item.id for item in items)
+    if not identifiers:
+        prompt = f"{label} ID (blank for engine default)" if optional else f"{label} ID"
+        value = (
+            cast(str, typer.prompt(prompt, default=""))
+            if optional
+            else cast(str, typer.prompt(prompt))
+        )
+        return (value or None) if optional else value
+
+    default = "" if optional else (identifiers[0] if len(identifiers) == 1 else "")
+    value = cast(
+        str,
+        typer.prompt(
+            f"{label} ID (number or identifier)",
+            default=default,
+        ),
+    )
+    if not value and optional:
+        return None
+    if value.isdecimal():
+        row = int(value)
+        if 1 <= row <= len(identifiers):
+            return identifiers[row - 1]
+    if value in identifiers:
+        return value
+    raise typer.BadParameter(f"Unknown {label.lower()} selection: {value!r}.")
+
+
+def _complete_interactive_setup(
+    backend: Any,
+    preparation: SetupPreparation,
+) -> AudiobookRequest:
+    request = preparation.request
+    language = request.language
+    engine = request.engine
+    target = request.target
+    voice = request.voice
+
+    if language is None:
+        language = cast(str, typer.prompt("Language"))
+    if engine is None:
+        engine = _choose_catalog_value(
+            "Engines", _catalog_views(tuple(backend.list_engines()))
+        )
+    if engine is None:
+        raise InputValidationError("An engine must be selected.")
+    if target is None:
+        target = _choose_catalog_value(
+            "Targets",
+            _catalog_views(
+                tuple(
+                    backend.list_targets(
+                        engine=engine,
+                        language=language,
+                        offline=request.offline,
+                        refresh=request.refresh,
+                    )
+                )
+            ),
+        )
+    if target is None:
+        raise InputValidationError("A render target must be selected.")
+    if voice is None and preparation.origins.needs_input("voice"):
+        voice = _choose_catalog_value(
+            "Voices",
+            _catalog_views(
+                tuple(
+                    backend.list_voices(
+                        engine=engine,
+                        target=target,
+                        language=language,
+                        offline=request.offline,
+                        refresh=request.refresh,
+                    )
+                )
+            ),
+            optional=True,
+        )
+    return replace(
+        request,
         language=language,
-        voice=voice,
         engine=engine,
-        model=model,
-        model_source=model_source,
-        quality=quality,
-        speed=speed,
-        bitrate=bitrate,
-        target_lufs=target_lufs,
-        offline=offline,
-        refresh=refresh,
-        force=force,
-        fresh=fresh,
-        title=title,
-        author=author,
-        cover=cover,
-        lexicons=lexicons,
-        clear_lexicons=no_lexicons,
-        auto_lexicons=auto_lexicons,
-        spacy=spacy,
-        short_sentence=short_sentence,
-        g2p_fallback=g2p_fallback,
-        lexicon_data_policy=lexicon_data_policy,
-        allow_experimental=allow_experimental,
-        voice_level=voice_level,
-        pause_mode=pause_mode,
-        unit=unit,
+        target=target,
+        voice=voice,
     )
 
 
-def _chapter_table(inspection: BookInspectionView) -> Table:
-    return chapter_table(inspection)
+def _inspection_payload(inspection: BookInspectionView) -> dict[str, object]:
+    return {
+        "source": str(inspection.source),
+        "kind": inspection.kind,
+        "title": inspection.title,
+        "author": inspection.author,
+        "language": inspection.language,
+        "chapters": [asdict(chapter) for chapter in inspection.chapters],
+    }
 
 
-def _choose_chapters(
-    inspection: BookInspectionView,
-    *,
-    book_label: str | None = None,
-) -> str:
-    return choose_chapters(inspection, _output, book_label=book_label)
-
-
-def _book_label(inspection: BookInspectionView) -> str:
-    title_value = inspection.metadata.get("title")
-    title = title_value if isinstance(title_value, str) else inspection.source.name
-    authors_value = inspection.metadata.get("authors")
-    if isinstance(authors_value, str):
-        author = authors_value
-    elif isinstance(authors_value, (tuple, list)):
-        author = ", ".join(name for name in authors_value if isinstance(name, str))
-    else:
-        author = ""
-    return f"{title} — {author}" if author else title
-
-
-def _json_dump(payload: object) -> None:
-    typer.echo(json.dumps(payload, ensure_ascii=False, indent=2, default=str))
+def _workflow_payload(plan: WorkflowPlanView) -> dict[str, object]:
+    return asdict(plan)
 
 
 @app.command()
 def convert(
     source: Annotated[Path, typer.Argument(exists=True, dir_okay=False, readable=True)],
-    output: Annotated[Path | None, typer.Option("-o", "--output")] = None,
-    output_format: Annotated[
-        str | None,
-        typer.Option("-f", "--format", help="Output format; defaults to m4b."),
-    ] = None,
     project: Annotated[Path | None, typer.Option("--project")] = None,
-    chapters: Annotated[
-        str | None,
-        typer.Option("--chapters", help="Chapter numbers/ranges, or all."),
-    ] = None,
-    interactive_chapters: Annotated[
-        bool,
-        typer.Option(
-            "--interactive-chapters",
-            help="Deprecated; interactive terminals now prompt automatically.",
-        ),
-    ] = False,
-    voice: Annotated[str | None, typer.Option("--voice")] = None,
+    chapters: Annotated[str | None, typer.Option("--chapters")] = None,
+    output: Annotated[Path | None, typer.Option("-o", "--output")] = None,
     language: Annotated[str | None, typer.Option("--language")] = None,
     engine: Annotated[str | None, typer.Option("--engine")] = None,
-    model: Annotated[str | None, typer.Option("--model")] = None,
-    model_source: Annotated[str | None, typer.Option("--model-source")] = None,
-    quality: Annotated[str | None, typer.Option("--quality")] = None,
-    speed: Annotated[float | None, typer.Option("--speed", min=0.5, max=2.0)] = None,
-    spacy: Annotated[str | None, typer.Option("--spacy")] = None,
-    short_sentence: Annotated[str | None, typer.Option("--short-sentence")] = None,
-    lexicon: Annotated[
+    target: Annotated[str | None, typer.Option("--target")] = None,
+    voice: Annotated[str | None, typer.Option("--voice")] = None,
+    engine_option: Annotated[
         list[str] | None,
-        typer.Option("--lexicon", help="Lexicon selector; repeatable."),
+        typer.Option(
+            "--engine-option",
+            help="Engine-specific KEY=VALUE option; repeatable.",
+        ),
     ] = None,
-    no_lexicons: Annotated[bool, typer.Option("--no-lexicons")] = False,
-    auto_lexicons: Annotated[bool, typer.Option("--auto-lexicons")] = False,
-    g2p_fallback: Annotated[str | None, typer.Option("--g2p-fallback")] = None,
-    lexicon_data_policy: Annotated[
-        str | None, typer.Option("--lexicon-data-policy")
-    ] = None,
-    allow_experimental: Annotated[bool, typer.Option("--allow-experimental")] = False,
-    voice_level: Annotated[str | None, typer.Option("--voice-level")] = None,
-    pause_mode: Annotated[str | None, typer.Option("--pause-mode")] = None,
-    unit: Annotated[str | None, typer.Option("--unit", "--synthesis-unit")] = None,
+    speed: Annotated[float | None, typer.Option("--speed", min=0.5, max=2.0)] = None,
     bitrate: Annotated[str | None, typer.Option("--bitrate")] = None,
     target_lufs: Annotated[float | None, typer.Option("--target-lufs")] = None,
-    offline: Annotated[bool, typer.Option("--offline")] = False,
-    refresh: Annotated[bool, typer.Option("--refresh")] = False,
-    force: Annotated[
-        bool,
-        typer.Option("--force", help="Replace owned output."),
-    ] = False,
-    fresh: Annotated[
-        bool,
-        typer.Option(
-            "--fresh",
-            help="Create a separate project; preserve existing work.",
-        ),
-    ] = False,
     title: Annotated[str | None, typer.Option("--title")] = None,
     author: Annotated[str | None, typer.Option("--author")] = None,
     cover: Annotated[
         Path | None,
-        typer.Option("--cover", exists=True, dir_okay=False),
+        typer.Option("--cover", exists=True, dir_okay=False, readable=True),
     ] = None,
-    yes: Annotated[
+    offline: Annotated[bool, typer.Option("--offline")] = False,
+    refresh: Annotated[bool, typer.Option("--refresh")] = False,
+    rebuild_from: Annotated[
+        str | None,
+        typer.Option(
+            "--rebuild-from",
+            help=(
+                "Explicitly rebuild from convert, compile, render_plan, render, "
+                "compose, or export."
+            ),
+        ),
+    ] = None,
+    replace_output: Annotated[
         bool,
-        typer.Option("-y", "--yes", help="Skip final confirmation."),
+        typer.Option(
+            "--replace-output", help="Allow replacing an existing M4B output."
+        ),
     ] = False,
-    non_interactive: Annotated[
+    fresh: Annotated[
         bool,
-        typer.Option("--non-interactive", help="Disable all prompts."),
+        typer.Option("--fresh", help="Use a separate new TTSForge project directory."),
     ] = False,
-    reconfigure: Annotated[
-        bool, typer.Option("--reconfigure", help="Edit saved project setup.")
-    ] = False,
+    yes: Annotated[bool, typer.Option("-y", "--yes")] = False,
+    non_interactive: Annotated[bool, typer.Option("--non-interactive")] = False,
     json_mode: Annotated[bool, typer.Option("--json")] = False,
     debug: Annotated[bool, typer.Option("--debug")] = False,
 ) -> None:
-    """Inspect, configure, and build an audiobook through Readio."""
-    del (
-        interactive_chapters
-    )  # Kept as a compatibility alias for automatic TTY behavior.
-    _validate_lexicon_modes(
-        lexicon, no_lexicons=no_lexicons, auto_lexicons=auto_lexicons
-    )
+    """Inspect, configure, and render an EPUB audiobook as M4B."""
+    if rebuild_from is not None and rebuild_from not in _REBUILD_STAGES:
+        choices = ", ".join(_REBUILD_STAGES)
+        raise typer.BadParameter(f"Choose --rebuild-from from: {choices}.")
     interaction = resolve_interaction_mode(
         json_mode=json_mode,
         assume_yes=yes,
         force_non_interactive=non_interactive,
     )
-    _overrides = _input_overrides(
+    options = _parse_engine_options(engine_option)
+    request = AudiobookRequest(
+        source=source,
+        project=project,
+        chapters=chapters,
+        output=output,
         language=language,
         engine=engine,
-        model=model,
-        model_source=model_source,
-        quality=quality,
+        target=target,
         voice=voice,
+        engine_options=options,
         speed=speed,
-        spacy=spacy,
-        short_sentence=short_sentence,
-        lexicons=bool(lexicon) or no_lexicons or auto_lexicons,
-        g2p_fallback=g2p_fallback,
-        lexicon_data_policy=lexicon_data_policy,
-        allow_experimental=allow_experimental,
-        voice_level=voice_level,
-        pause_mode=pause_mode,
-        unit=unit,
-        format=output_format,
-        output=output,
         bitrate=bitrate,
         target_lufs=target_lufs,
+        title=title,
+        author=author,
+        cover=cover,
         offline=offline,
+        refresh=refresh,
+        rebuild_from=rebuild_from,
+        replace_output=replace_output,
+        fresh=fresh,
+    )
+    overrides = _overrides(
+        chapters=chapters,
+        output=output,
+        language=language,
+        engine=engine,
+        target=target,
+        voice=voice,
+        engine_options=options if engine_option else None,
+        speed=speed,
+        bitrate=bitrate,
+        target_lufs=target_lufs,
         title=title,
         author=author,
         cover=cover,
     )
 
     def action() -> tuple[
-        BookInspectionView,
-        ProjectPreparation,
+        SetupPreparation,
         PreflightView,
-        OperationResultView | None,
+        ConversionResultView | None,
     ]:
-        progress = _progress_renderer(interaction)
+        backend, service = _service()
+        preparation = service.prepare_setup(
+            request,
+            overrides,
+            interactive=interaction.interactive,
+        )
+        if preparation.inspection.kind != "book":
+            raise InputValidationError(
+                "Convert requires a book source such as an EPUB."
+            )
+        selected = (
+            _complete_interactive_setup(backend, preparation)
+            if interaction.interactive
+            else preparation.request
+        )
+        resolved = service.save_setup(preparation, selected)
+        preflight = service.preflight(resolved)
+        if not interaction.json:
+            render_preflight(preflight, _output)
+        if interaction.confirm and not typer.confirm(
+            "Create this audiobook?", default=True
+        ):
+            _output.print("Cancelled. The saved setup is ready to retry.")
+            return preparation, preflight, None
+        progress = (
+            NullReadioProgress()
+            if interaction.json
+            else LiveReadioProgress()
+            if interaction.live_progress
+            else LineReadioProgress()
+        )
         try:
-            requested_format = output_format or "m4b"
-            _validate_output_format(requested_format)
-            converter, service = _workflow(interaction.json, progress=progress)
-            options = _options(
-                source,
-                project=project,
-                chapters=chapters if chapters is not None else "all",
-                output=output,
-                output_format=requested_format.lower(),
-                voice=voice,
-                language=language,
-                engine=engine,
-                model=model,
-                model_source=model_source,
-                quality=quality,
-                speed=speed,
-                lexicons=tuple(lexicon) if lexicon else None,
-                no_lexicons=no_lexicons,
-                auto_lexicons=auto_lexicons,
-                spacy=spacy,
-                short_sentence=short_sentence,
-                g2p_fallback=g2p_fallback,
-                lexicon_data_policy=lexicon_data_policy,
-                allow_experimental=allow_experimental,
-                voice_level=voice_level,
-                pause_mode=pause_mode,
-                unit=unit,
-                bitrate=bitrate,
-                target_lufs=target_lufs,
-                offline=offline,
-                refresh=refresh,
-                force=force,
-                fresh=fresh,
-                title=title,
-                author=author,
-                cover=cover,
-            )
-            if options.engine is not None:
-                options = replace(
-                    options, engine=converter.normalize_engine(options.engine)
-                )
-            inspection = service.inspect_book(source)
-            existing = service.find_project(options)
-            if existing is None and interaction.interactive and chapters is None:
-                selected = _choose_chapters(
-                    inspection, book_label=_book_label(inspection)
-                )
-                options = replace(options, chapters=selected)
-                chapter_selection = selected
-            elif existing is not None:
-                chapter_selection = chapters
-            else:
-                chapter_selection = options.chapters
-            preparation = service.prepare_project(
-                options,
-                chapter_selection=chapter_selection,
-                inspection=inspection,
-                existing_project=existing,
-                project_checked=True,
-            )
-
-            progress.set_chapters(preparation.chapters)
-            merged = service.merge_saved_settings(
-                preparation.project,
-                options,
-                _overrides,
-                created=preparation.created,
-                interactive=interaction.interactive,
-            )
-            options = merged.request
-            _validate_output_format(options.format)
-            reconfigure_active = bool(
-                reconfigure and not preparation.created and merged.has_saved_synthesis
-            )
-            if interaction.interactive:
-                options = configure_synthesis_interactively(
-                    converter=converter,
-                    project=preparation.project.path,
-                    options=options,
-                    sources=SetupSources(
-                        cli=_overrides.fields, project=merged.origins.project
-                    ),
-                    reconfigure=reconfigure_active,
-                    console=_output,
-                )
-
-            resolved = service.resolve_and_save_setup(preparation, options)
-            preflight = replace(
-                service.preflight(resolved),
-                settings_source=merged.settings_source,
-            )
-            progress.set_synthesis(resolved.synthesis)
-            if not interaction.json:
-                if preparation.created or not merged.has_saved_synthesis:
-                    message = "Audiobook setup saved"
-                elif reconfigure_active or _overrides.fields:
-                    message = "Updating saved audiobook setup"
-                else:
-                    message = "Using saved audiobook setup"
-                _output.print(message)
-                _output.print(f"Project  {preparation.project.path}")
-                render_preflight(preflight, _output)
-            if interaction.confirm and not typer.confirm(
-                "Create this audiobook?", default=True
-            ):
-                _output.print(
-                    "Cancelled before synthesis; the Readio project and "
-                    "audiobook setup were saved."
-                )
-                return inspection, preparation, preflight, None
-
-            result = service.build(resolved)
-            return inspection, preparation, preflight, result
+            result = service.render(resolved, on_progress=progress)
         finally:
             progress.close()
+        return preparation, preflight, result
 
-    _inspection, preparation, preflight, result = _run(action, debug=debug)
+    preparation, preflight, result = _run(action, debug=debug)
     if result is None:
         return
-    if interaction.json:
+    if json_mode:
         _json_dump(
             {
                 "source": str(source),
-                "project": str(preparation.project.path),
-                "created": preparation.created,
-                "selected_chapters": list(preparation.selected_chapters),
-                "settings_source": preflight.settings_source,
-                "settings_saved": preflight.settings_saved,
-                "synthesis": asdict(preflight.synthesis),
-                "output": str(result.output) if result.output else None,
-                "format": result.details.get("format", preflight.request.format),
-                "result": dict(result.details),
+                "project": str(preparation.paths.root),
+                "reused_setup": preparation.reused,
+                "request": asdict(preflight.setup.request),
+                "workflow": _workflow_payload(preflight.workflow),
+                "result": asdict(result),
             }
         )
-        return
-    render_completion(preflight, _output)
+    else:
+        render_completion(result, _output)
 
 
 @app.command("list")
@@ -537,193 +542,93 @@ def list_chapters(
     json_mode: Annotated[bool, typer.Option("--json")] = False,
     debug: Annotated[bool, typer.Option("--debug")] = False,
 ) -> None:
-    """List EPUB chapters using Readio's audiobook inspection API."""
-    inspection = _run(lambda: _converter(json_mode).inspect(source), debug=debug)
+    """List the chapters discovered in a source book."""
+    inspection = _run(lambda: _service()[1].inspect_book(source), debug=debug)
     if json_mode:
-        _json_dump(asdict(inspection))
+        _json_dump(_inspection_payload(inspection))
     else:
-        _output.print(_chapter_table(inspection))
+        render_source_list(inspection, _output)
 
 
 @app.command()
 def info(
     source: Annotated[Path, typer.Argument(exists=True, dir_okay=False, readable=True)],
+    project: Annotated[Path | None, typer.Option("--project")] = None,
     json_mode: Annotated[bool, typer.Option("--json")] = False,
     debug: Annotated[bool, typer.Option("--debug")] = False,
 ) -> None:
-    """Show EPUB metadata and chapter count from Readio inspection."""
-    inspection = _run(lambda: _converter(json_mode).inspect(source), debug=debug)
+    """Show source metadata and any saved audiobook setup."""
+
+    def action() -> tuple[
+        BookInspectionView,
+        ProjectPaths,
+        AudiobookRequest | None,
+    ]:
+        _, service = _service()
+        inspection = service.inspect_book(source)
+        paths = ProjectPaths.for_source(source, project)
+        saved = service.load_saved_setup(paths)
+        if saved is not None and saved.source.resolve() != source.resolve():
+            raise OperationConflictError(
+                f"Project {paths.root} is configured for a different source."
+            )
+        return inspection, paths, saved
+
+    inspection, paths, saved = _run(action, debug=debug)
     if json_mode:
-        _json_dump(asdict(inspection))
-        return
-    _output.print(f"Source: {inspection.source}")
-    for key, value in inspection.metadata.items():
-        _output.print(f"{key.replace('_', ' ').title()}: {value}")
-    _output.print(f"Chapters: {len(inspection.chapters)}")
-    _output.print(f"Candidate output: {source.with_suffix('.m4b')}")
+        payload = _inspection_payload(inspection)
+        payload["project"] = str(paths.root)
+        payload["saved_setup"] = None if saved is None else asdict(saved)
+        _json_dump(payload)
+    else:
+        render_source_info(inspection, paths.root, saved, _output)
 
 
 @app.command()
 def status(
-    project: Annotated[Path | None, typer.Argument()] = None,
-    json_mode: Annotated[bool, typer.Option("--json")] = False,
-    debug: Annotated[bool, typer.Option("--debug")] = False,
-) -> None:
-    """Show authoritative Readio project state and next actions."""
-    project_path = project or Path.cwd()
-    result = _run(lambda: _converter(json_mode).status(project_path), debug=debug)
-    if json_mode:
-        _json_dump(asdict(result))
-        return
-    _output.print(f"Project: {result.project.root}")
-    table = Table("Stage", "State", "Reason")
-    for stage in result.stages:
-        table.add_row(stage.stage, stage.state, stage.reason or "")
-    _output.print(table)
-    for action in result.next_actions:
-        _output.print(f"Next: {action.stage} — {action.reason}")
-
-
-@app.command()
-def preview(
-    source: Annotated[Path, typer.Argument(exists=True, dir_okay=False, readable=True)],
+    source: Annotated[Path | None, typer.Argument()] = None,
     project: Annotated[Path | None, typer.Option("--project")] = None,
-    chapters: Annotated[str, typer.Option("--chapters")] = "all",
-    selection: Annotated[str, typer.Option("--selection")] = "first:3",
-    voice: Annotated[str | None, typer.Option("--voice")] = None,
-    language: Annotated[str | None, typer.Option("--language")] = None,
-    engine: Annotated[str | None, typer.Option("--engine")] = None,
-    speed: Annotated[float | None, typer.Option("--speed", min=0.5, max=2.0)] = None,
-    target_lufs: Annotated[float | None, typer.Option("--target-lufs")] = None,
     json_mode: Annotated[bool, typer.Option("--json")] = False,
     debug: Annotated[bool, typer.Option("--debug")] = False,
 ) -> None:
-    """Render a preview through the same Readio project pipeline as conversion."""
-
-    def action() -> tuple[ProjectSetup, Any]:
-        converter = _converter(json_mode)
-        inspection = converter.inspect(source)
-        options = _options(
-            source,
-            project=project,
-            chapters=chapters,
-            output=None,
-            output_format="m4b",
-            voice=voice,
-            language=language,
-            engine=engine,
-            speed=speed,
-            bitrate=None,
-            target_lufs=target_lufs,
-            offline=False,
-            refresh=False,
-            force=False,
-            fresh=False,
-        )
-        setup = converter.create_or_open_project(options, inspection=inspection)
-        result = converter.preview(setup.project, options, selection=selection)
-        return setup, result
-
-    setup, result = _run(action, debug=debug)
-    if json_mode:
-        _json_dump({"project": str(setup.project.root), "result": asdict(result)})
+    """Inspect the saved workflow for a source or project directory."""
+    if source is None:
+        paths = ProjectPaths.for_root(project or Path.cwd())
     else:
-        _output.print(f"Preview project: {setup.project.root}")
-        _output.print(
-            f"Preview rendered {result.items} items ({result.frames} frames at "
-            f"{result.sample_rate} Hz)."
-        )
-        if result.output_path:
-            _output.print(f"Output: {result.output_path}")
+        paths = ProjectPaths.for_source(source, project)
 
+    def action() -> WorkflowPlanView:
+        service = _service()[1]
+        if source is not None:
+            saved = service.load_saved_setup(paths)
+            if saved is not None and saved.source.resolve() != source.resolve():
+                raise OperationConflictError(
+                    f"Project {paths.root} is configured for a different source."
+                )
+        return service.status(paths)
 
-@app.command()
-def plan(
-    project: Annotated[Path, typer.Argument(exists=True, file_okay=False)],
-    json_mode: Annotated[bool, typer.Option("--json")] = False,
-    debug: Annotated[bool, typer.Option("--debug")] = False,
-) -> None:
-    """Create/update speech plans in a Readio project."""
-    result = _run(lambda: _converter(json_mode).plan(project), debug=debug)
+    plan = _run(action, debug=debug)
     if json_mode:
-        _json_dump(asdict(result))
+        _json_dump(_workflow_payload(plan))
     else:
+        _output.print(f"Project: {paths.root}")
         _output.print(
-            f"Planned {len(result.scopes)} project scopes in {result.project.root}"
+            f"Workspace: {plan.workspace or 'not available'} ({plan.workspace_mode})"
         )
+        render_workflow(plan, _output)
 
 
-def _catalog_payload(listing) -> dict[str, object]:  # type: ignore[no-untyped-def]
-    return {
-        "items": [asdict(item) for item in listing.items],
-        "discovery": asdict(listing.discovery),
-    }
-
-
-@app.command()
-def voices(
-    engine: Annotated[str | None, typer.Option("--engine")] = None,
-    language: Annotated[str | None, typer.Option("--language")] = None,
-    model: Annotated[str | None, typer.Option("--model")] = None,
-    gender: Annotated[str | None, typer.Option("--gender")] = None,
-    offline: Annotated[bool, typer.Option("--offline")] = False,
-    refresh: Annotated[bool, typer.Option("--refresh")] = False,
-    json_mode: Annotated[bool, typer.Option("--json")] = False,
-    debug: Annotated[bool, typer.Option("--debug")] = False,
+def _catalog_command(
+    label: str,
+    values: tuple[object, ...],
+    *,
+    json_mode: bool,
 ) -> None:
-    """List voices from Readio's discovery catalog."""
-    result = _run(
-        lambda: _readio().voices_listing(
-            language=language,
-            model=model,
-            engine=engine,
-            gender=gender,
-            discovery=DiscoveryRequest(offline=offline, refresh=refresh),
-        ),
-        debug=debug,
-    )
+    items = _catalog_views(values)
     if json_mode:
-        _json_dump(_catalog_payload(result))
-        return
-    render_catalog_list(
-        _output,
-        title="Voices",
-        items=tuple(
-            voice_item(voice, engine=engine, model=model) for voice in result.items
-        ),
-    )
-
-
-@app.command()
-def models(
-    engine: Annotated[str | None, typer.Option("--engine")] = None,
-    language: Annotated[str | None, typer.Option("--language")] = None,
-    status: Annotated[str | None, typer.Option("--status")] = None,
-    offline: Annotated[bool, typer.Option("--offline")] = False,
-    refresh: Annotated[bool, typer.Option("--refresh")] = False,
-    json_mode: Annotated[bool, typer.Option("--json")] = False,
-    debug: Annotated[bool, typer.Option("--debug")] = False,
-) -> None:
-    """List models and synthesis targets from Readio's discovery catalog."""
-    result = _run(
-        lambda: _readio().models_listing(
-            engine=engine,
-            language=language,
-            status=status,
-            discovery=DiscoveryRequest(offline=offline, refresh=refresh),
-        ),
-        debug=debug,
-    )
-    if json_mode:
-        _json_dump(_catalog_payload(result))
-        return
-    render_catalog_list(
-        _output,
-        title="Models",
-        items=tuple(
-            model_item(model_info, engine=engine) for model_info in result.items
-        ),
-    )
+        _json_dump([asdict(item) for item in items])
+    else:
+        render_catalog(label, items, _output)
 
 
 @app.command()
@@ -731,322 +636,74 @@ def engines(
     json_mode: Annotated[bool, typer.Option("--json")] = False,
     debug: Annotated[bool, typer.Option("--debug")] = False,
 ) -> None:
-    """Show synthesis engines known to Readio."""
-    result = _run(lambda: _readio().engines(), debug=debug)
-    if json_mode:
-        _json_dump([asdict(item) for item in result])
-        return
-    render_catalog_list(
-        _output,
-        title="Engines",
-        items=tuple(engine_item(engine, show_status=True) for engine in result),
-    )
+    """List engines exposed by Readio's public discovery API."""
+    values = _run(lambda: tuple(_service()[0].list_engines()), debug=debug)
+    _catalog_command("Engines", values, json_mode=json_mode)
 
 
 @app.command()
-def formats(
+def targets(
+    engine: Annotated[str, typer.Option("--engine")],
+    language: Annotated[str | None, typer.Option("--language")] = None,
+    offline: Annotated[bool, typer.Option("--offline")] = False,
+    refresh: Annotated[bool, typer.Option("--refresh")] = False,
     json_mode: Annotated[bool, typer.Option("--json")] = False,
     debug: Annotated[bool, typer.Option("--debug")] = False,
 ) -> None:
-    """List Readio generic audio formats and audiobook export formats."""
-    result = _run(lambda: _readio().audio_formats(), debug=debug)
-    rows = [asdict(item) for item in result]
-    rows.extend(
-        {
-            "id": format_id,
-            "suffix": f".{format_id}",
-            "available": None,
-            "reason": (
-                "Audiobook-specific export; availability is checked at export time."
-            ),
-        }
-        for format_id in SUPPORTED_AUDIOBOOK_FORMATS
-        if format_id not in {item.id for item in result}
-    )
-    if json_mode:
-        _json_dump(rows)
-        return
-    table = Table("Format", "Suffix", "Available", "Details")
-    for row in rows:
-        available = row["available"]
-        table.add_row(
-            str(row["id"]),
-            str(row["suffix"]),
-            "API" if available is None else "yes" if available else "no",
-            str(row["reason"] or ""),
-        )
-    _output.print(table)
-
-
-@app.command()
-def doctor(
-    json_mode: Annotated[bool, typer.Option("--json")] = False,
-    debug: Annotated[bool, typer.Option("--debug")] = False,
-) -> None:
-    """Report Readio runtime, dependency, engine, path, and format diagnostics."""
-    report = _run(lambda: _readio().diagnostics(), debug=debug)
-    if json_mode:
-        _json_dump(asdict(report))
-        return
-    _output.print(f"Readio {report.readio_version} · Python {report.python_version}")
-    _output.print(
-        f"Config: {report.config_path} "
-        f"({'found' if report.config_exists else 'missing'})"
-    )
-    engine_table = Table("Engine", "Status", "Version", "Missing dependency")
-    for engine in report.engines:
-        engine_table.add_row(
-            engine.id,
-            engine.status,
-            engine.version or "—",
-            engine.missing_dependency or "",
-        )
-    _output.print(engine_table)
-    missing = [item.id for item in report.dependencies if not item.available]
-    if missing:
-        _output.print("Missing optional dependencies: " + ", ".join(missing))
-    unavailable = [item for item in report.audio_formats if not item.available]
-    if unavailable:
-        _output.print(
-            "Unavailable audio formats: "
-            + ", ".join(f"{item.id} ({item.reason})" for item in unavailable)
-        )
-    for path in report.paths:
-        state = "present" if path.exists else "not created"
-        _output.print(f"{path.name}: {path.path} ({state})")
-
-
-@config_app.command("path")
-def config_path(
-    json_mode: Annotated[bool, typer.Option("--json")] = False,
-    debug: Annotated[bool, typer.Option("--debug")] = False,
-) -> None:
-    """Show the active Readio configuration path."""
-    path = _run(lambda: _readio().configuration_path(), debug=debug)
-    _json_dump({"path": str(path)}) if json_mode else _output.print(str(path))
-
-
-@config_app.command("show")
-def config_show(
-    path: Annotated[Path | None, typer.Option("--path")] = None,
-    json_mode: Annotated[bool, typer.Option("--json")] = False,
-    debug: Annotated[bool, typer.Option("--debug")] = False,
-) -> None:
-    """Show persisted Readio configuration (not a TTSForge shadow config)."""
-
-    def action() -> tuple[Path, Any]:
-        api = _readio()
-        active_path = api.configuration_path() if path is None else path
-        return active_path, api.configuration_load(path)
-
-    active_path, config = _run(action, debug=debug)
-    if not json_mode:
-        _output.print(f"Readio configuration: {active_path}")
-    _json_dump({"path": str(active_path), "config": asdict(config)})
-
-
-@config_app.command("set")
-def config_set(
-    key: Annotated[str, typer.Argument()],
-    value: Annotated[str, typer.Argument()],
-    path: Annotated[Path | None, typer.Option("--path")] = None,
-    debug: Annotated[bool, typer.Option("--debug")] = False,
-) -> None:
-    """Set a persistent Readio key, e.g. reader.voice or languages.en.voice."""
-
-    def action() -> Path:
-        api = _readio()
-        try:
-            parsed: object = json.loads(value)
-        except json.JSONDecodeError:
-            parsed = value
-        api.configuration_set_value(key, parsed, path=path)
-        active_path = api.configuration_path() if path is None else path
-        return active_path
-
-    active_path = _run(action, debug=debug)
-    _output.print(f"Updated Readio setting {key!r} in {active_path}.")
-
-
-@config_app.command("init")
-def config_init(
-    overwrite: Annotated[bool, typer.Option("--overwrite")] = False,
-    json_mode: Annotated[bool, typer.Option("--json")] = False,
-    debug: Annotated[bool, typer.Option("--debug")] = False,
-) -> None:
-    """Initialize Readio's persistent configuration and standard directories."""
-    result = _run(
-        lambda: _readio().configuration_initialize(overwrite=overwrite),
-        debug=debug,
-    )
-    if json_mode:
-        _json_dump(asdict(result))
-    else:
-        _output.print(f"Initialized Readio configuration: {result.path}")
-        for directory in result.created_directories:
-            _output.print(f"Created: {directory}")
-
-
-@config_app.command("languages")
-def config_languages(
-    json_mode: Annotated[bool, typer.Option("--json")] = False,
-    debug: Annotated[bool, typer.Option("--debug")] = False,
-) -> None:
-    """List configured Readio language profiles."""
-    profiles = _run(lambda: _readio().configuration_language_profiles(), debug=debug)
-    payload = {language: asdict(settings) for language, settings in profiles.items()}
-    _json_dump(payload) if json_mode else _output.print_json(data=payload)
-
-
-@config_app.command("language")
-def config_language(
-    language: Annotated[str, typer.Argument()],
-    json_mode: Annotated[bool, typer.Option("--json")] = False,
-    debug: Annotated[bool, typer.Option("--debug")] = False,
-) -> None:
-    """Resolve the exact or base-language Readio profile for a locale."""
-    result = _run(
-        lambda: _readio().configuration_resolve_language_profile(language),
-        debug=debug,
-    )
-    _json_dump(asdict(result)) if json_mode else _output.print_json(data=asdict(result))
-
-
-def _show_ssmd_analysis(analysis: Any) -> None:
-    _output.print(f"Provider: {analysis.provider}")
-    if analysis.voice_references:
-        references = Table("Voice reference", "Uses", "Lines", "Resolved")
-        unresolved = set(analysis.unresolved_references)
-        for item in analysis.voice_references:
-            references.add_row(
-                item.reference,
-                str(item.count),
-                ", ".join(map(str, item.lines)),
-                "no" if item.reference in unresolved else "yes",
+    """List runnable targets for an engine."""
+    values = _run(
+        lambda: tuple(
+            _service()[0].list_targets(
+                engine=engine,
+                language=language,
+                offline=offline,
+                refresh=refresh,
             )
-        _output.print(references)
-    for diagnostic in analysis.diagnostics:
-        _output.print(
-            f"{diagnostic.severity}: {diagnostic.message}"
-            + (f" (line {diagnostic.line})" if diagnostic.line else "")
-        )
-
-
-def _show_ssmd_check(result, *, json_mode: bool) -> None:  # type: ignore[no-untyped-def]
-    if json_mode:
-        _json_dump(asdict(result))
-    else:
-        _output.print(f"SSMD check: {'valid' if result.ok else 'issues found'}")
-        _show_ssmd_analysis(result.analysis)
-        if result.roundtrip is not None:
-            _output.print(f"Roundtrip: {result.roundtrip.get('ok', 'completed')}")
-    if not result.ok:
-        raise typer.Exit(code=1)
-
-
-@ssmd_app.command("check")
-def ssmd_check(
-    source: Annotated[Path, typer.Argument(exists=True, dir_okay=False, readable=True)],
-    roundtrip: Annotated[bool, typer.Option("--roundtrip")] = False,
-    json_mode: Annotated[bool, typer.Option("--json")] = False,
-    debug: Annotated[bool, typer.Option("--debug")] = False,
-) -> None:
-    """Check SSMD through Readio and optionally perform a roundtrip check."""
-    result = _run(
-        lambda: _readio().ssmd_check(source, roundtrip=roundtrip),
+        ),
         debug=debug,
     )
-    _show_ssmd_check(result, json_mode=json_mode)
+    _catalog_command("Targets", values, json_mode=json_mode)
 
 
-@ssmd_app.command("validate")
-def ssmd_validate(
-    source: Annotated[Path, typer.Argument(exists=True, dir_okay=False, readable=True)],
-    roundtrip: Annotated[bool, typer.Option("--roundtrip")] = False,
+@app.command()
+def voices(
+    engine: Annotated[str | None, typer.Option("--engine")] = None,
+    target: Annotated[str | None, typer.Option("--target")] = None,
+    language: Annotated[str | None, typer.Option("--language")] = None,
+    offline: Annotated[bool, typer.Option("--offline")] = False,
+    refresh: Annotated[bool, typer.Option("--refresh")] = False,
     json_mode: Annotated[bool, typer.Option("--json")] = False,
     debug: Annotated[bool, typer.Option("--debug")] = False,
 ) -> None:
-    """Require resolvable SSMD voices and report Readio diagnostics."""
-    result = _run(
-        lambda: _readio().ssmd_validate(source, roundtrip=roundtrip),
+    """List voices available for an engine target."""
+    values = _run(
+        lambda: tuple(
+            _service()[0].list_voices(
+                engine=engine,
+                target=target,
+                language=language,
+                offline=offline,
+                refresh=refresh,
+            )
+        ),
         debug=debug,
     )
-    _show_ssmd_check(result, json_mode=json_mode)
+    _catalog_command("Voices", values, json_mode=json_mode)
 
 
-@ssmd_app.command("analyze")
-def ssmd_analyze(
-    source: Annotated[Path, typer.Argument(exists=True, dir_okay=False, readable=True)],
-    json_mode: Annotated[bool, typer.Option("--json")] = False,
-    debug: Annotated[bool, typer.Option("--debug")] = False,
-) -> None:
-    """Analyze SSMD voice references through Readio."""
-    result = _run(lambda: _readio().ssmd_analyze(source), debug=debug)
-    if json_mode:
-        _json_dump(asdict(result))
-    else:
-        _show_ssmd_analysis(result)
-        _output.print(f"Analysis: {'valid' if result.ok else 'issues found'}")
-    if not result.ok:
-        raise typer.Exit(code=1)
-
-
-@ssmd_app.command("roundtrip")
-def ssmd_roundtrip(
-    source: Annotated[Path, typer.Argument(exists=True, dir_okay=False, readable=True)],
-    json_mode: Annotated[bool, typer.Option("--json")] = False,
-    debug: Annotated[bool, typer.Option("--debug")] = False,
-) -> None:
-    """Run Readio's SSMD authoring roundtrip check."""
-    result = _run(lambda: _readio().ssmd_roundtrip_check(source), debug=debug)
-    _show_ssmd_check(result, json_mode=json_mode)
-
-
-@ssmd_app.command("materialize")
-def ssmd_materialize(
-    source: Annotated[Path, typer.Argument(exists=True, dir_okay=False, readable=True)],
-    bindings: Annotated[
-        str,
-        typer.Option("--bindings", help="JSON object of reference:voice pairs."),
-    ],
-    output: Annotated[Path | None, typer.Option("--output")] = None,
-    provider: Annotated[str | None, typer.Option("--provider")] = None,
-    in_place: Annotated[bool, typer.Option("--in-place")] = False,
-    json_mode: Annotated[bool, typer.Option("--json")] = False,
-    debug: Annotated[bool, typer.Option("--debug")] = False,
-) -> None:
-    """Materialize explicit SSMD voice bindings via Readio's authoring API."""
-
-    def action() -> Any:
-        try:
-            parsed = json.loads(bindings)
-        except json.JSONDecodeError as error:
-            raise ValueError("--bindings must be a JSON object") from error
-        if not isinstance(parsed, dict) or not all(
-            isinstance(key, str) and isinstance(value, str)
-            for key, value in parsed.items()
-        ):
-            raise ValueError("--bindings must map string references to string voices")
-        return _readio().ssmd_materialize_bindings(
-            source, parsed, provider=provider, output=output, in_place=in_place
-        )
-
-    result = _run(action, debug=debug)
-    if json_mode:
-        _json_dump(asdict(result))
-    else:
-        _output.print(
-            f"Materialized {result.binding_count} binding(s) to {result.output_path}."
-        )
-
-
-app.add_typer(config_app, name="config")
-app.add_typer(ssmd_app, name="ssmd")
+__all__ = [
+    "app",
+    "cli_main",
+    "convert",
+    "engines",
+    "info",
+    "list_chapters",
+    "status",
+    "targets",
+    "voices",
+]
 
 
 def cli_main() -> None:
     """Run the installed TTSForge command."""
     app(prog_name="ttsforge")
-
-
-__all__ = ["app", "cli_main"]

@@ -172,3 +172,5 @@
 {"data":{"affected_audit_rows":[],"detach_audit":true,"force_accepted":true,"reason":"Correct malformed git provenance ref"},"entry_id":"entry-0005","event":"entry.deleted","event_id":"event-0172","record_revisions":{"entry:0.4.1/entry-0005":2,"release:0.4.1":6},"release_version":"0.4.1","schema_version":2}
 {"data":{"entry_ids":["entry-0007"],"synced_audit_rows":1},"event":"entry.batch_added","event_id":"event-0173","record_revisions":{"commit_audit_sheet":5,"entry:0.4.1/entry-0007":1,"release:0.4.1":7},"release_version":"0.4.1","schema_version":2}
 {"data":{"released_at":"2026-09-29"},"event":"release.finalized","event_id":"event-0174","record_revisions":{"release:0.4.1":8},"release_version":"0.4.1","schema_version":2}
+{"data":{"status":"planned"},"event":"release.created","event_id":"event-0175","record_revisions":{"release:0.5.0":1},"release_version":"0.5.0","schema_version":2}
+{"data":{"kind":"changed","status":"accepted"},"entry_id":"entry-0001","event":"entry.added","event_id":"event-0176","record_revisions":{"entry:0.5.0/entry-0001":1,"release:0.5.0":2},"release_version":"0.5.0","schema_version":2}

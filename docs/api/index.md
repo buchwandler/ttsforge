@@ -1,55 +1,50 @@
 # Python API boundary
 
-The supported TTSForge interface is its command line. TTSForge is intentionally a small
-product layer over Readio rather than a second Python synthesis/project API. Its
-internal adapter modules are implementation details and may change with the Readio
-contract.
+TTSForge's supported product interface is its command line. The application adapter and
+application models are implementation details, not a second public project or synthesis
+API.
 
-For Python integrations, use Readio's public API directly. It exposes typed inspection,
-project, build, audiobook export, catalog, diagnostics, configuration, and SSMD
-services:
+Python integrations should use Readio's public `readio.api` workflow gateway. TTSForge
+requires Readio `>=0.6.1,<0.7` and uses its typed source-inspection, render-intent,
+profile, discovery, workflow-inspection, and render operations.
+
+## Inspect and render a saved intent
+
+A TTSForge project contains a Readio render intent. A direct Readio integration can load
+it, build the canonical request, inspect the proposed workflow, and render through the
+same gateway:
 
 ```python
 from pathlib import Path
 
-from readio.api import Readio
+from readio.api import Readio, load_render_intent
 
-app = Readio()
-source = Path("novel.epub")
+project = Path("novel.ttsforge")
+readio = Readio()
+intent = load_render_intent(project / "render.readio.toml")
+request = readio.request_from_intent(intent)
 
-inspection = app.audiobooks.inspect(source)
-print(inspection.metadata)
-print([chapter.title for chapter in inspection.chapters])
+plan = readio.inspect(request)
+for step in plan.steps:
+    print(step.stage, step.action, step.reason)
 
-created = app.audiobooks.create_project_result(
-    source,
-    chapters="1-5",
-    output=Path("novel.ssmdbook"),
-)
-status = app.projects.status(created.project)
-print(status.next_actions)
+result = readio.render(request)
+print(result.output)
 ```
 
-Readio `>=0.4.0,<0.5` provides this public API, including expanded synthesis resolution
-and persisted project settings. See [Installation](../installation.md) for the standard
-package install and optional source-development setup.
-
-## Audiobook export
-
-Readio keeps M4B audiobook export distinct from generic audio export. A typical API
-integration creates a project, builds composition, then calls the audiobook service.
-Request types, defaults, output ownership, and build stages are documented by Readio; do
-not duplicate those contracts in TTSForge code or assume that generic export handles
-M4B.
-
-See
-[Readio's API guide](https://github.com/buchwandler/readio/blob/main/docs/api.md#projects-and-audiobooks)
-and [project guide](https://github.com/buchwandler/readio/blob/main/docs/projects.md).
+`Readio.inspect()` is the read-only workflow preflight. `Readio.render()` executes the
+request and emits public `WorkflowEvent` progress through its callback when one is
+provided. Request options, output ownership, and workflow-stage semantics belong to
+Readio.
 
 ## TTSForge integration boundary
 
-The implementation imports only `readio.api` for Readio integration. TTSForge's
-audiobook options are translated at that boundary into Readio request types; progress
-events are presented to CLI users without taking ownership of project state. The API
-contract test verifies the public API version and required symbols used by the current
-adapter.
+Production TTSForge code imports Readio only through `readio.api`. The adapter
+translates TTSForge's audiobook choices to Readio request types and maps normalized
+workflow events and errors for CLI presentation. It does not call specialist packages
+directly or reproduce Readio's workflow-state decisions.
+
+Use the [Readio API guide](https://github.com/buchwandler/readio/blob/main/docs/api.md)
+and [project guide](https://github.com/buchwandler/readio/blob/main/docs/projects.md)
+for the complete public contract. See [Installation](../installation.md) for the
+dependency floor and development setup.

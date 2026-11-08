@@ -13,8 +13,8 @@ from ..chapter_selection import format_chapter_numbers, parse_chapter_selection
 def chapter_table(inspection: BookInspectionView) -> Table:
     table = Table("#", "Chapter", "Characters")
     for chapter in inspection.chapters:
-        title = f"{'  ' * chapter.level}{chapter.title}"
-        table.add_row(str(chapter.number), title, f"{chapter.char_count:,}")
+        count = "" if chapter.char_count is None else f"{chapter.char_count:,}"
+        table.add_row(str(chapter.number), chapter.title, count)
     return table
 
 

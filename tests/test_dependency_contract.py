@@ -19,6 +19,19 @@ BACKEND_DISTRIBUTIONS = (
     "phrasplit",
     "ssmd",
     "epub2text",
+    "ssmdconvert",
+    "utterplan",
+    "voicerender",
+    "audiocompose",
+    "audioexport",
+    "piper",
+    "pipersynth",
+    "pocketsynth",
+    "kittensynth",
+    "kitten2synth",
+    "supertonicsynth",
+    "silenciosynth",
+    "soprosynth",
     "audiosig",
     "soundfile",
 )
@@ -34,7 +47,7 @@ def test_readio_requirement_uses_the_released_preflight_api_floor() -> None:
         item for item in dependencies if item.split("[", 1)[0].startswith("readio")
     ]
 
-    assert readio == ["readio>=0.4.0,<0.5"]
+    assert readio == ["readio>=0.6.1,<0.7"]
 
 
 def test_ttsforge_does_not_declare_backend_or_rendering_dependencies() -> None:

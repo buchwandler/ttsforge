@@ -146,7 +146,7 @@ def test_cli_help_and_version_are_available_without_backend_import() -> None:
     assert "ttsforge version" in version_result.stdout
 
 
-def test_convert_help_exposes_public_synthesis_controls_not_backend_controls() -> None:
+def test_convert_help_exposes_the_audiobook_workflow_controls() -> None:
     result = _run_python(
         "-c", "from ttsforge.cli import main; main(['convert', '--help'])"
     )
@@ -154,23 +154,47 @@ def test_convert_help_exposes_public_synthesis_controls_not_backend_controls() -
     help_text = _semantic_output(result.stdout)
     for option in (
         "--chapters",
+        "--project",
+        "--language",
+        "--engine",
+        "--target",
         "--voice",
+        "--engine-option",
+        "--speed",
+        "--bitrate",
+        "--rebuild-from",
+        "--replace-output",
         "--fresh",
-        "--spacy",
-        "--short-sentence",
-        "--lexicon",
-        "--no-lexicons",
-        "--auto-lexicons",
-        "--g2p-fallback",
-        "--lexicon-data-policy",
-        "--voice-level",
-        "--pause-mode",
-        "--unit",
-        "--synthesis-unit",
-        "--allow-experimental",
     ):
         assert option in help_text
-    assert "--provider" not in help_text
+    for obsolete in (
+        "--format",
+        "--model",
+        "--model-source",
+        "--quality",
+        "--lexicon",
+        "--pause-mode",
+        "--force",
+    ):
+        assert obsolete not in help_text
+
+
+def test_cli_registers_only_the_supported_audiobook_commands() -> None:
+    result = _run_python("-c", "from ttsforge.cli import main; main(['--help'])")
+    assert result.returncode == 0, result.stderr
+    help_text = _semantic_output(result.stdout)
+    for command in (
+        "convert",
+        "list",
+        "info",
+        "status",
+        "engines",
+        "targets",
+        "voices",
+    ):
+        assert command in help_text
+    for obsolete in ("models", "plan", "config", "ssmd", "formats", "preview"):
+        assert f"{obsolete} " not in help_text
 
 
 def test_phoneme_command_is_not_registered() -> None:

@@ -10,20 +10,25 @@ except ImportError:
     __version__ = "0.0.0+unknown"
 
 _EXPORTS = {
-    "AudiobookConverter": (".audiobook", "AudiobookConverter"),
+    "AudiobookApplicationService": (
+        ".application.service",
+        "AudiobookApplicationService",
+    ),
     "AudiobookOptions": (".application.models", "AudiobookOptions"),
+    "AudiobookRequest": (".application.models", "AudiobookRequest"),
     "LegacyWorkspaceError": (".application.errors", "LegacyWorkspaceError"),
-    "ProjectSetup": (".audiobook", "ProjectSetup"),
+    "ProjectPaths": (".application.models", "ProjectPaths"),
     "RichReadioProgress": (".progress", "RichReadioProgress"),
     "parse_chapter_selection": (".chapter_selection", "parse_chapter_selection"),
     "resolve_chapter_selection": (".chapter_selection", "resolve_chapter_selection"),
 }
 
 __all__ = [
-    "AudiobookConverter",
+    "AudiobookApplicationService",
     "AudiobookOptions",
+    "AudiobookRequest",
     "LegacyWorkspaceError",
-    "ProjectSetup",
+    "ProjectPaths",
     "RichReadioProgress",
     "__version__",
     "parse_chapter_selection",

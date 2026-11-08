@@ -1,46 +1,57 @@
 # TTSForge examples
 
-These examples use the TTSForge CLI and Readio-backed workflows. There are no TTSForge
-examples that import PyKokoro or implement a renderer directly; synthesis, project
-state, and exports belong to Readio.
+These examples use the TTSForge CLI and Readio's workflow gateway. TTSForge does not
+implement a renderer directly; Readio owns persistent workflow state, synthesis,
+composition, and export.
 
-## Inspect before creating a project
+## Inspect a source before conversion
 
 ```bash
 ttsforge list novel.epub --json > chapters.json
 ttsforge info novel.epub --json > book.json
 ```
 
-## Create, inspect, and resume through a Readio project
+These commands inspect the EPUB without creating a project.
+
+## Create and inspect a project
 
 ```bash
 ttsforge convert novel.epub --chapters 1-8
-ttsforge status novel.ssmdbook --json
-ttsforge convert novel.epub --project novel.ssmdbook
+ttsforge status novel.ttsforge --json
+ttsforge convert novel.epub --project ./projects/novel
 ```
 
-The selected chapter scope is persisted in the project. Use a second project path for
-another selection rather than expecting a reused project's scope to change:
+The chapter selection and setup are saved in the project. Choose a different project
+path or use `--fresh` for a separate chapter selection:
 
 ```bash
 ttsforge convert novel.epub --chapters 9-12 \
-  --project novel-part-two.ssmdbook
+  --project ./projects/novel-part-two
 ```
 
-## Preview and export
+## Discover choices and set up conversion
 
 ```bash
-ttsforge preview novel.epub --selection first:3
-ttsforge formats --json
-ttsforge convert novel.epub --format mp3 --output novel.mp3
+ttsforge engines
+ttsforge targets --engine ENGINE --language en-us
+ttsforge voices --engine ENGINE --target TARGET --language en-us
+ttsforge convert novel.epub --engine ENGINE --target TARGET --voice VOICE
 ```
 
-The available formats depend on the installed Readio services and local encoders. M4B
-uses Readio's distinct audiobook export service.
+## Output and rebuild controls
+
+```bash
+ttsforge convert novel.epub --output ./audio/novel.m4b
+ttsforge convert novel.epub --replace-output
+ttsforge convert novel.epub --rebuild-from render
+```
+
+`--replace-output` authorizes replacing the final M4B. `--rebuild-from` asks Readio to
+rebuild from a workflow stage. M4B is the supported final audiobook format.
 
 ## Python integrations
 
-Use `readio.api` directly for typed project and export operations. TTSForge's Python
-adapter is an internal implementation boundary, not a second public synthesis API. See
-[the API guide](../docs/api/index.md) and
-[Readio's API examples](https://github.com/buchwandler/readio/blob/main/docs/api.md).
+Use `readio.api` directly for typed workflow operations. TTSForge's adapter is an
+internal implementation boundary, not a second public synthesis API. See the
+[TTSForge API guide](../docs/api/index.md) and
+[Readio API guide](https://github.com/buchwandler/readio/blob/main/docs/api.md).

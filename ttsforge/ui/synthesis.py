@@ -1,6 +1,3 @@
-"""Compatibility alias for terminal synthesis prompts."""
+"""The old synthesis terminal UI was removed in TTSForge 0.5."""
 
-import sys
-from importlib import import_module
-
-sys.modules[__name__] = import_module("ttsforge.cli.synthesis")
+__all__: tuple[str, ...] = ()

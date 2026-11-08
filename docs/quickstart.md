@@ -1,12 +1,11 @@
 # Quick start
 
-Install TTSForge with Readio `>=0.4.0,<0.5`, then install a supported Readio engine
-extra if you want to synthesize speech. See [Installation](installation.md) for platform
-and development instructions.
+Install TTSForge and a Readio engine integration if you want to render speech. TTSForge
+requires Readio `>=0.6.1,<0.7`; see [Installation](installation.md) for setup.
 
 ## Inspect and convert
 
-List the chapters Readio detects in an EPUB:
+Inspect an EPUB without creating a project:
 
 ```bash
 ttsforge list novel.epub
@@ -19,121 +18,83 @@ Create or reuse its audiobook project and export the default M4B:
 ttsforge convert novel.epub
 ```
 
-The default project is `novel.ssmdbook` beside the source EPUB, and the default output
-is `novel.m4b`. Re-running the command uses the existing project's saved chapter scope
-and reusable work. In an interactive terminal, TTSForge then guides you through
-synthesis choices and displays the resolved Readio settings before confirmation.
+The default project is `novel.ttsforge/` beside the EPUB, and the default output is
+`novel.m4b`. In an interactive terminal, TTSForge prompts for missing chapter and voice
+setup, displays a read-only workflow preflight, and asks for final confirmation. Setup
+is saved before rendering so a failed render can be retried without repeating completed
+setup.
 
 ## Select chapters
 
-For a new project, an interactive terminal automatically displays the detected chapters
-and prompts for a selection; no extra flag is required. Use `--chapters` to select
-explicitly and skip that prompt:
+For a new project, an interactive terminal asks which chapters to include. Specify the
+selection explicitly to skip that question:
 
 ```bash
 ttsforge convert novel.epub --chapters 1-5
 ```
 
-The selected scope is saved with the project. Reusing it does not ask for chapters
-again, and a conflicting `--chapters` value is rejected rather than silently ignored.
-Use `--project` or `--fresh` to create another project with a different selection.
-`--interactive-chapters` is deprecated; normal TTY behavior is automatic.
+The chapter selection is saved in the project's render intent. Reusing the project keeps
+that selection. Use another `--project` path or `--fresh` to create a separate project
+for a different selection.
 
-## Guided synthesis setup
+## Choose an engine, target, and voice
 
-On a TTY, `ttsforge convert novel.epub` continues after chapter selection with a guided
-setup for omitted synthesis values. It discovers catalog choices while the selection is
-in progress, then asks Readio to strictly resolve the completed synthesis target.
-
-The selection differs by engine:
-
-- Kokoro: choose a model, then a voice.
-- Piper: choose a voice-bundle target. Its matching canonical voice is selected
-  automatically, so users do not choose the same bundle twice.
-- Pocket: choose a bundle, then a predefined named voice. Pocket speed is fixed at `1.0`
-  unless an explicit CLI speed is supplied. An explicit value is preserved for Readio's
-  final validation.
-
-The remaining prompts cover language, runnable engine selection when needed, supported
-quality and speed, spaCy and short-sentence policies, lexicon/G2P choices,
-capability-gated voice level, pause handling, and sentence-versus-paragraph units.
-TTSForge saves the resolved setup through Readio's public project-settings API only
-after final resolution succeeds, before confirmation or build. A failed build can then
-be retried without repeating setup questions. Use `--reconfigure` to revisit saved
-choices with their saved values as defaults. Explicit CLI options pin and update only
-their corresponding settings.
-
-Piper is target-bound: choose a voice bundle once, and TTSForge automatically uses its
-canonical voice instead of asking you to select the same identity again. Pocket
-selection is bundle first, then a predefined named voice. Catalog choices are gathered
-before the final strict Readio synthesis resolution; incomplete setup is not saved. The
-current Pocket integration uses speed `1.0` when speed is not pinned explicitly. An
-explicit `--speed` pin is retained for Readio to validate.
-
-Use explicit options to pin settings and skip matching questions, for example:
+Discover available choices through Readio:
 
 ```bash
-ttsforge convert novel.epub --language en-us --model MODEL_ID --voice VOICE_ID --unit paragraph
+ttsforge engines
+ttsforge targets --engine ENGINE --language en-us
+ttsforge voices --engine ENGINE --target TARGET --language en-us
 ```
 
-`--yes` skips only the final confirmation. `--non-interactive` and `--json` disable
-prompts and reuse settings already saved on the project. For a new or unconfigured
-project, Readio resolves unspecified values from its defaults; CLI options override
-them.
-
-When stdin, stdout, and stderr are not all terminals, or when `--non-interactive` is
-supplied, no chapter or synthesis setup prompts appear. A new project selects all
-chapters unless `--chapters` was provided. `--json` also disables human-readable
-progress. TTY build progress updates live by chapter. See
-[Projects and outputs](projects.md) for project scope and reuse details.
-
-## Preview, plan, and status
-
-A preview uses the same Readio project pipeline as a full conversion:
+The interactive converter presents the same engine, target, and voice choices. Pass
+values explicitly to pin them and skip matching setup prompts:
 
 ```bash
-ttsforge preview novel.epub --selection first:3
-ttsforge plan novel.ssmdbook
-ttsforge status novel.ssmdbook
+ttsforge convert novel.epub --engine ENGINE --target TARGET --voice VOICE
 ```
 
-`preview` creates or reuses the default project if necessary. `status` reports Readio's
-current stage state and next actions.
+Use `--engine-option KEY=VALUE` for an option exposed by the selected Readio engine.
+`--speed` is limited to the range shown by `ttsforge convert --help`; Readio validates
+the value for the selected target.
 
-## Choose an output and synthesis settings
+## Saved setup and automation
 
-M4B is the default audiobook export. Readio also provides generic audio exports; inspect
-formats and availability for the current environment:
+Explicit CLI values take precedence over saved project values. Saved values are reused
+on later runs; source metadata and Readio defaults supply remaining values before
+interactive prompts fill any missing choices. Changes to language, engine, or target
+invalidate dependent saved selections so incompatible choices are gathered again.
+
+`--yes` skips only final confirmation. `--non-interactive` disables prompts and uses the
+saved setup and Readio defaults. `--json` is also prompt-free and emits structured
+output without progress prose:
 
 ```bash
-ttsforge formats
-ttsforge convert novel.epub --format mp3 --output ./novel.mp3
+ttsforge convert novel.epub --chapters all --non-interactive --json
 ```
 
-You can set voice, language, engine, model, model source, quality, and speed, plus
-export bitrate, loudness, metadata, and cover. Readio resolves effective synthesis
-values; the preflight view shows those resolved values before you commit to the build.
-Model selectors and quality values are forwarded opaquely to Readio and installed
-engines:
+## Output, replacement, and rebuilds
+
+M4B is the final audiobook format. Set the output path with `--output`:
 
 ```bash
-ttsforge voices --language en-us
-ttsforge convert novel.epub --voice af_heart --model kokoro-v1 --model-source github --quality fp32 --speed 1.1 --cover cover.jpg
+ttsforge convert novel.epub --output ./audio/novel.m4b
 ```
 
-Run `ttsforge convert --help` for the complete options available in this build.
+These controls have separate meanings:
 
-## Configuration and troubleshooting
+- `--replace-output` explicitly authorizes replacing an existing M4B output.
+- `--rebuild-from STAGE` asks Readio to rebuild from `convert`, `compile`,
+  `render_plan`, `render`, `compose`, or `export`.
+- `--fresh` starts in a separate TTSForge project directory. It does not authorize
+  output replacement or stage rebuilding.
 
-TTSForge accesses Readio's persistent configuration directly:
+## Inspect the workflow
 
 ```bash
-ttsforge config show
-ttsforge config set reader.voice af_heart
-ttsforge config set reader.speed 1.1
-ttsforge doctor
+ttsforge status novel.ttsforge
 ```
 
-The frontend does not create a parallel configuration file. For engine setup and project
-semantics, see the
-[Readio documentation](https://github.com/buchwandler/readio/tree/main/docs).
+`status` asks Readio to inspect the saved workflow. TTSForge presents the returned stage
+actions and does not infer artifact validity itself. See
+[Projects and outputs](projects.md) and the [CLI reference](cli.md).

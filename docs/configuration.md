@@ -1,90 +1,51 @@
-# Configuration
+# Saved audiobook setup
 
-TTSForge does not maintain a separate synthesis or engine configuration. Its `config`
-commands call Readio's public configuration service, so the active path, settings,
-language profiles, and engine behavior are owned by Readio.
+TTSForge 0.5 does not provide a separate global configuration command or duplicate
+Readio's settings schema. Setup for a book is persisted through Readio's public intent
+and profile APIs in that book's TTSForge project.
 
-## Inspect and initialize
+## Project setup files
 
-```bash
-ttsforge config path
-ttsforge config show
-ttsforge config init
-ttsforge config languages
-ttsforge config language en-us
+A default project contains:
+
+```text
+novel.ttsforge/
+├── render.readio.toml
+├── narrator.renderprofile.toml
+└── book.ssmd-bundle/
 ```
 
-`path` prints the active configuration file. `show` prints its persisted settings.
-`init` asks Readio to initialize configuration and standard directories. `languages`
-lists configured language profiles; `language LOCALE` resolves the exact or
-base-language profile.
+The render intent stores the source, chapter selection, persistent workspace, output,
+and render choices. The narrator profile stores the voice binding and engine-specific
+options. Readio owns these file formats and validates their contents.
 
-Do not assume a platform-specific config location. Ask Readio with
-`ttsforge config path`.
+## Precedence and retries
 
-## Set a Readio setting
+For each setup value, explicit CLI options take precedence over saved project values.
+Saved values take precedence over source-derived values and Readio defaults. Interactive
+prompts supply any still-missing choices. A successfully resolved intent and profile are
+saved before preflight confirmation and rendering, so a failed render can be retried
+with the same setup.
 
-Use a dotted Readio key and one value:
+Changing language, engine, or target invalidates dependent selections as needed. Readio
+remains responsible for validating the final profile and deciding which workflow stages
+can be reused.
 
-```bash
-ttsforge config set reader.voice af_heart
-ttsforge config set reader.lang en-us
-ttsforge config set reader.speed 1.1
-```
+Use `ttsforge info SOURCE --project PROJECT` to inspect saved setup. Use
+`ttsforge status PROJECT` to inspect the saved workflow. Pass setup options directly to
+`convert`; see `ttsforge convert --help` and the [CLI reference](cli.md).
 
-Values that are valid JSON are parsed as JSON, so numbers, booleans, arrays, and objects
-retain their types. Other values are stored as text. To target an alternate file, use
-`--path` with `show` or `set`:
+## Engine configuration
 
-```bash
-ttsforge config show --path ./readio.toml
-ttsforge config set reader.speed 1.0 --path ./readio.toml
-```
-
-The accepted keys and validation rules belong to Readio. For the full setting
-model—including reader defaults, language profiles, engine-specific settings, and
-project-local behavior—use
-[Readio's configuration documentation](https://github.com/buchwandler/readio/blob/main/docs/index.md).
-
-## Command-line overrides and projects
-
-`convert` accepts per-operation options such as `--voice`, `--language`, `--engine`,
-`--model`, `--model-source`, `--quality`, `--speed`, `--spacy`, `--short-sentence`,
-`--lexicon`/`--no-lexicons`/`--auto-lexicons`, `--g2p-fallback`,
-`--lexicon-data-policy`, `--voice-level`, `--pause-mode`, and `--unit`. These stable
-audiobook choices map to Readio's public request and discovery APIs; they do not create
-a second TTSForge configuration schema. `preview` retains a smaller set of explicit
-options and does not run the guided setup wizard. Persistent project state and Readio's
-rules for effective settings determine reuse. See the
-[Readio project guide](https://github.com/buchwandler/readio/blob/main/docs/projects.md)
-before relying on project/global setting precedence.
-
-The guided `convert` setup exposes stable Readio audiobook controls such as spaCy and
-short-sentence policy, lexicon/G2P behavior, pause handling, and synthesis unit as
-command options and interactive choices. These are not backend-private settings.
-TTSForge still does not expose engine internals, renderer-only pause controls, or output
-templates.
-
-## Migrating old settings
-
-Former TTSForge-specific keys and config files are not automatically imported. Review
-the old values and check `ttsforge convert --help` for currently supported public
-options. The interactive setup and its matching flags expose Readio's stable audiobook
-controls; they do not translate obsolete settings. TTSForge no longer accepts backend
-controls for PyKokoro internals, private phoneme dictionaries, renderer-internal pause
-tuning, or TTSForge-specific output filename templates. See the
-[migration guide](migration-readio.md).
-
-## Diagnose configuration and engine setup
+Engine installation, runtime configuration, and provider-specific options are owned by
+Readio and the selected integration. Discover installed engines and runnable targets
+with:
 
 ```bash
-ttsforge config show
 ttsforge engines
-ttsforge models
-ttsforge doctor
+ttsforge targets --engine ENGINE
 ```
 
-`doctor` is the Readio diagnostics service. It reports the active Readio
-version/configuration, available engines and dependencies, output formats, and standard
-paths. Install and configure engines using Readio's documented extras and settings;
-TTSForge does not install engine runtimes itself.
+For configuration supported by a specific integration, follow the current
+[Readio documentation](https://github.com/buchwandler/readio/blob/main/docs/index.md).
+TTSForge does not translate former TTSForge-specific configuration files automatically.

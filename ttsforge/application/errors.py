@@ -1,5 +1,9 @@
 """Stable errors exposed by the TTSForge application boundary."""
 
+from __future__ import annotations
+
+from collections.abc import Mapping
+
 
 class ApplicationError(Exception):
     """Base class for expected application-operation failures."""
@@ -26,8 +30,27 @@ class ProjectScopeConflictError(OperationConflictError):
 
 
 class LegacyWorkspaceError(OperationConflictError):
-    """An existing TTSForge workspace cannot be used as a Readio project."""
+    """An existing Readio 0.4 workspace cannot be resumed by TTSForge 0.5."""
 
 
-class ProjectMigrationRequiredError(OperationConflictError):
-    """A Readio project requires an explicit schema migration before use."""
+class WorkflowFailureError(ApplicationError):
+    """A structured Readio workflow failure normalized for TTSForge callers."""
+
+    def __init__(
+        self,
+        message: str,
+        *,
+        category: str,
+        stage: str | None = None,
+        package: str | None = None,
+        selector: str | None = None,
+        code: str | None = None,
+        details: Mapping[str, object] | None = None,
+    ) -> None:
+        super().__init__(message)
+        self.category = category
+        self.stage = stage
+        self.package = package
+        self.selector = selector
+        self.code = code
+        self.details = dict(details or {})

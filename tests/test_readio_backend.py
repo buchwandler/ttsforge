@@ -1,422 +1,470 @@
-"""TTSForge request mapping tests for Readio's public API."""
+"""Delegation tests for TTSForge's narrow Readio API adapter."""
 
 from __future__ import annotations
 
-from dataclasses import replace
 from pathlib import Path
 from types import SimpleNamespace
+from typing import cast
 
 import pytest
 from readio.api import (
-    AudiobookExportOptions,
-    AudiobookExportResult,
-    ExportOptions,
-    ProjectBuildRequest,
-    ProjectBuildResult,
-    ProjectRef,
-    ProjectSettings,
-    ProjectSynthesisSettings,
-    SynthesisResolution,
+    Readio,
+    RenderIntent,
+    RenderRequest,
+    WorkflowEvent,
+    WorkflowStageError,
 )
 
-from ttsforge.audiobook import AudiobookConverter
-from ttsforge.options import AudiobookOptions
-from ttsforge.readio_backend import (
-    apply_project_settings,
-    audiobook_export_options,
-    composition_options,
-    generic_export_options,
-    has_synthesis_setup,
-    project_build_request,
-    project_settings,
-    synthesis_request,
-)
+import ttsforge.readio_backend as backend_module
+from ttsforge.application.errors import WorkflowFailureError
+from ttsforge.application.events import ApplicationEvent
+from ttsforge.application.models import AudiobookRequest, ProjectPaths
+from ttsforge.readio_backend import ReadioBackend, create_readio
 
 
-def _options() -> AudiobookOptions:
-    return AudiobookOptions(
-        source=Path("book.epub"),
-        project=Path("book.readio"),
-        chapters="2-4,8",
-        output=Path("book.m4b"),
-        format="m4b",
-        language="en-us",
-        voice="af_heart",
-        engine="kokoro",
-        model="kokoro-v1",
-        model_source="github",
-        quality="fp32",
-        speed=1.1,
-        lexicons=("crane", "beta"),
-        clear_lexicons=False,
-        auto_lexicons=False,
-        g2p_fallback="espeak",
-        lexicon_data_policy="installed-only",
-        spacy="lg",
-        short_sentence="phrase",
-        allow_experimental=True,
-        voice_level="calibrated",
-        pause_mode="manual",
-        unit="paragraph",
-        bitrate="128k",
-        target_lufs=-18.0,
-        offline=True,
-        refresh=True,
-        title="Book title",
-        author="Book author",
-        cover=Path("cover.jpg"),
-        force=True,
-    )
+def test_create_readio_constructs_the_public_gateway() -> None:
+    assert isinstance(create_readio(), Readio)
 
 
-def _resolution() -> SynthesisResolution:
-    return SynthesisResolution(
-        engine="kokoro",
-        language="en-us",
-        voice="af_heart",
-        model="v1.0",
-        model_source="github",
-        quality="fp32",
-        speed=1.0,
-        unit="sentence",
-        pause_mode="auto",
-        voice_level="calibrated",
-        spacy="auto",
-        short_sentence="phrase",
-        lexicons=("crane", "beta"),
-        g2p_fallback="espeak",
-        lexicon_data_policy="installed-only",
-        allow_experimental=True,
-    )
-
-
-def test_project_settings_materialize_synthesis_and_m4b_choices() -> None:
-    options = _options()
-    settings = project_settings(options, _resolution())
-
-    assert isinstance(settings, ProjectSettings)
-    assert isinstance(settings.synthesis, ProjectSynthesisSettings)
-    assert settings.synthesis is not None
-    assert (
-        settings.synthesis.engine,
-        settings.synthesis.model,
-        settings.synthesis.voice,
-        settings.synthesis.quality,
-        settings.synthesis.speed,
-    ) == ("kokoro", "v1.0", "af_heart", "fp32", 1.0)
-    assert settings.synthesis.language == "en-us"
-    assert settings.synthesis.lexicons == ("crane", "beta")
-    assert settings.synthesis.g2p_fallback == "espeak"
-    assert settings.synthesis.lexicon_data_policy == "installed-only"
-    assert settings.synthesis.spacy == "auto"
-    assert settings.synthesis.short_sentence == "phrase"
-    assert settings.synthesis.allow_experimental is True
-    assert settings.synthesis.voice_level == "calibrated"
-    assert settings.synthesis.pause_mode == "auto"
-    assert settings.synthesis.unit == "sentence"
-    assert settings.synthesis.offline is True
-    assert settings.composition is not None
-    assert settings.composition.target_lufs == -18.0
-    assert settings.audiobook_export is not None
-    assert settings.audiobook_export.format == "m4b"
-    assert settings.audiobook_export.output == Path("book.m4b")
-    assert settings.audiobook_export.bitrate == "128k"
-    assert settings.audiobook_export.title == "Book title"
-    assert settings.audiobook_export.author == "Book author"
-    assert settings.audiobook_export.cover == Path("cover.jpg")
-
-
-def test_has_synthesis_setup_requires_model_and_voice() -> None:
-    settings = project_settings(_options(), _resolution())
-    assert settings.synthesis is not None
-    assert has_synthesis_setup(settings)
-
-    without_model = replace(
-        settings,
-        synthesis=replace(settings.synthesis, model=None),
-    )
-    without_voice = replace(
-        settings,
-        synthesis=replace(settings.synthesis, voice=None),
-    )
-
-    assert not has_synthesis_setup(without_model)
-    assert not has_synthesis_setup(without_voice)
-
-
-def test_project_settings_do_not_persist_refresh_or_force() -> None:
-    settings = project_settings(_options(), _resolution())
-
-    assert settings.synthesis is not None
-    assert not hasattr(settings.synthesis, "refresh")
-    assert settings.audiobook_export is not None
-    assert settings.audiobook_export.force is False
-
-    generic = project_settings(
-        replace(_options(), format="flac", output=Path("book.flac")), _resolution()
-    )
-    assert generic.export is not None
-    assert generic.export.force is False
-
-
-def test_apply_project_settings_restores_durable_values_only() -> None:
-    options = _options()
-    settings = project_settings(options, _resolution())
-    restored = apply_project_settings(
-        replace(
-            options,
-            language=None,
-            engine=None,
-            model=None,
-            voice=None,
-            target_lufs=None,
-            output=None,
-            title=None,
-            author=None,
-            cover=None,
-            refresh=False,
-            force=False,
-        ),
-        settings,
-    )
-
-    assert restored.language == "en-us"
-    assert restored.engine == "kokoro"
-    assert restored.model == "v1.0"
-    assert restored.model_source == "github"
-    assert restored.voice == "af_heart"
-    assert restored.speed == 1.0
-    assert restored.lexicons == ("crane", "beta")
-    assert restored.target_lufs == -18.0
-    assert restored.output == Path("book.m4b")
-    assert restored.title == "Book title"
-    assert restored.author == "Book author"
-    assert restored.cover == Path("cover.jpg")
-    assert restored.refresh is False
-    assert restored.force is False
-
-
-def test_project_settings_preserve_auto_lexicon_mode() -> None:
-    options = replace(
-        _options(), lexicons=None, clear_lexicons=False, auto_lexicons=True
-    )
-    settings = project_settings(options, _resolution())
-
-    assert settings.synthesis is not None
-    assert settings.synthesis.auto_lexicons is True
-    assert settings.synthesis.lexicons is None
-    restored = apply_project_settings(_options(), settings)
-    assert restored.auto_lexicons is True
-    assert restored.lexicons is None
-
-
-def test_synthesis_and_composition_options_map_to_public_readio_types() -> None:
-    options = _options()
-
-    synthesis = synthesis_request(options)
-    shared = project_build_request(options, target="composition", synthesis=synthesis)
-    assert shared.synthesis is synthesis
-    assert synthesis.language == "en-us"
-    assert synthesis.voice == "af_heart"
-    assert synthesis.model == "kokoro-v1"
-    assert synthesis.model_source == "github"
-    assert synthesis.quality == "fp32"
-    assert synthesis.engine == "kokoro"
-    assert synthesis.speed == 1.1
-    assert synthesis.offline is True
-    assert synthesis.refresh is True
-    assert synthesis.lexicons == ("crane", "beta")
-    assert synthesis.clear_lexicons is False
-    assert synthesis.auto_lexicons is False
-    assert synthesis.g2p_fallback == "espeak"
-    assert synthesis.lexicon_data_policy == "installed-only"
-    assert synthesis.spacy == "lg"
-    assert synthesis.short_sentence == "phrase"
-    assert synthesis.allow_experimental is True
-    assert synthesis.voice_level == "calibrated"
-    assert synthesis.pause_mode == "manual"
-    assert synthesis.unit == "paragraph"
-
-    composition = composition_options(options)
-    assert composition.target_lufs == -18.0
-
-
-def test_generic_export_maps_only_to_generic_export_options() -> None:
-    options = replace(_options(), format="flac", output=Path("book.flac"))
-
-    exported = generic_export_options(options)
-    assert isinstance(exported, ExportOptions)
-    assert (exported.format, exported.output, exported.bitrate, exported.force) == (
-        "flac",
-        Path("book.flac"),
-        "128k",
-        True,
-    )
-
-    request = project_build_request(options, target="export")
-    assert isinstance(request, ProjectBuildRequest)
-    assert request.target == "export"
-    assert request.export == exported
-
-
-def test_m4b_uses_composition_build_and_separate_audiobook_export_options() -> None:
-    options = _options()
-
-    request = project_build_request(options, target="composition")
-    export = audiobook_export_options(options)
-
-    assert request.target == "composition"
-    assert request.export.format != "m4b"
-    assert export.format == "m4b"
-    assert export.output == Path("book.m4b")
-    assert export.title == "Book title"
-    assert export.author == "Book author"
-    assert export.cover == Path("cover.jpg")
-    assert export.bitrate == "128k"
-    assert export.force is True
-
-
-def test_m4b_is_rejected_by_generic_export_mapping() -> None:
-    with pytest.raises(ValueError, match="M4B uses audiobook_export_options"):
-        generic_export_options(_options())
-
-
-def test_audiobook_converter_inspects_through_the_public_service() -> None:
+def test_source_and_discovery_calls_delegate_to_public_functions(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
     source = Path("book.epub")
-    inspection = object()
-    calls: list[Path] = []
-    app = SimpleNamespace(
-        audiobooks=SimpleNamespace(
-            inspect=lambda path: calls.append(path) or inspection,
+    inspection = SimpleNamespace(
+        source=source,
+        kind="book",
+        metadata={
+            "title": "Book",
+            "authors": ["Writer One", "Writer Two"],
+            "language": "en",
+        },
+        chapters=(
+            SimpleNamespace(number=1, title="Opening", source_id="c1", char_count=120),
         ),
     )
-    converter = AudiobookConverter(app=app)  # type: ignore[arg-type]
+    calls: list[tuple[str, object]] = []
 
-    result = converter.inspect(source)
+    def inspect_source(path: Path) -> object:
+        calls.append(("source", path))
+        return inspection
 
-    assert result is inspection
-    assert calls == [source]
+    def list_engines() -> list[dict[str, object]]:
+        calls.append(("engines", None))
+        return [{"id": "piper"}]
 
+    def discover_targets(engine: str, **kwargs: object) -> tuple[str, ...]:
+        calls.append(("targets", (engine, kwargs)))
+        return ("target",)
 
-def test_m4b_uses_persisted_settings_for_build_and_export() -> None:
-    project = ProjectRef(Path("book.readio"), "id", "book", "audiobook", "epub")
-    composition_result = ProjectBuildResult(project, operations=())
-    export_result = AudiobookExportResult(
-        project=project,
-        output_path=Path("book.m4b"),
-        format="m4b",
-        output_sha256="digest",
-        export_id="export-1",
-        chapter_count=2,
-    )
-    calls: list[tuple[str, object | None]] = []
+    def list_engine_options(engine: str, **kwargs: object) -> tuple[str, ...]:
+        calls.append(("options", (engine, kwargs)))
+        return ("device",)
 
-    def build(project_ref, request=None):  # type: ignore[no-untyped-def]
-        calls.append(("build", request))
-        return composition_result
+    def list_voices(**kwargs: object) -> tuple[str, ...]:
+        calls.append(("voices", kwargs))
+        return ("voice",)
 
-    def export(project_ref, options=None):  # type: ignore[no-untyped-def]
-        calls.append(("export", options))
-        return export_result
+    def inspect_voice(selector: str, **kwargs: object) -> str:
+        calls.append(("voice", (selector, kwargs)))
+        return "detail"
 
-    app = SimpleNamespace(
-        projects=SimpleNamespace(build=build),
-        audiobooks=SimpleNamespace(export=export),
-    )
-    converter = AudiobookConverter(app=app)  # type: ignore[arg-type]
+    api = backend_module.readio_api
+    monkeypatch.setattr(api, "inspect_source", inspect_source)
+    monkeypatch.setattr(api, "list_engines", list_engines)
+    monkeypatch.setattr(api, "discover_engine_targets", discover_targets)
+    monkeypatch.setattr(api, "list_engine_options", list_engine_options)
+    monkeypatch.setattr(api, "list_voices", list_voices)
+    monkeypatch.setattr(api, "inspect_voice", inspect_voice)
 
-    result = converter.build_and_export(project, replace(_options(), force=False))
+    backend = ReadioBackend(app=cast(Readio, object()))
 
-    assert result is export_result
-    assert calls == [("build", None), ("export", None)]
-
-
-def test_m4b_force_is_an_invocation_override_not_a_saved_setting() -> None:
-    project = ProjectRef(Path("book.readio"), "id", "book", "audiobook", "epub")
-    saved = AudiobookExportOptions(
-        output=Path("book.m4b"),
-        title="Book title",
-        author="Book author",
-        cover=Path("cover.jpg"),
-        bitrate="128k",
-        force=False,
-    )
-    export_result = AudiobookExportResult(
-        project=project,
-        output_path=Path("book.m4b"),
-        format="m4b",
-        output_sha256="digest",
-        export_id="export-1",
-        chapter_count=2,
-    )
-    calls: list[object] = []
-
-    def export(project_ref, options=None):  # type: ignore[no-untyped-def]
-        calls.append(options)
-        return export_result
-
-    app = SimpleNamespace(
-        projects=SimpleNamespace(
-            build=lambda project_ref: ProjectBuildResult(project, operations=()),
-            settings=lambda project_ref: ProjectSettings(audiobook_export=saved),
+    view = backend.inspect_source(source)
+    assert view.title == "Book"
+    assert view.author == "Writer One, Writer Two"
+    assert view.language == "en"
+    assert view.chapters[0].source_id == "c1"
+    assert backend.list_engines() == ({"id": "piper"},)
+    assert backend.list_targets(
+        engine="piper", language="en-us", offline=True, refresh=True
+    ) == ("target",)
+    assert backend.list_engine_options("piper", target="en-us-medium") == ("device",)
+    assert backend.list_voices(
+        engine="piper", target="en-us-medium", language="en-us", offline=True
+    ) == ("voice",)
+    assert backend.inspect_voice("piper:en-us-medium", language="en-us") == "detail"
+    assert calls == [
+        ("source", source),
+        ("engines", None),
+        ("targets", ("piper", {"language": "en-us", "offline": True, "refresh": True})),
+        ("options", ("piper", {"target": "en-us-medium"})),
+        (
+            "voices",
+            {
+                "engine": "piper",
+                "target": "en-us-medium",
+                "language": "en-us",
+                "offline": True,
+                "refresh": False,
+            },
         ),
-        audiobooks=SimpleNamespace(export=export),
-    )
-    converter = AudiobookConverter(app=app)  # type: ignore[arg-type]
-
-    converter.build_and_export(project, _options())
-
-    assert len(calls) == 1
-    assert isinstance(calls[0], AudiobookExportOptions)
-    assert calls[0].force is True
-    assert saved.force is False
+        ("voice", ("piper:en-us-medium", {"language": "en-us"})),
+    ]
 
 
-def test_generic_formats_use_persisted_project_export_settings() -> None:
-    project = ProjectRef(Path("book.readio"), "id", "book", "audiobook", "epub")
-    build_result = ProjectBuildResult(
-        project, operations=(), output_path=Path("book.flac")
-    )
-    calls: list[object | None] = []
+def test_profile_operations_use_public_profile_helpers(
+    monkeypatch: pytest.MonkeyPatch, tmp_path: Path
+) -> None:
+    output = tmp_path / "narrator.renderprofile.toml"
+    profile = object()
+    calls: list[tuple[str, object]] = []
 
-    def build(project_ref, request=None):  # type: ignore[no-untyped-def]
-        calls.append(request)
-        return build_result
+    def create_profile(**kwargs: object) -> object:
+        calls.append(("create", kwargs))
+        return profile
 
-    app = SimpleNamespace(
-        projects=SimpleNamespace(build=build),
-        audiobooks=SimpleNamespace(
-            export=lambda *args, **kwargs: pytest.fail("M4B API must not be used")
-        ),
-    )
-    converter = AudiobookConverter(app=app)  # type: ignore[arg-type]
+    def load_profile(path: Path) -> object:
+        calls.append(("load", path))
+        return profile
 
-    result = converter.build_and_export(
-        project,
-        replace(_options(), format="flac", output=Path("book.flac"), force=False),
-    )
+    def validate_profile(path: Path) -> tuple[str, ...]:
+        calls.append(("validate", path))
+        return ("valid",)
 
-    assert result is build_result
-    assert calls == [None]
+    api = backend_module.readio_api
+    monkeypatch.setattr(api, "create_profile", create_profile)
+    monkeypatch.setattr(api, "load_profile", load_profile)
+    monkeypatch.setattr(api, "validate_profile", validate_profile)
 
-
-def test_synthesis_setup_requires_target_model_and_voice() -> None:
-    complete = project_settings(_options(), _resolution())
-    assert has_synthesis_setup(complete)
-    assert complete.synthesis is not None
-
-    for field in ("model", "voice"):
-        partial_synthesis = replace(complete.synthesis, **{field: None})
-        partial_settings = replace(complete, synthesis=partial_synthesis)
-        assert not has_synthesis_setup(partial_settings)
-
-
-def test_converter_engine_normalization_delegates_to_readio_catalog() -> None:
-    app = SimpleNamespace(
-        catalog=SimpleNamespace(
-            normalize_engine=lambda engine: "kokoro" if engine == "pykokoro" else engine
+    backend = ReadioBackend(app=cast(Readio, object()))
+    assert (
+        backend.create_profile(
+            output=output,
+            engine="piper",
+            target="en-us-medium",
+            language="en-us",
+            voice="lessac",
+            options={"device": "cpu"},
+            offline=True,
+            refresh=True,
+            force=True,
         )
+        is profile
     )
-    converter = AudiobookConverter(app=app)  # type: ignore[arg-type]
+    assert backend.load_profile(output) is profile
+    assert backend.validate_profile(output) == ("valid",)
+    assert calls == [
+        (
+            "create",
+            {
+                "output": output,
+                "engine": "piper",
+                "target": "en-us-medium",
+                "language": "en-us",
+                "voice": "lessac",
+                "options": {"device": "cpu"},
+                "offline": True,
+                "refresh": True,
+                "force": True,
+            },
+        ),
+        ("load", output),
+        ("validate", output),
+    ]
 
-    assert converter.normalize_engine("pykokoro") == "kokoro"
+
+def test_save_setup_persists_profile_and_render_intent(
+    monkeypatch: pytest.MonkeyPatch, tmp_path: Path
+) -> None:
+    paths = ProjectPaths.for_root(tmp_path / "book.ttsforge")
+    request = AudiobookRequest(
+        source=tmp_path / "book.epub",
+        language="en-US",
+        engine="engine-a",
+        target="target-a",
+        voice="voice-a",
+        engine_options={"quality": "high"},
+        speed=1.1,
+        chapters="2-4",
+        output=tmp_path / "book.m4b",
+        bitrate="128k",
+        target_lufs=-19.0,
+        title="Book title",
+        author="Writer",
+    )
+    calls: list[tuple[str, object]] = []
+
+    def create_profile(**kwargs: object) -> object:
+        calls.append(("profile", kwargs))
+        return object()
+
+    def create_book_intent(source: Path, **kwargs: object) -> object:
+        intent = object()
+        calls.append(("intent", (source, kwargs, intent)))
+        return intent
+
+    def save_render_intent(intent: object, path: Path, **kwargs: object) -> Path:
+        calls.append(("save", (intent, path, kwargs)))
+        return path
+
+    api = backend_module.readio_api
+    monkeypatch.setattr(api, "create_profile", create_profile)
+    monkeypatch.setattr(api, "create_book_intent", create_book_intent)
+    monkeypatch.setattr(api, "save_render_intent", save_render_intent)
+    backend = ReadioBackend(app=cast(Readio, object()))
+
+    backend.save_setup(paths, request)
+
+    assert calls[1] == (
+        "profile",
+        {
+            "output": paths.profile,
+            "engine": "engine-a",
+            "target": "target-a",
+            "language": "en-US",
+            "voice": "voice-a",
+            "options": {"quality": "high", "speed": 1.1},
+            "offline": False,
+            "refresh": False,
+            "force": False,
+        },
+    )
+    intent_call = calls[0]
+    assert intent_call[0] == "intent"
+    source_arg, intent_kwargs, intent = intent_call[1]
+    assert source_arg == request.source
+    assert intent_kwargs == {
+        "profile": paths.profile,
+        "bundle": paths.bundle,
+        "chapters": "2-4",
+        "language": "en-US",
+        "output_format": "m4b",
+        "output": request.output,
+        "bitrate": "128k",
+        "cover": None,
+        "metadata": {"title": "Book title", "author": "Writer"},
+        "target_lufs": -19.0,
+    }
+    assert calls[2] == ("save", (intent, paths.intent, {"force": True}))
+
+
+def test_load_setup_recovers_intent_and_default_profile_role(
+    monkeypatch: pytest.MonkeyPatch, tmp_path: Path
+) -> None:
+    paths = ProjectPaths.for_root(tmp_path / "book.ttsforge")
+    intent = SimpleNamespace(
+        input=SimpleNamespace(source=tmp_path / "book.epub", chapters="1-3"),
+        output=SimpleNamespace(
+            path=tmp_path / "saved.m4b",
+            bitrate="96k",
+            cover=tmp_path / "cover.jpg",
+            metadata={"title": "Saved", "author": "Writer"},
+        ),
+        compose=SimpleNamespace(target_lufs=-20.0),
+    )
+    role = SimpleNamespace(
+        language="en-US",
+        binding={
+            "renderer": "engine-a",
+            "target_id": "target-a",
+            "voice": "voice-a",
+            "options": {"speed": 1.2, "quality": "high"},
+        },
+    )
+    profile = SimpleNamespace(default_role="narrator", roles={"narrator": role})
+    calls: list[tuple[str, object]] = []
+    api = backend_module.readio_api
+    monkeypatch.setattr(
+        api, "load_render_intent", lambda path: calls.append(("intent", path)) or intent
+    )
+    monkeypatch.setattr(api, "load_profile", lambda path: profile)
+    monkeypatch.setattr(
+        api, "validate_profile", lambda path: calls.append(("validate", path))
+    )
+    backend = ReadioBackend(app=cast(Readio, object()))
+
+    request = backend.load_setup(paths)
+
+    assert request.source == tmp_path / "book.epub"
+    assert request.chapters == "1-3"
+    assert request.output == tmp_path / "saved.m4b"
+    assert request.engine == "engine-a"
+    assert request.target == "target-a"
+    assert request.voice == "voice-a"
+    assert request.speed == 1.2
+    assert request.engine_options == {"quality": "high"}
+    assert request.title == "Saved"
+    assert request.author == "Writer"
+    assert calls == [("intent", paths.intent), ("validate", paths.profile)]
+
+
+def test_request_bridge_uses_persisted_intent_and_runtime_controls(
+    monkeypatch: pytest.MonkeyPatch, tmp_path: Path
+) -> None:
+    paths = ProjectPaths.for_root(tmp_path / "book.ttsforge")
+    intent = cast(RenderIntent, object())
+    request = AudiobookRequest(
+        source=tmp_path / "book.epub",
+        rebuild_from="render",
+        replace_output=True,
+    )
+    resolved = cast(RenderRequest, object())
+    calls: list[tuple[str, object]] = []
+    api = backend_module.readio_api
+    monkeypatch.setattr(api, "load_render_intent", lambda path: intent)
+
+    def render_request_from_intent(
+        value: RenderIntent, **kwargs: object
+    ) -> RenderRequest:
+        calls.append(("request", (value, kwargs)))
+        return resolved
+
+    monkeypatch.setattr(api, "render_request_from_intent", render_request_from_intent)
+    backend = ReadioBackend(app=cast(Readio, object()))
+
+    assert backend.request_from_intent(paths, request) is resolved
+    assert calls == [
+        (
+            "request",
+            (
+                intent,
+                {
+                    "source": request.source,
+                    "bundle": paths.bundle,
+                    "profile": paths.profile,
+                    "rebuild_from": "render",
+                    "replace_output": True,
+                },
+            ),
+        )
+    ]
+
+
+def test_inspect_and_render_map_public_gateway_results() -> None:
+    request = cast(RenderRequest, object())
+    step = SimpleNamespace(
+        stage="render",
+        package="readio",
+        action="reuse",
+        selector="book",
+        reason="Artifact is valid",
+        state="ready",
+    )
+    plan = SimpleNamespace(
+        source=Path("book.epub"),
+        workspace=Path("book.ssmd-bundle"),
+        workspace_mode="bundle",
+        output=Path("book.m4b"),
+        steps=(step,),
+        warnings=("warning",),
+    )
+    result = SimpleNamespace(
+        output=Path("book.m4b"),
+        workspace=Path("book.ssmd-bundle"),
+        workspace_mode="bundle",
+        executed_stages=("compose",),
+        reused_stages=("render",),
+        warnings=("warning",),
+    )
+    calls: list[tuple[str, object]] = []
+
+    events: list[ApplicationEvent] = []
+    event = WorkflowEvent(
+        stage="render",
+        kind="stage.progress",
+        package="voicerender",
+        selector="chapter-2",
+        current=2,
+        total=3,
+        message="Rendering chapter",
+        elapsed_seconds=1.5,
+        details={"attempt": 1},
+    )
+
+    def inspect(value: RenderRequest) -> object:
+        calls.append(("inspect", value))
+        return plan
+
+    def render(value: RenderRequest, *, on_progress=None) -> object:
+        calls.append(("render", (value, on_progress)))
+        assert on_progress is not None
+        on_progress(event)
+        return result
+
+    backend = ReadioBackend(
+        app=cast(Readio, SimpleNamespace(inspect=inspect, render=render))
+    )
+
+    workflow = backend.inspect(request)
+    conversion = backend.render(request, on_progress=events.append)
+
+    assert workflow.steps[0].stage == "render"
+    assert workflow.steps[0].state == "ready"
+    assert workflow.warnings == ("warning",)
+    assert conversion.executed_stages == ("compose",)
+    assert conversion.reused_stages == ("render",)
+    assert calls[0] == ("inspect", request)
+    assert calls[1][0] == "render"
+    assert calls[1][1][0] is request
+    assert callable(calls[1][1][1])
+    assert events == [
+        ApplicationEvent(
+            stage="render",
+            kind="stage.progress",
+            message="Rendering chapter",
+            package="voicerender",
+            selector="chapter-2",
+            current=2,
+            total=3,
+            elapsed_seconds=1.5,
+            details={"attempt": 1},
+        )
+    ]
+
+
+def test_normalize_workflow_error_retains_public_stage_context() -> None:
+    error = WorkflowStageError(
+        "render",
+        "The engine runtime is unavailable.",
+        package="voicerender",
+        selector="chapter-2",
+        code="engine_unavailable",
+        cause=RuntimeError("missing runtime"),
+        details={"retryable": True},
+    )
+
+    normalized = backend_module.normalize_readio_error(error)
+
+    assert isinstance(normalized, WorkflowFailureError)
+    assert normalized.category == "render-stage failure"
+    assert normalized.stage == "render"
+    assert normalized.package == "voicerender"
+    assert normalized.selector == "chapter-2"
+    assert normalized.code == "engine_unavailable"
+    assert normalized.details == {"retryable": True}
+
+
+def test_render_failure_reports_persisted_setup_paths() -> None:
+    profile = Path("book.ttsforge/narrator.renderprofile.toml")
+    request = RenderRequest(source=Path("book.epub"), profile=profile)
+
+    def render(value: RenderRequest, *, on_progress=None) -> object:
+        raise WorkflowStageError(
+            "render",
+            "The engine runtime is unavailable.",
+            package="voicerender",
+            cause=RuntimeError("missing runtime"),
+        )
+
+    backend = ReadioBackend(
+        app=cast(Readio, SimpleNamespace(inspect=lambda value: None, render=render))
+    )
+
+    with pytest.raises(WorkflowFailureError) as raised:
+        backend.render(request)
+
+    assert raised.value.category == "render-stage failure"
+    assert raised.value.details["saved_setup"] == {
+        "project": "book.ttsforge",
+        "intent": "book.ttsforge/render.readio.toml",
+        "profile": "book.ttsforge/narrator.renderprofile.toml",
+    }

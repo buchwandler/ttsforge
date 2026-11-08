@@ -8,14 +8,16 @@ import pytest
 from ttsforge.application import (
     AudiobookOptions,
     AudiobookRequest,
+    BookChapterView,
+    BookInspectionView,
     CatalogItemView,
-    ChapterView,
     ConversionResultView,
     InputOverrides,
-    ProjectMigrationRequiredError,
-    ProjectView,
+    ProjectPaths,
     SetupConflictError,
     SetupOrigins,
+    WorkflowPlanView,
+    WorkflowStepView,
 )
 from ttsforge.application.setup import merge_saved_setup
 from ttsforge.options import AudiobookOptions as CompatibilityAudiobookOptions
@@ -30,6 +32,15 @@ def test_audiobook_request_keeps_the_public_options_compatibility_name() -> None
     assert request.language == "en-us"
 
 
+def test_project_paths_follow_ttsforge_layout() -> None:
+    paths = ProjectPaths.for_source(Path("book.epub"))
+
+    assert paths.root == Path("book.ttsforge")
+    assert paths.intent == Path("book.ttsforge/render.readio.toml")
+    assert paths.profile == Path("book.ttsforge/narrator.renderprofile.toml")
+    assert paths.bundle == Path("book.ttsforge/book.ssmd-bundle")
+
+
 def test_input_overrides_and_setup_origins_are_frontend_neutral() -> None:
     overrides = InputOverrides(frozenset({"engine"}))
     origins = SetupOrigins(explicit=overrides.fields, project=frozenset({"voice"}))
@@ -38,46 +49,64 @@ def test_input_overrides_and_setup_origins_are_frontend_neutral() -> None:
     assert not overrides.includes("voice")
     assert not origins.needs_input("engine")
     assert not origins.needs_input("voice")
-    assert origins.needs_input("voice", reconfigure=True)
-    assert origins.needs_input("model")
+    assert origins.needs_input("target")
 
 
-def test_application_views_and_stable_errors_have_no_readio_dto_requirement() -> None:
-    project = ProjectView(
-        path=Path("book.readio"),
-        project_id="project-id",
-        name="Book",
-        kind="audiobook",
-        source_format="epub",
-        chapters=(ChapterView(number=1, title="Opening"),),
+def test_application_views_have_no_readio_dto_requirement() -> None:
+    inspection = BookInspectionView(
+        source=Path("book.epub"),
+        kind="book",
+        title="Book",
+        author="Author",
+        language="en-US",
+        chapters=(BookChapterView(number=1, title="Opening", source_id="c1"),),
+    )
+    plan = WorkflowPlanView(
+        source=inspection.source,
+        workspace=Path("book.ttsforge/book.ssmd-bundle"),
+        workspace_mode="bundle",
+        output=Path("book.m4b"),
+        steps=(
+            WorkflowStepView(
+                stage="render",
+                package="ttsforge",
+                action="reuse",
+                selector="book",
+                reason="Already present",
+                state="ready",
+            ),
+        ),
     )
     result = ConversionResultView(
-        project=project, output=Path("book.m4b"), chapters=(1,)
+        output=Path("book.m4b"),
+        workspace=plan.workspace,
+        workspace_mode=plan.workspace_mode,
+        executed_stages=(),
+        reused_stages=("render",),
     )
-    item = CatalogItemView(id="af_sarah", label="Sarah", engine="kokoro")
+    item = CatalogItemView(id="voice-1", label="Narrator", engine="engine-a")
 
-    assert result.project.chapters[0].title == "Opening"
-    assert result.chapters == (1,)
-    assert item.engine == "kokoro"
-    assert issubclass(ProjectMigrationRequiredError, ValueError)
+    assert inspection.chapters[0].title == "Opening"
+    assert plan.steps[0].state == "ready"
+    assert result.reused_stages == ("render",)
+    assert item.engine == "engine-a"
 
 
-def test_noninteractive_saved_setup_conflict_uses_stable_application_error() -> None:
-    cli_request = AudiobookRequest(source=Path("book.epub"), engine="piper")
-    saved_request = replace(
-        cli_request,
-        engine="kokoro",
-        model="v1.0",
-        quality="q8",
-        voice="af_sarah",
+def test_noninteractive_saved_setup_conflict_reports_dependent_values() -> None:
+    request = AudiobookRequest(source=Path("book.epub"), engine="engine-b")
+    saved = replace(
+        request,
+        engine="engine-a",
+        target="target-a",
+        voice="voice-a",
+        engine_options={"quality": "high"},
+        speed=1.0,
     )
 
-    with pytest.raises(
-        SetupConflictError, match=r"--engine.*--model.*--quality.*--voice"
-    ):
+    with pytest.raises(SetupConflictError, match=r"--engine.*--target.*--voice"):
         merge_saved_setup(
-            cli_request,
-            saved_request,
+            request,
+            saved,
             InputOverrides(frozenset({"engine"})),
             interactive=False,
         )

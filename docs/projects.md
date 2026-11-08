@@ -1,123 +1,86 @@
 # Projects and outputs
 
-TTSForge's EPUB workflow is a thin frontend to Readio's persistent project services.
-Readio owns project state, planning, synthesis, composition, reusable work,
-invalidation, and output export. TTSForge does not maintain a second conversion
-workspace or duplicate Readio's project schema.
+TTSForge provides the audiobook-facing setup and delegates workflow state, planning,
+rendering, reuse, and export to Readio. The TTSForge project directory is a location for
+Readio-owned intent, profile, and workspace data, not a second workflow database.
 
-## Default project and reuse
+## Default project layout
 
-For `novel.epub`, TTSForge uses a sibling project directory named `novel.ssmdbook`
-unless `--project` supplies another path:
+For `novel.epub`, the default project is a sibling directory named `novel.ttsforge`:
+
+```text
+novel.ttsforge/
+├── render.readio.toml
+├── narrator.renderprofile.toml
+└── book.ssmd-bundle/
+```
+
+TTSForge selects these paths. Readio's public API creates, loads, validates, and uses
+the render intent, narrator profile, and persistent SSMD bundle. TTSForge does not
+duplicate their schemas or edit workflow artifacts directly.
+
+Use the default project or choose an explicit directory:
 
 ```bash
 ttsforge convert novel.epub
-ttsforge status novel.ssmdbook
+ttsforge status novel.ttsforge
+ttsforge convert novel.epub --project ./projects/novel-en
 ```
 
-The first conversion creates the project and records its chapter scope. Later
-conversions open the same project and ask Readio to build/export from its authoritative
-state. Completed compatible work can be reused; Readio determines what needs to be
-planned, synthesized, composed, or exported again. Consult
-[Readio's project guide](https://github.com/buchwandler/readio/blob/main/docs/projects.md)
-for stage and invalidation details.
+## Saved setup and retry
 
-## Guided synthesis setup
+Setup values are saved through Readio before preflight confirmation and rendering. The
+explicit CLI values take precedence over saved project values; saved values take
+precedence over source-derived values and Readio defaults. Interactive prompts fill
+values that are still missing.
 
-Chapter selection remains persistent project scope. TTSForge loads saved choices from
-Readio's public project-settings API. During initial setup, the resolved synthesis and
-export settings are saved to the Readio project before final confirmation or build;
-TTSForge does not create a parallel settings file.
+A failed render leaves the saved intent and profile available. Re-run the same
+conversion to reuse them. When a changed language, engine, or target makes dependent
+selections incompatible, TTSForge gathers the affected selections again and asks Readio
+to validate the resulting setup.
 
-On normal reuse, valid saved choices suppress their setup questions, and model/voice
-catalogs appear only when a selection is needed. If an existing or legacy project has no
-saved setup, Readio resolves the defaults and TTSForge saves the resulting choices. A
-failed build can be retried with the saved setup and original chapter scope.
+`info` reports saved setup when present. `status` asks Readio to inspect the saved
+workflow and presents its stage actions; it does not make its own artifact-validity
+decisions.
 
-Use `--reconfigure` to revisit unpinned synthesis choices with saved values as defaults.
-Explicit CLI options pin and update only their corresponding settings. When language,
-engine, or model changes, dependent unpinned choices are reconsidered; explicitly pinned
-dependent options remain unchanged.
+## Chapter selection
 
-`--yes` skips only final confirmation, not setup questions. `--non-interactive` and
-`--json` never prompt: they use saved project setup and let Readio resolve unspecified
-values, with explicit CLI options taking precedence.
-
-Use `--project` to choose an explicit project location. This is useful for multiple
-audiobook variants or when project files should live outside the source directory:
-
-```bash
-ttsforge convert novel.epub --project novel-en.ssmdbook
-```
-
-## Chapter selection is project scope
-
-A chapter selection is applied when creating a project. For example:
+The chapter selector is persisted in the render intent. For example:
 
 ```bash
 ttsforge convert novel.epub --chapters 2-8
 ```
 
-That scope is persistent. Opening the project again does not silently replace its
-selected chapters with a new `--chapters` value. To work on a different selection,
-create another project with `--project` or use `--fresh`:
+To use a different selection without changing the original project, choose another
+project path or use `--fresh`:
 
 ```bash
 ttsforge convert novel.epub --chapters 1-3 --fresh
 ```
 
-When an interactive terminal creates a new project without explicit `--chapters`,
-TTSForge shows the detected chapters and prompts for the initial selection
-automatically. In non-TTY or `--non-interactive` mode, it defaults to all chapters
-unless a selection was provided. The deprecated `--interactive-chapters` flag is no
-longer needed.
+`--fresh` creates a separate TTSForge project directory and preserves the existing one.
+It does not imply output replacement or stage rebuilding.
 
-A reused project keeps its persisted chapter scope and does not prompt again. If you
-pass `--chapters` when reusing a project, the selection must match the saved scope;
-TTSForge rejects a conflict rather than silently changing or ignoring it. Use another
-`--project` path or `--fresh` to create a project for a different selection. The
-preflight view shows the exact persisted chapters. `list` and `info` inspect the source
-EPUB without creating a project.
+## M4B output and workflow controls
 
-## Fresh projects and outputs
+The default final output is `novel.m4b`. Use `--output` for another `.m4b` path.
+TTSForge's audiobook conversion does not offer generic WAV/MP3 output formats.
 
-`--fresh` preserves the current project and chooses a new sibling project path. If
-`novel.ssmdbook` already exists, the fresh project is typically `novel.fresh.ssmdbook`;
-if that path exists, TTSForge chooses another available numbered path. Use `--project`
-when an exact path is required.
+Output replacement and stage rebuilding are independent:
 
-The default output for the default M4B format is `novel.m4b`. Supply `--output` to
-choose another path, or `--format` to select a generic Readio export format.
-`ttsforge formats` reports formats available in the current installation. M4B uses
-Readio's audiobook export service; it is not treated as a generic audio format.
+- `--replace-output` explicitly authorizes replacing an existing M4B.
+- `--rebuild-from STAGE` asks Readio to rebuild from a selected workflow stage.
 
-Output replacement is deliberately explicit. `--force` requests replacement of an
-existing output according to Readio's ownership rules. TTSForge does not remove a
-project's source, state, or unrelated output files as a side effect of starting a fresh
-project.
+Without output-replacement authorization, an existing output is not silently replaced.
+TTSForge does not delete unrelated project data when starting a fresh project.
 
-## Former TTSForge workspaces
+## Former TTSForge and Readio 0.4 projects
 
-Workspaces created by the previous TTSForge-owned Kokoro renderer are not Readio
-projects. This migration does not convert their state, completed audio, SSMD files, or
-resume metadata. If the default project path collides with an old workspace, TTSForge
-stops with migration guidance instead of overwriting or attempting to resume it.
+Workspaces created by the former TTSForge renderer and Readio 0.4 projects are
+incompatible with the TTSForge 0.5 workflow. TTSForge rejects them rather than
+interpreting, migrating, renaming, or deleting their state, audio, SSMD files, or resume
+data.
 
-Keep the old directory as-is. To start separately, choose a new `--project` path or use
-`--fresh`. Existing final audio files are also left in place unless an explicit output
-replacement is requested.
-
-## Status and planning
-
-Use Readio-backed commands to inspect and advance project state:
-
-```bash
-ttsforge status novel.ssmdbook
-ttsforge plan novel.ssmdbook
-ttsforge preview novel.epub --project novel.ssmdbook --selection first:3
-ttsforge convert novel.epub --project novel.ssmdbook
-```
-
-`status` reports stage states and next actions. `plan` creates or refreshes Readio
-speech plans. `preview` creates or reuses the project and renders a small selection
-through the same Readio project pipeline used by conversion.
+Keep the old directory unchanged. Start separately with `--fresh` or an explicit new
+`--project` path. Existing final audio is left in place unless `--replace-output` is
+explicitly supplied. See the [migration guide](migration-readio.md).
