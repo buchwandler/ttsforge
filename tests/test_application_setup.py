@@ -3,7 +3,7 @@ from __future__ import annotations
 from dataclasses import replace
 from pathlib import Path
 
-from ttsforge.application.models import AudiobookRequest, InputOverrides
+from ttsforge.application.models import AudiobookRequest, InputOverrides, SetupOrigins
 from ttsforge.application.setup import merge_saved_setup
 
 
@@ -61,6 +61,19 @@ def test_changed_language_invalidates_saved_engine_dependent_choices() -> None:
     assert merged.voice is None
     assert merged.engine_options == {}
     assert merged.speed is None
+
+
+def test_language_confirmation_respects_explicit_and_project_origins() -> None:
+    origins = SetupOrigins(
+        explicit=frozenset({"engine"}),
+        project=frozenset({"voice"}),
+        derived=frozenset({"language"}),
+    )
+
+    assert not origins.needs_input("language")
+    assert origins.should_confirm_derived("language")
+    assert not origins.should_confirm_derived("engine")
+    assert not origins.should_confirm_derived("voice")
 
 
 def test_explicit_dependent_choice_survives_invalidation() -> None:

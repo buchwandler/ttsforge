@@ -7,14 +7,21 @@ from pathlib import Path
 
 from rich.console import Console
 from rich.table import Table
+from rich.text import Text
 
 from ..application.models import (
     AudiobookRequest,
     BookInspectionView,
-    CatalogItemView,
     ConversionResultView,
     PreflightView,
+    SpacyModelView,
     WorkflowPlanView,
+)
+from .catalog import (
+    CatalogChoiceView,
+    EngineChoiceView,
+    TargetChoiceView,
+    VoiceChoiceView,
 )
 
 
@@ -72,7 +79,12 @@ def render_workflow(plan: WorkflowPlanView, console: Console) -> None:
         console.print(f"Warning: {warning}")
 
 
-def render_preflight(preflight: PreflightView, console: Console) -> None:
+def render_preflight(
+    preflight: PreflightView,
+    console: Console,
+    *,
+    spacy_model: SpacyModelView | None = None,
+) -> None:
     setup = preflight.setup
     request = setup.request
     inspection = setup.preparation.inspection
@@ -87,6 +99,21 @@ def render_preflight(preflight: PreflightView, console: Console) -> None:
     table.add_row("Engine", _show(request.engine))
     table.add_row("Target", _show(request.target))
     table.add_row("Voice", _show(request.voice))
+    if request.spacy == "off":
+        spacy_summary = "off"
+    elif request.spacy == "auto":
+        spacy_summary = "auto (installed models only)"
+    elif spacy_model is not None:
+        version = f" {spacy_model.model_version}" if spacy_model.model_version else ""
+        spacy_summary = f"{request.spacy}: {spacy_model.model}{version}"
+    else:
+        spacy_summary = request.spacy or "existing Readio behavior"
+    table.add_row("spaCy", spacy_summary)
+    table.add_row(
+        "Speech profile",
+        _show(request.speech_profile) if request.speech_profile else "none",
+    )
+    table.add_row("Pause timing", request.pause_timing or "fixed")
     console.print(table)
     console.print("Workflow")
     render_workflow(preflight.workflow, console)
@@ -105,22 +132,86 @@ def render_completion(result: ConversionResultView, console: Console) -> None:
         console.print(f"Warning: {warning}")
 
 
+def _engine_catalog_row(item: EngineChoiceView) -> tuple[str, list[str], list[str]]:
+    line = item.id
+    if item.version:
+        line += f"  {item.version}"
+    tags = []
+    if not item.runnable:
+        tags.append("not runnable")
+    elif not item.installed:
+        tags.append("not installed")
+    details = [" · ".join(item.features)] if item.features else []
+    if item.reason:
+        details.append(f"missing dependency: {item.reason}")
+    return line, tags, details
+
+
+def _target_catalog_row(item: TargetChoiceView) -> tuple[str, list[str], list[str]]:
+    tags = []
+    if item.reference_only:
+        tags.append("reference audio required, unsupported")
+    elif not item.runtime_available:
+        tags.append("runtime unavailable")
+    elif item.status and item.status != "ready":
+        tags.append(item.status)
+    details = []
+    if item.languages:
+        details.append("/".join(item.languages))
+    if item.voice_count:
+        details.append(f"{item.voice_count} voices")
+    if item.qualities:
+        details.append(", ".join(item.qualities))
+    if item.sample_rate:
+        details.append(f"{item.sample_rate // 1000} kHz")
+    if item.default_voice:
+        details.append(f"default voice: {item.default_voice}")
+    if item.voice_mode:
+        details.append(f"voice mode: {item.voice_mode}")
+    if item.features:
+        details.append(" · ".join(item.features))
+    return item.id, tags, details
+
+
+def _voice_catalog_row(item: VoiceChoiceView) -> tuple[str, list[str], list[str]]:
+    tags = ["default"] if item.default else []
+    if not item.runtime_available:
+        tags.append("runtime unavailable")
+    identity = [item.gender if item.gender != "unknown" else "unknown gender"]
+    if item.locale and item.locale.casefold() != "unknown":
+        identity.append(item.locale)
+    if item.language_label:
+        identity.append(item.language_label)
+    elif item.language and item.language.casefold() != "unknown":
+        identity.append(item.language)
+    return item.id, tags, [" · ".join(identity)]
+
+
+def _catalog_row(
+    item: CatalogChoiceView,
+) -> tuple[str, list[str], list[str]]:
+    if isinstance(item, EngineChoiceView):
+        return _engine_catalog_row(item)
+    if isinstance(item, TargetChoiceView):
+        return _target_catalog_row(item)
+    return _voice_catalog_row(item)
+
+
 def render_catalog(
     title: str,
-    items: Sequence[CatalogItemView],
+    items: Sequence[CatalogChoiceView],
     console: Console,
 ) -> None:
     console.print(f"{title} ({len(items)})")
     if not items:
         console.print("No matching items.")
         return
-    table = Table("ID", "Label", "Engine", "Language")
-    for item in items:
-        table.add_row(item.id, item.label, _show(item.engine), _show(item.language))
-    console.print(table)
-    for item in items:
-        if item.details:
-            details = ", ".join(
-                f"{key}: {value}" for key, value in item.details.items()
-            )
-            console.print(f"{item.id}: {details}")
+
+    for index, item in enumerate(items, 1):
+        primary, tags, details = _catalog_row(item)
+        styled = Text(f"  {index}. {primary}")
+        if tags:
+            styled.append("  " + "  ".join(f"[{tag}]" for tag in tags), style="dim")
+        console.print(styled)
+        for detail in details:
+            console.print(Text(f"     {detail}"))

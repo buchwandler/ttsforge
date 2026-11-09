@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import subprocess
 from collections.abc import Callable, Mapping
 from pathlib import Path
 from typing import Any, cast
@@ -16,6 +17,7 @@ from .application.models import (
     BookInspectionView,
     ConversionResultView,
     ProjectPaths,
+    SpacyModelView,
     WorkflowPlanView,
     WorkflowStepView,
 )
@@ -89,6 +91,17 @@ def _metadata_text(metadata: Mapping[str, object], key: str) -> str | None:
         ]
         return ", ".join(authors) or None
     return None
+
+
+def _spacy_model_view(info: readio_api.SpacyModelInfo) -> SpacyModelView:
+    return SpacyModelView(
+        language=info.language,
+        tier=_value(info.tier),
+        model=info.model,
+        installed=info.installed,
+        spacy_version=info.spacy_version,
+        model_version=info.model_version,
+    )
 
 
 class ReadioBackend:
@@ -190,6 +203,62 @@ class ReadioBackend:
                 category="runtime/backend unavailable",
             ) from error
 
+    def inspect_spacy_model(self, language: str, tier: str) -> SpacyModelView:
+        try:
+            info = readio_api.inspect_spacy_model(language, cast(Any, tier))
+        except readio_api.ReadioError as error:
+            raise _workflow_failure(
+                error,
+                category="spaCy model inspection failure",
+            ) from error
+        return _spacy_model_view(info)
+
+    def ensure_spacy_model(
+        self,
+        language: str,
+        tier: str,
+        *,
+        offline: bool = False,
+    ) -> SpacyModelView:
+        if tier not in {"sm", "md", "lg", "trf"}:
+            raise ValueError("Only concrete spaCy model tiers can be provisioned.")
+        inspected = self.inspect_spacy_model(language, tier)
+        if inspected.installed:
+            return inspected
+        if offline:
+            raise WorkflowFailureError(
+                f"spaCy model {inspected.model!r} is not installed "
+                "and offline mode is enabled.",
+                category="spaCy model unavailable",
+                stage="prepare",
+                package="spacy",
+                selector=inspected.model,
+                code="spacy_model_missing_offline",
+                details={"language": language, "tier": tier, "model": inspected.model},
+            )
+        try:
+            info = readio_api.ensure_spacy_model(
+                language,
+                cast(Any, tier),
+                offline=False,
+            )
+        except readio_api.ReadioError as error:
+            raise _workflow_failure(
+                error,
+                category="spaCy model provisioning failure",
+            ) from error
+        except (RuntimeError, subprocess.CalledProcessError) as error:
+            raise WorkflowFailureError(
+                str(error),
+                category="spaCy model provisioning failure",
+                stage="prepare",
+                package="spacy",
+                selector=inspected.model,
+                code="spacy_model_provision_failed",
+                details={"language": language, "tier": tier, "model": inspected.model},
+            ) from error
+        return _spacy_model_view(info)
+
     def inspect_voice(self, selector: str, *, language: str | None = None) -> object:
         return readio_api.inspect_voice(selector, language=language)
 
@@ -236,20 +305,32 @@ class ReadioBackend:
         bitrate: str | int | None,
         cover: Path | None,
         metadata: Mapping[str, str],
+        spacy: str | None = None,
+        speech_profile: Path | None = None,
+        pause_timing: str | None = None,
         target_lufs: float | None = -18.0,
     ) -> readio_api.RenderIntent:
+        planning_spacy = "on" if spacy in {"sm", "md", "lg", "trf"} else spacy or "auto"
         return readio_api.create_book_intent(
             source,
             profile=profile,
             bundle=bundle,
             chapters=chapters,
             language=language,
+            spacy=planning_spacy,
             output_format="m4b",
             output=output,
             bitrate=bitrate,
             cover=cover,
             metadata=dict(metadata),
             target_lufs=target_lufs,
+            preparation=readio_api.PreparationIntent(
+                spacy=cast(Any, spacy),
+                speech_profile=speech_profile,
+            ),
+            projection=readio_api.ProjectionIntent(
+                pause_timing=pause_timing or "fixed"
+            ),
         )
 
     def load_intent(self, path: Path) -> readio_api.RenderIntent:
@@ -275,6 +356,11 @@ class ReadioBackend:
         speed_value = options.pop("speed", None)
         speed = speed_value if isinstance(speed_value, (int, float)) else None
         output_metadata = intent.output.metadata
+        preparation = getattr(intent, "preparation", None)
+        projection = getattr(intent, "projection", None)
+        spacy = getattr(preparation, "spacy", None)
+        speech_profile = getattr(preparation, "speech_profile", None)
+        pause_timing = getattr(projection, "pause_timing", None)
         return AudiobookRequest(
             source=source,
             project=paths.root,
@@ -286,6 +372,9 @@ class ReadioBackend:
             voice=binding.get("voice"),
             engine_options=options,
             speed=speed,
+            spacy=spacy,
+            speech_profile=speech_profile,
+            pause_timing=_value(pause_timing) if pause_timing is not None else None,
             bitrate=intent.output.bitrate,
             target_lufs=intent.compose.target_lufs,
             title=output_metadata.get("title"),
@@ -318,6 +407,9 @@ class ReadioBackend:
                 bitrate=request.bitrate,
                 cover=request.cover,
                 metadata=metadata,
+                spacy=request.spacy,
+                speech_profile=request.speech_profile,
+                pause_timing=request.pause_timing,
                 target_lufs=(
                     request.target_lufs if request.target_lufs is not None else -18.0
                 ),

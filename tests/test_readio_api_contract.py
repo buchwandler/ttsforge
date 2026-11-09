@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 from dataclasses import fields, is_dataclass
+from inspect import signature
 
 import readio.api as readio_api
 
@@ -11,6 +12,11 @@ def test_required_public_api_symbols_are_available() -> None:
     required = {
         "Readio",
         "ReadioError",
+        "PreparationIntent",
+        "ProjectionIntent",
+        "SpacyModelInfo",
+        "ensure_spacy_model",
+        "inspect_spacy_model",
         "RebuildStage",
         "RenderIntent",
         "RenderRequest",
@@ -40,8 +46,27 @@ def test_required_public_api_symbols_are_available() -> None:
     missing = sorted(name for name in required if not hasattr(readio_api, name))
     assert not missing, (
         "The installed Readio does not provide TTSForge's required public API: "
-        f"{', '.join(missing)}. Install Readio >=0.6.1,<0.7."
+        f"{', '.join(missing)}. Install Readio >=0.6.2,<0.7."
     )
+
+
+def test_setup_intents_and_spacy_model_are_public_contracts() -> None:
+    preparation_fields = {field.name for field in fields(readio_api.PreparationIntent)}
+    projection_fields = {field.name for field in fields(readio_api.ProjectionIntent)}
+    model_fields = {field.name for field in fields(readio_api.SpacyModelInfo)}
+    intent_parameters = set(signature(readio_api.create_book_intent).parameters)
+
+    assert {"spacy", "speech_profile"} <= preparation_fields
+    assert {"pause_timing"} <= projection_fields
+    assert {
+        "language",
+        "tier",
+        "model",
+        "installed",
+        "spacy_version",
+        "model_version",
+    } <= model_fields
+    assert {"preparation", "projection"} <= intent_parameters
 
 
 def test_workflow_types_expose_the_normalized_contract() -> None:

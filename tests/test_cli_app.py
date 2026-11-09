@@ -1,18 +1,28 @@
 from __future__ import annotations
 
 import json
+from dataclasses import replace
 from importlib import import_module
+from io import StringIO
 from pathlib import Path
+from types import SimpleNamespace
 
+import pytest
 from readio.api import WorkflowStageError
+from rich.console import Console
 from typer.testing import CliRunner
 
+from ttsforge.application.errors import InputValidationError, WorkflowFailureError
 from ttsforge.application.models import (
     AudiobookRequest,
     BookChapterView,
     BookInspectionView,
     ConversionResultView,
+    InputOverrides,
     ProjectPaths,
+    SetupOrigins,
+    SetupPreparation,
+    SpacyModelView,
     WorkflowPlanView,
 )
 from ttsforge.application.service import AudiobookApplicationService
@@ -28,6 +38,7 @@ class _Backend:
         self.calls: list[tuple[object, ...]] = []
         self.render_error: Exception | None = None
         self.render_request: tuple[ProjectPaths, AudiobookRequest] | None = None
+        self.spacy_installed = True
 
     def inspect_source(self, source: Path) -> BookInspectionView:
         self.calls.append(("source", source))
@@ -94,10 +105,43 @@ class _Backend:
         self.calls.append(("voices", kwargs))
         return ({"id": "voice-a", "engine": "engine-a", "language": "en-US"},)
 
+    def inspect_spacy_model(self, language: str, tier: str) -> SpacyModelView:
+        self.calls.append(("spacy_inspect", language, tier))
+        return SpacyModelView(
+            language=language,
+            tier=tier,
+            model=f"en_core_web_{tier}",
+            installed=self.spacy_installed,
+            spacy_version="3.8.16",
+            model_version="3.8.0" if self.spacy_installed else None,
+        )
 
-def _invoke(monkeypatch, backend: _Backend, args: list[str]):
+    def ensure_spacy_model(
+        self, language: str, tier: str, *, offline: bool = False
+    ) -> SpacyModelView:
+        self.calls.append(("spacy_ensure", language, tier, offline))
+        if offline and not self.spacy_installed:
+            raise InputValidationError("spaCy model is missing in offline mode.")
+        self.spacy_installed = True
+        return SpacyModelView(
+            language=language,
+            tier=tier,
+            model=f"en_core_web_{tier}",
+            installed=True,
+            spacy_version="3.8.16",
+            model_version="3.8.0",
+        )
+
+
+def _invoke(
+    monkeypatch,
+    backend: _Backend,
+    args: list[str],
+    *,
+    mode: InteractionMode | None = None,
+):
     service = AudiobookApplicationService(backend)
-    mode = InteractionMode(
+    mode = mode or InteractionMode(
         interactive=False,
         json=True,
         live_progress=False,
@@ -106,6 +150,20 @@ def _invoke(monkeypatch, backend: _Backend, args: list[str]):
     monkeypatch.setattr(cli_app, "_service", lambda: (backend, service))
     monkeypatch.setattr(cli_app, "resolve_interaction_mode", lambda **kwargs: mode)
     return CliRunner().invoke(app, args, color=False, env={"FORCE_COLOR": ""})
+
+
+def _setup_prompt(text: str, **kwargs: object) -> str:
+    if text == "spaCy model":
+        return str(kwargs["default"])
+    if text == "Speech replacement profile (optional)":
+        return ""
+    if text.startswith("Pause timing"):
+        return str(kwargs["default"])
+    return "1"
+
+
+def _language_prompt(text: str, **kwargs: object) -> str:
+    return "de" if text == "Language" else _setup_prompt(text, **kwargs)
 
 
 def test_convert_persists_setup_before_preflight_and_uses_m4b(
@@ -127,6 +185,12 @@ def test_convert_persists_setup_before_preflight_and_uses_m4b(
             "engine-a",
             "--target",
             "target-a",
+            "--spacy",
+            "off",
+            "--speech-profile",
+            str(tmp_path / "speech.toml"),
+            "--pause-timing",
+            "natural",
             "--replace-output",
             "--rebuild-from",
             "render",
@@ -139,12 +203,240 @@ def test_convert_persists_setup_before_preflight_and_uses_m4b(
     assert payload["result"]["output"] == str(tmp_path / "book.m4b")
     assert payload["request"]["replace_output"] is True
     assert payload["request"]["rebuild_from"] == "render"
+    assert payload["request"]["spacy"] == "off"
+    assert payload["request"]["speech_profile"] == str(tmp_path / "speech.toml")
+    assert payload["request"]["pause_timing"] == "natural"
+    assert payload["spacy_model"] is None
     assert [call[0] for call in backend.calls[-4:]] == [
         "save",
         "request",
         "inspect",
         "render",
     ]
+
+
+def test_concrete_spacy_model_is_provisioned_before_preflight(
+    monkeypatch, tmp_path: Path
+) -> None:
+    source = tmp_path / "book.epub"
+    source.touch()
+    backend = _Backend()
+    backend.spacy_installed = False
+
+    result = _invoke(
+        monkeypatch,
+        backend,
+        [
+            "convert",
+            str(source),
+            "--language",
+            "en-US",
+            "--engine",
+            "engine-a",
+            "--target",
+            "target-a",
+            "--spacy",
+            "trf",
+            "--yes",
+            "--json",
+        ],
+    )
+
+    assert result.exit_code == 0, result.output
+    payload = json.loads(result.output)
+    assert payload["spacy_model"]["model"] == "en_core_web_trf"
+    assert payload["spacy_model"]["model_version"] == "3.8.0"
+    names = [call[0] for call in backend.calls]
+    assert names.index("save") < names.index("spacy_inspect")
+    assert names.index("spacy_inspect") < names.index("spacy_ensure")
+    assert names.index("spacy_ensure") < names.index("inspect")
+
+
+def test_offline_missing_spacy_model_fails_before_preflight(
+    monkeypatch, tmp_path: Path
+) -> None:
+    source = tmp_path / "book.epub"
+    source.touch()
+    backend = _Backend()
+    backend.spacy_installed = False
+
+    result = _invoke(
+        monkeypatch,
+        backend,
+        [
+            "convert",
+            str(source),
+            "--language",
+            "en-US",
+            "--engine",
+            "engine-a",
+            "--target",
+            "target-a",
+            "--spacy",
+            "trf",
+            "--offline",
+            "--json",
+        ],
+    )
+
+    assert result.exit_code == 1
+    assert "spaCy model is missing in offline mode" in result.output
+    names = [call[0] for call in backend.calls]
+    assert "save" in names
+    assert "spacy_ensure" in names
+    assert "inspect" not in names
+    assert "render" not in names
+
+
+def test_auto_spacy_does_not_inspect_or_provision_a_model(
+    monkeypatch, tmp_path: Path
+) -> None:
+    source = tmp_path / "book.epub"
+    source.touch()
+    backend = _Backend()
+
+    result = _invoke(
+        monkeypatch,
+        backend,
+        [
+            "convert",
+            str(source),
+            "--language",
+            "en-US",
+            "--engine",
+            "engine-a",
+            "--target",
+            "target-a",
+            "--spacy",
+            "auto",
+            "--json",
+        ],
+    )
+
+    assert result.exit_code == 0, result.output
+    payload = json.loads(result.output)
+    assert payload["request"]["spacy"] == "auto"
+    assert payload["spacy_model"] is None
+    assert not any(call[0].startswith("spacy_") for call in backend.calls)
+
+
+def test_setup_summary_shows_persisted_settings_and_resolved_spacy(
+    monkeypatch, tmp_path: Path
+) -> None:
+    source = tmp_path / "book.epub"
+    source.touch()
+    backend = _Backend()
+    console_output = StringIO()
+    monkeypatch.setattr(
+        cli_app,
+        "_output",
+        Console(file=console_output, width=160, highlight=False, markup=False),
+    )
+    mode = InteractionMode(
+        interactive=False,
+        json=False,
+        live_progress=False,
+        confirm=False,
+    )
+
+    result = _invoke(
+        monkeypatch,
+        backend,
+        [
+            "convert",
+            str(source),
+            "--language",
+            "en-US",
+            "--engine",
+            "engine-a",
+            "--target",
+            "target-a",
+            "--spacy",
+            "sm",
+            "--speech-profile",
+            str(tmp_path / "speech.toml"),
+            "--pause-timing",
+            "engaging",
+            "--yes",
+        ],
+        mode=mode,
+    )
+
+    assert result.exit_code == 0, result.output
+    output = console_output.getvalue()
+    assert "en_core_web_sm 3.8.0" in output
+    assert str(tmp_path / "speech.toml") in output
+    assert "engaging" in output
+
+
+def test_retry_reuses_saved_settings_without_repeating_setup_questions(
+    monkeypatch, tmp_path: Path
+) -> None:
+    source = tmp_path / "book.epub"
+    source.touch()
+    speech_profile = tmp_path / "speech.toml"
+    backend = _Backend()
+    backend.render_error = WorkflowFailureError(
+        "temporary renderer failure", category="render-stage failure"
+    )
+    mode = InteractionMode(
+        interactive=True,
+        json=False,
+        live_progress=False,
+        confirm=False,
+    )
+    first = _invoke(
+        monkeypatch,
+        backend,
+        [
+            "convert",
+            str(source),
+            "--language",
+            "en-US",
+            "--engine",
+            "engine-a",
+            "--target",
+            "target-a",
+            "--voice",
+            "voice-a",
+            "--spacy",
+            "md",
+            "--speech-profile",
+            str(speech_profile),
+            "--pause-timing",
+            "natural",
+            "--yes",
+        ],
+        mode=mode,
+    )
+
+    assert first.exit_code == 1
+    assert backend.saved
+    saved = next(iter(backend.saved.values()))
+    assert saved.spacy == "md"
+    assert saved.speech_profile == speech_profile
+    assert saved.pause_timing == "natural"
+    backend.render_error = None
+    monkeypatch.setattr(
+        cli_app.typer,
+        "prompt",
+        lambda *args, **kwargs: pytest.fail("retry must reuse saved setup"),
+    )
+
+    retry = _invoke(
+        monkeypatch,
+        backend,
+        ["convert", str(source), "--yes"],
+        mode=mode,
+    )
+
+    assert retry.exit_code == 0, retry.output
+    assert backend.render_request is not None
+    request = backend.render_request[1]
+    assert request.spacy == "md"
+    assert request.speech_profile == speech_profile
+    assert request.pause_timing == "natural"
+    assert sum(call[0] == "load" for call in backend.calls) == 1
 
 
 def test_output_replacement_and_stage_rebuild_are_separate_controls(
@@ -351,3 +643,272 @@ def test_cli_displays_structured_readio_stage_errors(
     assert "Package: voicerender" in result.output
     assert "Selector: chapter-2" in result.output
     assert "Code: engine_unavailable" in result.output
+
+
+def test_interactive_setup_confirms_derived_language_and_filters_discovery(
+    monkeypatch, tmp_path: Path
+) -> None:
+    backend = _Backend()
+    preparation = AudiobookApplicationService(backend).prepare_setup(
+        AudiobookRequest(source=tmp_path / "book.epub"), InputOverrides()
+    )
+    preparation = replace(
+        preparation,
+        request=replace(
+            preparation.request,
+            engine="saved-engine",
+            target="saved-target",
+            voice="saved-voice",
+            engine_options={"quality": "old"},
+            speed=1.2,
+        ),
+        origins=SetupOrigins(
+            project=frozenset({"engine", "target", "voice", "engine_options", "speed"}),
+            derived=frozenset({"language"}),
+        ),
+    )
+    prompts: list[tuple[str, object]] = []
+
+    def prompt(text: str, **kwargs: object) -> str:
+        prompts.append((text, kwargs))
+        if text == "Language":
+            return "de"
+        return _setup_prompt(text, **kwargs)
+
+    monkeypatch.setattr(cli_app.typer, "prompt", prompt)
+
+    selected = cli_app._complete_interactive_setup(backend, preparation)
+
+    assert selected.language == "de"
+    assert selected.engine == "engine-a"
+    assert selected.target == "target-a"
+    assert selected.voice == "voice-a"
+    assert selected.engine_options == {}
+    assert selected.speed is None
+    assert selected.spacy == "sm"
+    assert selected.speech_profile is None
+    assert selected.pause_timing == "engaging"
+    assert prompts[1] == ("spaCy model", {"default": "sm"})
+    assert prompts[-1] == (
+        "Pause timing (fixed/natural/engaging)",
+        {"default": "engaging"},
+    )
+    assert prompts[0] == ("Language", {"default": "en-US"})
+    target_call = next(call[1] for call in backend.calls if call[0] == "targets")
+    assert target_call["language"] == "de"
+    voice_call = next(call[1] for call in backend.calls if call[0] == "voices")
+    assert voice_call["language"] == "de"
+
+
+@pytest.mark.parametrize("origin", ["explicit", "project"])
+def test_explicit_and_saved_language_suppress_interactive_prompt(
+    monkeypatch, tmp_path: Path, origin: str
+) -> None:
+    backend = _Backend()
+    source = tmp_path / "book.epub"
+    request = AudiobookRequest(
+        source=source,
+        language="en-US",
+        engine="engine-a",
+        target="target-a",
+        voice="voice-a",
+    )
+    origins = SetupOrigins(
+        explicit=frozenset({"language"}) if origin == "explicit" else frozenset(),
+        project=(
+            frozenset({"language", "engine", "target", "voice"})
+            if origin == "project"
+            else frozenset({"engine", "target", "voice"})
+        ),
+    )
+    preparation = SetupPreparation(
+        paths=ProjectPaths.for_source(source),
+        inspection=backend.inspect_source(source),
+        request=request,
+        origins=origins,
+        reused=origin == "project",
+    )
+
+    def unexpected_prompt(text: str, **kwargs: object) -> str:
+        if text == "Language":
+            pytest.fail("explicit and saved language must not prompt")
+        return _setup_prompt(text, **kwargs)
+
+    monkeypatch.setattr(cli_app.typer, "prompt", unexpected_prompt)
+
+    selected = cli_app._complete_interactive_setup(backend, preparation)
+
+    assert selected.language == "en-US"
+
+
+def test_explicit_voice_is_rejected_when_language_filter_invalidates_it(
+    monkeypatch, tmp_path: Path
+) -> None:
+    backend = _Backend()
+    backend.list_voices = lambda **kwargs: ()
+    source = tmp_path / "book.epub"
+    request = AudiobookRequest(
+        source=source,
+        language="en-US",
+        engine="engine-a",
+        target="target-a",
+        voice="voice-a",
+    )
+    preparation = SetupPreparation(
+        paths=ProjectPaths.for_source(source),
+        inspection=backend.inspect_source(source),
+        request=request,
+        origins=SetupOrigins(
+            explicit=frozenset({"engine", "target", "voice"}),
+            derived=frozenset({"language"}),
+        ),
+        reused=False,
+    )
+    monkeypatch.setattr(
+        cli_app.typer,
+        "prompt",
+        _language_prompt,
+    )
+
+    with pytest.raises(InputValidationError, match="Voice 'voice-a' is not available"):
+        cli_app._complete_interactive_setup(backend, preparation)
+
+
+def test_catalog_lists_curated_human_metadata_and_default_voice(monkeypatch) -> None:
+    backend = _Backend()
+    backend.list_targets = lambda **kwargs: (
+        SimpleNamespace(
+            id="target-a",
+            languages=("en", "de"),
+            status="ready",
+            runtime_available=True,
+            default_voice="af_heart",
+            voices=("af_heart", "af_bella"),
+            speakers=(),
+            voice_details=(
+                SimpleNamespace(
+                    language="en", locale="en-US", language_label="English"
+                ),
+                SimpleNamespace(language="de", locale="de-DE", language_label="German"),
+            ),
+            qualities=("fp32",),
+            sample_rate=24000,
+            capabilities=frozenset({"named_voices", "lexicons"}),
+            metadata={
+                "voice_mode": "static",
+                "private_target_payload": "hidden-target-data",
+            },
+        ),
+    )
+    backend.list_voices = lambda **kwargs: (
+        SimpleNamespace(
+            selector="kokoro:target-a/af_heart",
+            voice="af_heart",
+            languages=("en",),
+            gender="female",
+            locale="en-US",
+            installed=True,
+            metadata={
+                "voice": {"language_label": "American English"},
+                "private_voice_payload": "hidden-voice-data",
+            },
+        ),
+    )
+
+    targets = _invoke(
+        monkeypatch,
+        backend,
+        ["targets", "--engine", "kokoro", "--language", "en"],
+    )
+    voices = _invoke(
+        monkeypatch,
+        backend,
+        ["voices", "--engine", "kokoro", "--target", "target-a", "--language", "en"],
+    )
+
+    assert targets.exit_code == 0, targets.output
+    assert "English/German" in targets.output
+    assert "2 voices" in targets.output
+    assert "fp32" in targets.output and "24 kHz" in targets.output
+    assert "private_target_payload" not in targets.output
+    assert voices.exit_code == 0, voices.output
+    assert "af_heart" in voices.output and "[default]" in voices.output
+    assert "female" in voices.output and "en-US" in voices.output
+    assert "American English" in voices.output
+    assert "private_voice_payload" not in voices.output
+
+
+def test_reference_only_target_is_hidden_interactively_and_rejected_noninteractive(
+    monkeypatch, tmp_path: Path, capsys
+) -> None:
+    reference_target = {
+        "id": "reference-only",
+        "languages": ("en",),
+        "voices": (),
+        "speakers": (),
+        "capabilities": frozenset({"reference_voice"}),
+        "metadata": {"supports_reference_enrollment": True},
+    }
+    normal_target = {
+        "id": "target-a",
+        "languages": ("en",),
+        "voices": ("voice-a",),
+        "capabilities": frozenset({"named_voices"}),
+    }
+    backend = _Backend()
+    backend.list_targets = lambda **kwargs: (reference_target, normal_target)
+    source = tmp_path / "book.epub"
+    request = AudiobookRequest(
+        source=source,
+        language="en",
+        engine="engine-a",
+        voice="voice-a",
+    )
+    preparation = SetupPreparation(
+        paths=ProjectPaths.for_source(source),
+        inspection=backend.inspect_source(source),
+        request=request,
+        origins=SetupOrigins(project=frozenset({"language", "engine", "voice"})),
+        reused=True,
+    )
+    monkeypatch.setattr(cli_app.typer, "prompt", _setup_prompt)
+
+    selected = cli_app._complete_interactive_setup(backend, preparation)
+    output = capsys.readouterr().out
+
+    assert selected.target == "target-a"
+    assert "target-a" in output
+    assert "reference-only" not in output
+
+    source.touch()
+    result = _invoke(
+        monkeypatch,
+        backend,
+        [
+            "convert",
+            str(source),
+            "--language",
+            "en",
+            "--engine",
+            "engine-a",
+            "--target",
+            "reference-only",
+            "--json",
+        ],
+    )
+
+    assert result.exit_code == 1
+    assert "requires reference audio" in result.output
+    assert not any(call[0] == "save" for call in backend.calls)
+
+
+def test_catalog_selection_accepts_numeric_and_identifier_values(monkeypatch) -> None:
+    choices = (
+        cli_app.engine_choice_view({"id": "kokoro", "installed": True}),
+        cli_app.engine_choice_view({"id": "piper", "installed": True}),
+    )
+    answers = iter(("2", "kokoro"))
+    monkeypatch.setattr(cli_app.typer, "prompt", lambda *args, **kwargs: next(answers))
+
+    assert cli_app._choose_catalog_value("Engines", choices) == "piper"
+    assert cli_app._choose_catalog_value("Engines", choices) == "kokoro"

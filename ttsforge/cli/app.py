@@ -5,9 +5,9 @@ from __future__ import annotations
 import json
 import traceback
 from collections.abc import Callable, Mapping
-from dataclasses import asdict, is_dataclass, replace
+from dataclasses import asdict, replace
 from pathlib import Path
-from typing import Annotated, Any, TypeVar, cast
+from typing import Annotated, Any, Literal, TypeVar, cast
 
 import typer
 from rich.console import Console
@@ -21,15 +21,23 @@ from ..application.errors import (
 from ..application.models import (
     AudiobookRequest,
     BookInspectionView,
-    CatalogItemView,
     ConversionResultView,
     InputOverrides,
     PreflightView,
     ProjectPaths,
     SetupPreparation,
+    SpacyModelView,
     WorkflowPlanView,
 )
 from ..application.service import AudiobookApplicationService
+from .catalog import (
+    CatalogChoiceView,
+    TargetChoiceView,
+    VoiceChoiceView,
+    engine_choice_view,
+    target_choice_view,
+    voice_choice_view,
+)
 from .interaction import resolve_interaction_mode
 from .presenters import (
     render_catalog,
@@ -52,6 +60,18 @@ _REBUILD_STAGES = (
     "compose",
     "export",
 )
+
+
+_SPACY_CHOICES = ("off", "auto", "sm", "md", "lg", "trf")
+_PAUSE_TIMING_CHOICES = ("fixed", "natural", "engaging")
+_SPACY_LABELS = {
+    "off": "disabled",
+    "auto": "installed models only",
+    "sm": "small",
+    "md": "medium",
+    "lg": "large",
+    "trf": "transformer",
+}
 
 
 def _version_callback(value: bool) -> None:
@@ -165,75 +185,6 @@ def _json_dump(payload: object) -> None:
     typer.echo(json.dumps(payload, ensure_ascii=False, indent=2, default=str))
 
 
-def _record(item: object) -> dict[str, object]:
-    if is_dataclass(item) and not isinstance(item, type):
-        return asdict(item)
-    if isinstance(item, Mapping):
-        return dict(item)
-    names = (
-        "id",
-        "selector",
-        "qualified_id",
-        "target_id",
-        "name",
-        "display_name",
-        "label",
-        "engine",
-        "language",
-        "locale",
-        "description",
-    )
-    return {name: getattr(item, name) for name in names if hasattr(item, name)}
-
-
-def _catalog_views(items: tuple[object, ...]) -> tuple[CatalogItemView, ...]:
-    views: list[CatalogItemView] = []
-    for item in items:
-        data = _record(item)
-        identifier = next(
-            (
-                data[key]
-                for key in ("id", "selector", "qualified_id", "target_id", "name")
-                if data.get(key) is not None
-            ),
-            str(item),
-        )
-        label = next(
-            (
-                data[key]
-                for key in ("label", "display_name", "name", "id")
-                if data.get(key) is not None
-            ),
-            identifier,
-        )
-        known = {
-            "id",
-            "selector",
-            "qualified_id",
-            "target_id",
-            "name",
-            "display_name",
-            "label",
-            "engine",
-            "language",
-            "locale",
-        }
-        views.append(
-            CatalogItemView(
-                id=str(identifier),
-                label=str(label),
-                engine=_optional_string(data.get("engine")),
-                language=_optional_string(data.get("language", data.get("locale"))),
-                details={key: value for key, value in data.items() if key not in known},
-            )
-        )
-    return tuple(views)
-
-
-def _optional_string(value: object) -> str | None:
-    return value if isinstance(value, str) else None
-
-
 def _parse_engine_options(values: list[str] | None) -> dict[str, object]:
     options: dict[str, object] = {}
     for value in values or ():
@@ -266,7 +217,7 @@ def _overrides(**values: object) -> InputOverrides:
 
 def _choose_catalog_value(
     label: str,
-    items: tuple[CatalogItemView, ...],
+    items: tuple[CatalogChoiceView, ...],
     *,
     optional: bool = False,
 ) -> str | None:
@@ -301,6 +252,66 @@ def _choose_catalog_value(
     raise typer.BadParameter(f"Unknown {label.lower()} selection: {value!r}.")
 
 
+def _reject_reference_only_target(
+    target: str,
+    choices: tuple[TargetChoiceView, ...],
+) -> None:
+    if any(choice.id == target and choice.reference_only for choice in choices):
+        raise InputValidationError(
+            f"Target {target!r} requires reference audio, "
+            "which TTSForge does not support."
+        )
+
+
+def _prompt_choice(label: str, choices: tuple[str, ...], default: str) -> str:
+    value = cast(str, typer.prompt(label, default=default))
+    if value.isdecimal():
+        row = int(value)
+        if 1 <= row <= len(choices):
+            return choices[row - 1]
+    if value in choices:
+        return value
+    available = ", ".join(choices)
+    raise InputValidationError(f"Choose {label.lower()} from: {available}.")
+
+
+def _choose_spacy_tier(default: str | None) -> str:
+    _output.print("spaCy model")
+    for index, tier in enumerate(_SPACY_CHOICES, 1):
+        _output.print(f"  {index}. {tier:<4} {_SPACY_LABELS[tier]}")
+    return _prompt_choice("spaCy model", _SPACY_CHOICES, default or "sm")
+
+
+def _choose_pause_timing(default: str | None) -> str:
+    return _prompt_choice(
+        "Pause timing (fixed/natural/engaging)",
+        _PAUSE_TIMING_CHOICES,
+        default or "engaging",
+    )
+
+
+def _prompt_speech_profile(default: Path | None) -> Path | None:
+    value = cast(
+        str,
+        typer.prompt(
+            "Speech replacement profile (optional)",
+            default=str(default) if default is not None else "",
+            show_default=default is not None,
+        ),
+    )
+    return Path(value).expanduser() if value else None
+
+
+def _confirm_language(language: str | None, preparation: SetupPreparation) -> str:
+    if preparation.origins.should_confirm_derived("language"):
+        if language is None:
+            return cast(str, typer.prompt("Language"))
+        return cast(str, typer.prompt("Language", default=language))
+    if language is None:
+        return cast(str, typer.prompt("Language"))
+    return language
+
+
 def _complete_interactive_setup(
     backend: Any,
     preparation: SetupPreparation,
@@ -310,54 +321,189 @@ def _complete_interactive_setup(
     engine = request.engine
     target = request.target
     voice = request.voice
+    engine_options = request.engine_options
+    speed = request.speed
+    spacy = request.spacy
+    speech_profile = request.speech_profile
+    pause_timing = request.pause_timing
 
-    if language is None:
-        language = cast(str, typer.prompt("Language"))
+    language = _confirm_language(language, preparation)
+    if preparation.origins.needs_input("spacy"):
+        spacy = _choose_spacy_tier(spacy)
+
+    language_changed = language != request.language
+    explicit = preparation.origins.explicit
+    if language_changed:
+        if "engine" not in explicit:
+            engine = None
+        if "target" not in explicit:
+            target = None
+        if "voice" not in explicit:
+            voice = None
+        if "engine_options" not in explicit:
+            engine_options = {}
+        if "speed" not in explicit:
+            speed = None
+
     if engine is None:
         engine = _choose_catalog_value(
-            "Engines", _catalog_views(tuple(backend.list_engines()))
+            f"Engines for {language}",
+            tuple(engine_choice_view(item) for item in backend.list_engines()),
         )
     if engine is None:
         raise InputValidationError("An engine must be selected.")
-    if target is None:
+
+    target_views = tuple(
+        target_choice_view(item)
+        for item in backend.list_targets(
+            engine=engine,
+            language=language,
+            offline=request.offline,
+            refresh=request.refresh,
+        )
+    )
+    if target is not None:
+        _reject_reference_only_target(target, target_views)
+        if (
+            language_changed
+            and "target" in explicit
+            and not any(choice.id == target for choice in target_views)
+        ):
+            raise InputValidationError(
+                f"Target {target!r} is not available for language {language!r}."
+            )
+    else:
+        selectable_targets = tuple(
+            choice for choice in target_views if not choice.reference_only
+        )
+        if not selectable_targets and target_views:
+            raise InputValidationError(
+                "No supported audiobook targets are available. "
+                "Reference-audio enrollment is not supported by TTSForge."
+            )
         target = _choose_catalog_value(
-            "Targets",
-            _catalog_views(
-                tuple(
-                    backend.list_targets(
-                        engine=engine,
-                        language=language,
-                        offline=request.offline,
-                        refresh=request.refresh,
-                    )
-                )
-            ),
+            f"{engine.capitalize()} targets for {language}",
+            selectable_targets,
         )
     if target is None:
         raise InputValidationError("A render target must be selected.")
-    if voice is None and preparation.origins.needs_input("voice"):
+    selected_target = next(
+        (choice for choice in target_views if choice.id == target), None
+    )
+
+    def discover_voices() -> tuple[VoiceChoiceView, ...]:
+        return tuple(
+            voice_choice_view(
+                item,
+                default_voice=(
+                    selected_target.default_voice
+                    if selected_target is not None
+                    else None
+                ),
+            )
+            for item in backend.list_voices(
+                engine=engine,
+                target=target,
+                language=language,
+                offline=request.offline,
+                refresh=request.refresh,
+            )
+        )
+
+    if language_changed and voice is not None and "voice" in explicit:
+        available_voices = discover_voices()
+        if not any(choice.id == voice for choice in available_voices):
+            raise InputValidationError(
+                f"Voice {voice!r} is not available for language {language!r}."
+            )
+    if voice is None and (
+        preparation.origins.needs_input("voice")
+        or (language_changed and "voice" not in explicit)
+    ):
         voice = _choose_catalog_value(
-            "Voices",
-            _catalog_views(
-                tuple(
-                    backend.list_voices(
-                        engine=engine,
-                        target=target,
-                        language=language,
-                        offline=request.offline,
-                        refresh=request.refresh,
-                    )
-                )
-            ),
+            f"Voices for {language} / {target}",
+            discover_voices(),
             optional=True,
         )
+    if preparation.origins.needs_input("speech_profile"):
+        speech_profile = _prompt_speech_profile(speech_profile)
+    if preparation.origins.needs_input("pause_timing"):
+        pause_timing = _choose_pause_timing(pause_timing)
+
     return replace(
         request,
         language=language,
         engine=engine,
         target=target,
         voice=voice,
+        engine_options=engine_options,
+        speed=speed,
+        spacy=spacy,
+        speech_profile=speech_profile,
+        pause_timing=pause_timing,
     )
+
+
+def _validate_reference_target(backend: Any, request: AudiobookRequest) -> None:
+    if request.engine is None or request.target is None:
+        return
+    choices = tuple(
+        target_choice_view(item)
+        for item in backend.list_targets(
+            engine=request.engine,
+            language=request.language,
+            offline=request.offline,
+            refresh=request.refresh,
+        )
+    )
+    _reject_reference_only_target(request.target, choices)
+
+
+def _prepare_spacy_model(
+    backend: Any,
+    request: AudiobookRequest,
+    *,
+    json_mode: bool,
+    interactive: bool,
+    confirm: bool,
+    assume_yes: bool,
+) -> SpacyModelView | None:
+    if request.spacy not in {"sm", "md", "lg", "trf"}:
+        return None
+    if request.language is None:
+        raise InputValidationError("Language is required to resolve a spaCy model.")
+
+    model = backend.inspect_spacy_model(request.language, request.spacy)
+    if not json_mode:
+        _output.print("spaCy")
+        _output.print(f"  Model  {model.model}")
+        status = "installed"
+        if model.model_version:
+            status += f" {model.model_version}"
+        if not model.installed:
+            status = "not installed"
+        _output.print(f"  Status {status}")
+    if model.installed:
+        return model
+    if request.offline:
+        return backend.ensure_spacy_model(request.language, request.spacy, offline=True)
+    if confirm and not typer.confirm(f"Download {model.model}?", default=True):
+        raise InputValidationError(
+            f"spaCy model {model.model!r} is required to continue."
+        )
+    if not interactive and not assume_yes:
+        raise InputValidationError(
+            f"spaCy model {model.model!r} is missing. "
+            "Run interactively or pass --yes to download it."
+        )
+
+    if not json_mode:
+        _output.print(f"Installing {model.model}...")
+    installed = backend.ensure_spacy_model(request.language, request.spacy)
+    if not json_mode:
+        version = f" {installed.model_version}" if installed.model_version else ""
+        _output.print(f"Installed {installed.model}{version}")
+    return installed
 
 
 def _inspection_payload(inspection: BookInspectionView) -> dict[str, object]:
@@ -393,6 +539,18 @@ def convert(
         ),
     ] = None,
     speed: Annotated[float | None, typer.Option("--speed", min=0.5, max=2.0)] = None,
+    spacy: Annotated[
+        Literal["off", "auto", "sm", "md", "lg", "trf"] | None,
+        typer.Option("--spacy", help="spaCy model tier."),
+    ] = None,
+    speech_profile: Annotated[
+        Path | None,
+        typer.Option("--speech-profile"),
+    ] = None,
+    pause_timing: Annotated[
+        Literal["fixed", "natural", "engaging"] | None,
+        typer.Option("--pause-timing"),
+    ] = None,
     bitrate: Annotated[str | None, typer.Option("--bitrate")] = None,
     target_lufs: Annotated[float | None, typer.Option("--target-lufs")] = None,
     title: Annotated[str | None, typer.Option("--title")] = None,
@@ -449,6 +607,9 @@ def convert(
         voice=voice,
         engine_options=options,
         speed=speed,
+        spacy=spacy,
+        speech_profile=speech_profile,
+        pause_timing=pause_timing,
         bitrate=bitrate,
         target_lufs=target_lufs,
         title=title,
@@ -469,6 +630,9 @@ def convert(
         voice=voice,
         engine_options=options if engine_option else None,
         speed=speed,
+        spacy=spacy,
+        speech_profile=speech_profile,
+        pause_timing=pause_timing,
         bitrate=bitrate,
         target_lufs=target_lufs,
         title=title,
@@ -480,6 +644,7 @@ def convert(
         SetupPreparation,
         PreflightView,
         ConversionResultView | None,
+        SpacyModelView | None,
     ]:
         backend, service = _service()
         preparation = service.prepare_setup(
@@ -491,20 +656,28 @@ def convert(
             raise InputValidationError(
                 "Convert requires a book source such as an EPUB."
             )
-        selected = (
-            _complete_interactive_setup(backend, preparation)
-            if interaction.interactive
-            else preparation.request
-        )
+        if interaction.interactive:
+            selected = _complete_interactive_setup(backend, preparation)
+        else:
+            selected = preparation.request
+            _validate_reference_target(backend, selected)
         resolved = service.save_setup(preparation, selected)
+        spacy_model = _prepare_spacy_model(
+            backend,
+            resolved.request,
+            json_mode=interaction.json,
+            interactive=interaction.interactive,
+            confirm=interaction.confirm,
+            assume_yes=yes,
+        )
         preflight = service.preflight(resolved)
         if not interaction.json:
-            render_preflight(preflight, _output)
+            render_preflight(preflight, _output, spacy_model=spacy_model)
         if interaction.confirm and not typer.confirm(
             "Create this audiobook?", default=True
         ):
             _output.print("Cancelled. The saved setup is ready to retry.")
-            return preparation, preflight, None
+            return preparation, preflight, None, spacy_model
         progress = (
             NullReadioProgress()
             if interaction.json
@@ -516,9 +689,9 @@ def convert(
             result = service.render(resolved, on_progress=progress)
         finally:
             progress.close()
-        return preparation, preflight, result
+        return preparation, preflight, result, spacy_model
 
-    preparation, preflight, result = _run(action, debug=debug)
+    preparation, preflight, result, spacy_model = _run(action, debug=debug)
     if result is None:
         return
     if json_mode:
@@ -527,6 +700,7 @@ def convert(
                 "source": str(source),
                 "project": str(preparation.paths.root),
                 "reused_setup": preparation.reused,
+                "spacy_model": None if spacy_model is None else asdict(spacy_model),
                 "request": asdict(preflight.setup.request),
                 "workflow": _workflow_payload(preflight.workflow),
                 "result": asdict(result),
@@ -622,9 +796,10 @@ def _catalog_command(
     label: str,
     values: tuple[object, ...],
     *,
+    view: Callable[[object], CatalogChoiceView],
     json_mode: bool,
 ) -> None:
-    items = _catalog_views(values)
+    items = tuple(view(value) for value in values)
     if json_mode:
         _json_dump([asdict(item) for item in items])
     else:
@@ -638,7 +813,7 @@ def engines(
 ) -> None:
     """List engines exposed by Readio's public discovery API."""
     values = _run(lambda: tuple(_service()[0].list_engines()), debug=debug)
-    _catalog_command("Engines", values, json_mode=json_mode)
+    _catalog_command("Engines", values, view=engine_choice_view, json_mode=json_mode)
 
 
 @app.command()
@@ -662,7 +837,7 @@ def targets(
         ),
         debug=debug,
     )
-    _catalog_command("Targets", values, json_mode=json_mode)
+    _catalog_command("Targets", values, view=target_choice_view, json_mode=json_mode)
 
 
 @app.command()
@@ -676,19 +851,41 @@ def voices(
     debug: Annotated[bool, typer.Option("--debug")] = False,
 ) -> None:
     """List voices available for an engine target."""
-    values = _run(
-        lambda: tuple(
-            _service()[0].list_voices(
+
+    def discover() -> tuple[tuple[object, ...], str | None]:
+        backend = _service()[0]
+        values = tuple(
+            backend.list_voices(
                 engine=engine,
                 target=target,
                 language=language,
                 offline=offline,
                 refresh=refresh,
             )
-        ),
-        debug=debug,
+        )
+        default_voice = None
+        if engine is not None and target is not None:
+            targets = tuple(
+                target_choice_view(item)
+                for item in backend.list_targets(
+                    engine=engine,
+                    language=language,
+                    offline=offline,
+                    refresh=refresh,
+                )
+            )
+            selected = next((item for item in targets if item.id == target), None)
+            if selected is not None:
+                default_voice = selected.default_voice
+        return values, default_voice
+
+    values, default_voice = _run(discover, debug=debug)
+    _catalog_command(
+        "Voices",
+        values,
+        view=lambda item: voice_choice_view(item, default_voice=default_voice),
+        json_mode=json_mode,
     )
-    _catalog_command("Voices", values, json_mode=json_mode)
 
 
 __all__ = [

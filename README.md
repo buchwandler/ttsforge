@@ -9,7 +9,7 @@
 into M4B audiobooks while Readio owns workflow planning, synthesis, composition,
 progress, and export.
 
-TTSForge requires `readio>=0.6.1,<0.7`. Its base dependencies are provider-neutral.
+TTSForge requires `readio>=0.6.2,<0.7`. Its base dependencies are provider-neutral.
 Install and configure a Readio engine integration separately when you want to synthesize
 speech; use Readio's installation documentation for the integrations supported by your
 platform.

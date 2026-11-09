@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import shlex
 from collections.abc import Callable
+from dataclasses import replace
 from pathlib import Path
 from typing import Protocol
 
@@ -43,6 +44,32 @@ class ApplicationBackend(Protocol):
         *,
         on_progress: Callable[[ApplicationEvent], None] | None = None,
     ) -> ConversionResultView: ...
+
+
+_REBUILD_ORDER = ("convert", "compile", "render_plan", "render", "compose", "export")
+
+
+def _rebuild_for_setup_change(
+    request: AudiobookRequest, saved: AudiobookRequest
+) -> AudiobookRequest:
+    required = None
+    if (
+        request.language != saved.language
+        or request.spacy != saved.spacy
+        or request.speech_profile != saved.speech_profile
+    ):
+        required = "convert"
+    elif (request.pause_timing or "fixed") != (saved.pause_timing or "fixed"):
+        required = "render_plan"
+    if required is None:
+        return request
+
+    current = request.rebuild_from
+    if current is None or _REBUILD_ORDER.index(required) < _REBUILD_ORDER.index(
+        current
+    ):
+        return replace(request, rebuild_from=required)
+    return request
 
 
 class AudiobookApplicationService:
@@ -109,6 +136,16 @@ class AudiobookApplicationService:
                 interactive=interactive,
             )
         )
+        if saved is None:
+            merged = replace(
+                merged,
+                spacy=merged.spacy or "sm",
+                pause_timing=merged.pause_timing or "engaging",
+            )
+        elif merged.pause_timing is None:
+            merged = replace(merged, pause_timing="fixed")
+        if saved is not None:
+            merged = _rebuild_for_setup_change(merged, saved)
         origins = self._setup_origins(merged, overrides, saved, inspection)
         return SetupPreparation(
             paths=paths,
@@ -228,6 +265,9 @@ class AudiobookApplicationService:
             engine_options=request.engine_options,
             speed=request.speed,
             bitrate=request.bitrate,
+            spacy=request.spacy,
+            speech_profile=request.speech_profile,
+            pause_timing=request.pause_timing,
             target_lufs=request.target_lufs,
             title=request.title if request.title is not None else inspection.title,
             author=request.author if request.author is not None else inspection.author,
@@ -258,6 +298,9 @@ class AudiobookApplicationService:
             "engine_options",
             "speed",
             "bitrate",
+            "spacy",
+            "speech_profile",
+            "pause_timing",
             "target_lufs",
             "title",
             "author",
@@ -285,6 +328,12 @@ class AudiobookApplicationService:
             and request.target == saved.target
         ):
             project_fields = project_fields | frozenset({"voice"})
+        if saved is not None:
+            project_fields = project_fields | frozenset(
+                name
+                for name in ("spacy", "speech_profile", "pause_timing")
+                if not overrides.includes(name) and getattr(saved, name) is None
+            )
         derived = {"chapters", "output"} - overrides.fields - project_fields
         source_values = {
             "language": inspection.language,

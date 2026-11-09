@@ -121,7 +121,117 @@ def test_prepare_setup_uses_source_defaults_and_ttsforge_paths(tmp_path: Path) -
     assert preparation.request.language == "en-US"
     assert preparation.request.title == "A title"
     assert preparation.origins.needs_input("engine")
+    assert preparation.request.spacy == "sm"
+    assert preparation.request.pause_timing == "engaging"
+    assert preparation.origins.needs_input("spacy")
+    assert preparation.origins.needs_input("pause_timing")
+    assert preparation.origins.should_confirm_derived("language")
     assert not preparation.origins.needs_input("language")
+
+
+def test_noninteractive_new_project_uses_explicit_product_defaults(
+    tmp_path: Path,
+) -> None:
+    backend = _FakeBackend()
+    service = AudiobookApplicationService(backend)
+
+    preparation = service.prepare_setup(
+        AudiobookRequest(source=tmp_path / "book.epub"),
+        InputOverrides(),
+        interactive=False,
+    )
+
+    assert preparation.request.spacy == "sm"
+    assert preparation.request.pause_timing == "engaging"
+
+
+def test_legacy_saved_setup_keeps_spacy_and_defaults_pause_to_fixed(
+    tmp_path: Path,
+) -> None:
+    backend = _FakeBackend()
+    service = AudiobookApplicationService(backend)
+    source = tmp_path / "book.epub"
+    paths = ProjectPaths.for_root(tmp_path / "book.ttsforge")
+    paths.root.mkdir()
+    paths.intent.touch()
+    paths.profile.touch()
+    backend.saved = _saved_request(source)
+
+    preparation = service.prepare_setup(
+        AudiobookRequest(source=source), InputOverrides()
+    )
+
+    assert preparation.reused
+    assert preparation.request.spacy is None
+    assert preparation.request.pause_timing == "fixed"
+    assert not preparation.origins.needs_input("spacy")
+    assert not preparation.origins.needs_input("speech_profile")
+    assert not preparation.origins.needs_input("pause_timing")
+
+
+@pytest.mark.parametrize(
+    ("changes", "initial_rebuild", "expected"),
+    [
+        ({"spacy": "sm"}, "render", "convert"),
+        ({"speech_profile": Path("speech.toml")}, None, "convert"),
+        ({"pause_timing": "natural"}, "export", "render_plan"),
+        ({"spacy": "md", "pause_timing": "engaging"}, "render", "convert"),
+    ],
+)
+def test_specialist_setting_changes_select_earliest_rebuild(
+    tmp_path: Path,
+    changes: dict[str, object],
+    initial_rebuild: str | None,
+    expected: str,
+) -> None:
+    backend = _FakeBackend()
+    service = AudiobookApplicationService(backend)
+    source = tmp_path / "book.epub"
+    paths = ProjectPaths.for_root(tmp_path / "book.ttsforge")
+    paths.root.mkdir()
+    paths.intent.touch()
+    paths.profile.touch()
+    backend.saved = _saved_request(source)
+    request = AudiobookRequest(
+        source=source,
+        rebuild_from=initial_rebuild,
+        **changes,
+    )
+
+    preparation = service.prepare_setup(
+        request,
+        InputOverrides(frozenset(changes)),
+        interactive=False,
+    )
+
+    assert preparation.request.rebuild_from == expected
+
+
+def test_language_change_rebuilds_from_convert(tmp_path: Path) -> None:
+    backend = _FakeBackend()
+    service = AudiobookApplicationService(backend)
+    source = tmp_path / "book.epub"
+    paths = ProjectPaths.for_root(tmp_path / "book.ttsforge")
+    paths.root.mkdir()
+    paths.intent.touch()
+    paths.profile.touch()
+    backend.saved = replace(
+        _saved_request(source),
+        engine=None,
+        target=None,
+        voice=None,
+        engine_options={},
+        speed=None,
+    )
+
+    preparation = service.prepare_setup(
+        AudiobookRequest(source=source, language="fr-FR"),
+        InputOverrides(frozenset({"language"})),
+        interactive=False,
+    )
+
+    assert preparation.request.language == "fr-FR"
+    assert preparation.request.rebuild_from == "convert"
 
 
 def test_saved_setup_precedence_and_dependent_choice_invalidation(
@@ -160,6 +270,10 @@ def test_saved_setup_precedence_and_dependent_choice_invalidation(
     assert preparation.request.speed is None
     assert not preparation.origins.needs_input("chapters")
     assert preparation.origins.needs_input("target")
+    assert preparation.request.pause_timing == "fixed"
+    assert preparation.request.spacy is None
+    assert not preparation.origins.needs_input("spacy")
+    assert not preparation.origins.needs_input("speech_profile")
 
 
 def test_setup_is_persisted_before_preflight_and_render(tmp_path: Path) -> None:
@@ -269,6 +383,9 @@ def test_failed_render_keeps_saved_setup_for_retry(tmp_path: Path) -> None:
         language="en-US",
         engine="engine-a",
         target="target-a",
+        spacy="lg",
+        speech_profile=tmp_path / "speech.toml",
+        pause_timing="natural",
     )
     preparation = service.prepare_setup(original, InputOverrides())
     resolved = service.save_setup(preparation)
@@ -284,6 +401,9 @@ def test_failed_render_keeps_saved_setup_for_retry(tmp_path: Path) -> None:
     assert retry.request.language == "en-US"
     assert retry.request.engine == "engine-a"
     assert retry.request.target == "target-a"
+    assert retry.request.spacy == "lg"
+    assert retry.request.speech_profile == tmp_path / "speech.toml"
+    assert retry.request.pause_timing == "natural"
     assert not retry.origins.needs_input("engine")
     assert not retry.origins.needs_input("target")
     result = service.render(service.save_setup(retry))

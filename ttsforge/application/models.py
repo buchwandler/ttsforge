@@ -41,6 +41,9 @@ class AudiobookRequest:
     voice: str | None = None
     engine_options: Mapping[str, object] = field(default_factory=dict)
     speed: float | None = None
+    spacy: str | None = None
+    speech_profile: Path | None = None
+    pause_timing: str | None = None
     bitrate: str | int | None = None
     target_lufs: float | None = None
     title: str | None = None
@@ -73,6 +76,9 @@ class SetupOrigins:
     def needs_input(self, field_name: str) -> bool:
         return field_name not in self.explicit | self.project | self.derived
 
+    def should_confirm_derived(self, field_name: str) -> bool:
+        return field_name not in self.explicit and field_name not in self.project
+
 
 @dataclass(frozen=True, slots=True)
 class BookChapterView:
@@ -91,6 +97,16 @@ class BookInspectionView:
     language: str | None
     chapters: tuple[BookChapterView, ...]
     cover: Path | None = None
+
+
+@dataclass(frozen=True, slots=True)
+class SpacyModelView:
+    language: str
+    tier: str
+    model: str
+    installed: bool
+    spacy_version: str | None
+    model_version: str | None
 
 
 @dataclass(frozen=True, slots=True)

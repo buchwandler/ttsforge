@@ -111,6 +111,83 @@ def test_source_and_discovery_calls_delegate_to_public_functions(
     ]
 
 
+def test_spacy_model_inspection_and_provisioning_use_readio_api(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    missing = SimpleNamespace(
+        language="en",
+        tier="trf",
+        model="en_core_web_trf",
+        installed=False,
+        spacy_version="3.8.16",
+        model_version=None,
+    )
+    provisioned = SimpleNamespace(
+        language="en",
+        tier="trf",
+        model="en_core_web_trf",
+        installed=True,
+        spacy_version="3.8.16",
+        model_version="3.8.0",
+    )
+    calls: list[tuple[str, object]] = []
+    api = backend_module.readio_api
+
+    def inspect_model(language: str, tier: str) -> object:
+        calls.append(("inspect", (language, tier)))
+        return missing
+
+    def ensure_model(language: str, tier: str, *, offline: bool) -> object:
+        calls.append(("ensure", (language, tier, offline)))
+        return provisioned
+
+    monkeypatch.setattr(api, "inspect_spacy_model", inspect_model)
+    monkeypatch.setattr(api, "ensure_spacy_model", ensure_model)
+    backend = ReadioBackend(app=cast(Readio, object()))
+
+    inspected = backend.inspect_spacy_model("en", "trf")
+    ensured = backend.ensure_spacy_model("en", "trf")
+
+    assert inspected.model == "en_core_web_trf"
+    assert not inspected.installed
+    assert ensured.installed
+    assert ensured.model_version == "3.8.0"
+    assert calls == [
+        ("inspect", ("en", "trf")),
+        ("inspect", ("en", "trf")),
+        ("ensure", ("en", "trf", False)),
+    ]
+
+
+def test_offline_spacy_model_failure_never_calls_provisioning(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    info = SimpleNamespace(
+        language="en",
+        tier="trf",
+        model="en_core_web_trf",
+        installed=False,
+        spacy_version="3.8.16",
+        model_version=None,
+    )
+    api = backend_module.readio_api
+    monkeypatch.setattr(api, "inspect_spacy_model", lambda language, tier: info)
+    monkeypatch.setattr(
+        api,
+        "ensure_spacy_model",
+        lambda *args, **kwargs: pytest.fail("offline mode must not provision"),
+    )
+    backend = ReadioBackend(app=cast(Readio, object()))
+
+    with pytest.raises(WorkflowFailureError) as error:
+        backend.ensure_spacy_model("en", "trf", offline=True)
+
+    assert error.value.code == "spacy_model_missing_offline"
+    assert error.value.selector == "en_core_web_trf"
+    with pytest.raises(ValueError, match="Only concrete spaCy model tiers"):
+        backend.ensure_spacy_model("en", "auto")
+
+
 def test_profile_operations_use_public_profile_helpers(
     monkeypatch: pytest.MonkeyPatch, tmp_path: Path
 ) -> None:
@@ -172,6 +249,37 @@ def test_profile_operations_use_public_profile_helpers(
     ]
 
 
+@pytest.mark.parametrize(
+    ("tier", "planning_spacy"),
+    [("sm", "on"), ("auto", "auto"), ("off", "off"), (None, "auto")],
+)
+def test_create_book_intent_maps_setup_settings_to_readio(
+    tmp_path: Path, tier: str | None, planning_spacy: str
+) -> None:
+    backend = ReadioBackend(app=cast(Readio, object()))
+    speech_profile = tmp_path / "speech.toml"
+
+    intent = backend.create_book_intent(
+        source=tmp_path / "book.epub",
+        profile=tmp_path / "voice.toml",
+        bundle=tmp_path / "book.ssmd-bundle",
+        chapters="all",
+        language="en",
+        output=tmp_path / "book.m4b",
+        bitrate="96k",
+        cover=None,
+        metadata={},
+        spacy=tier,
+        speech_profile=speech_profile,
+        pause_timing="engaging",
+    )
+
+    assert intent.planning.spacy == planning_spacy
+    assert intent.preparation.spacy == tier
+    assert intent.preparation.speech_profile == speech_profile
+    assert intent.projection.pause_timing == "engaging"
+
+
 def test_save_setup_persists_profile_and_render_intent(
     monkeypatch: pytest.MonkeyPatch, tmp_path: Path
 ) -> None:
@@ -190,6 +298,9 @@ def test_save_setup_persists_profile_and_render_intent(
         target_lufs=-19.0,
         title="Book title",
         author="Writer",
+        spacy="sm",
+        speech_profile=tmp_path / "speech.toml",
+        pause_timing="engaging",
     )
     calls: list[tuple[str, object]] = []
 
@@ -242,6 +353,13 @@ def test_save_setup_persists_profile_and_render_intent(
         "bitrate": "128k",
         "cover": None,
         "metadata": {"title": "Book title", "author": "Writer"},
+        "spacy": "on",
+        "preparation": backend_module.readio_api.PreparationIntent(
+            spacy="sm", speech_profile=request.speech_profile
+        ),
+        "projection": backend_module.readio_api.ProjectionIntent(
+            pause_timing="engaging"
+        ),
         "target_lufs": -19.0,
     }
     assert calls[2] == ("save", (intent, paths.intent, {"force": True}))
@@ -295,6 +413,46 @@ def test_load_setup_recovers_intent_and_default_profile_role(
     assert request.title == "Saved"
     assert request.author == "Writer"
     assert calls == [("intent", paths.intent), ("validate", paths.profile)]
+
+
+def test_load_setup_recovers_spacy_profile_and_pause_timing(
+    monkeypatch: pytest.MonkeyPatch, tmp_path: Path
+) -> None:
+    paths = ProjectPaths.for_root(tmp_path / "book.ttsforge")
+    speech_profile = tmp_path / "speech.toml"
+    intent = SimpleNamespace(
+        input=SimpleNamespace(source=tmp_path / "book.epub", chapters="all"),
+        output=SimpleNamespace(
+            path=tmp_path / "saved.m4b",
+            bitrate="96k",
+            cover=None,
+            metadata={},
+        ),
+        compose=SimpleNamespace(target_lufs=-18.0),
+        preparation=SimpleNamespace(spacy="md", speech_profile=speech_profile),
+        projection=SimpleNamespace(pause_timing="natural"),
+    )
+    role = SimpleNamespace(
+        language="en",
+        binding={
+            "renderer": "engine-a",
+            "target_id": "target-a",
+            "voice": None,
+            "options": {},
+        },
+    )
+    profile = SimpleNamespace(default_role="narrator", roles={"narrator": role})
+    api = backend_module.readio_api
+    monkeypatch.setattr(api, "load_render_intent", lambda path: intent)
+    monkeypatch.setattr(api, "load_profile", lambda path: profile)
+    monkeypatch.setattr(api, "validate_profile", lambda path: ())
+    backend = ReadioBackend(app=cast(Readio, object()))
+
+    request = backend.load_setup(paths)
+
+    assert request.spacy == "md"
+    assert request.speech_profile == speech_profile
+    assert request.pause_timing == "natural"
 
 
 def test_request_bridge_uses_persisted_intent_and_runtime_controls(
