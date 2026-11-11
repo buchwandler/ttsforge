@@ -221,8 +221,7 @@ def _choose_catalog_value(
     *,
     optional: bool = False,
 ) -> str | None:
-    if items:
-        render_catalog(label, items, _output)
+    render_catalog(label, items, _output)
     identifiers = tuple(item.id for item in items)
     if not identifiers:
         prompt = f"{label} ID (blank for engine default)" if optional else f"{label} ID"
@@ -275,10 +274,18 @@ def _prompt_choice(label: str, choices: tuple[str, ...], default: str) -> str:
     raise InputValidationError(f"Choose {label.lower()} from: {available}.")
 
 
-def _choose_spacy_tier(default: str | None) -> str:
+def _choose_spacy_tier(
+    default: str | None, models: tuple[SpacyModelView, ...]
+) -> str:
+    installed_tiers = {item.tier for item in models if item.installed}
     _output.print("spaCy model")
     for index, tier in enumerate(_SPACY_CHOICES, 1):
-        _output.print(f"  {index}. {tier:<4} {_SPACY_LABELS[tier]}")
+        marker = (
+            " [installed]"
+            if tier in installed_tiers and tier in {"sm", "md", "lg", "trf"}
+            else ""
+        )
+        _output.print(f"  {index}. {tier:<4} {_SPACY_LABELS[tier]}{marker}")
     return _prompt_choice("spaCy model", _SPACY_CHOICES, default or "sm")
 
 
@@ -329,7 +336,8 @@ def _complete_interactive_setup(
 
     language = _confirm_language(language, preparation)
     if preparation.origins.needs_input("spacy"):
-        spacy = _choose_spacy_tier(spacy)
+        models = backend.list_spacy_models(language)
+        spacy = _choose_spacy_tier(spacy, models)
 
     language_changed = language != request.language
     explicit = preparation.origins.explicit
@@ -393,14 +401,7 @@ def _complete_interactive_setup(
 
     def discover_voices() -> tuple[VoiceChoiceView, ...]:
         return tuple(
-            voice_choice_view(
-                item,
-                default_voice=(
-                    selected_target.default_voice
-                    if selected_target is not None
-                    else None
-                ),
-            )
+            choice
             for item in backend.list_voices(
                 engine=engine,
                 target=target,
@@ -408,6 +409,16 @@ def _complete_interactive_setup(
                 offline=request.offline,
                 refresh=request.refresh,
             )
+            if (
+                choice := voice_choice_view(
+                    item,
+                    default_voice=(
+                        selected_target.default_voice
+                        if selected_target is not None
+                        else None
+                    ),
+                )
+            ) is not None
         )
 
     if language_changed and voice is not None and "voice" in explicit:
@@ -473,7 +484,9 @@ def _prepare_spacy_model(
     if request.language is None:
         raise InputValidationError("Language is required to resolve a spaCy model.")
 
-    model = backend.inspect_spacy_model(request.language, request.spacy)
+    model = cast(
+        SpacyModelView, backend.inspect_spacy_model(request.language, request.spacy)
+    )
     if not json_mode:
         _output.print("spaCy")
         _output.print(f"  Model  {model.model}")
@@ -486,7 +499,10 @@ def _prepare_spacy_model(
     if model.installed:
         return model
     if request.offline:
-        return backend.ensure_spacy_model(request.language, request.spacy, offline=True)
+        return cast(
+            SpacyModelView,
+            backend.ensure_spacy_model(request.language, request.spacy, offline=True),
+        )
     if confirm and not typer.confirm(f"Download {model.model}?", default=True):
         raise InputValidationError(
             f"spaCy model {model.model!r} is required to continue."
@@ -499,7 +515,9 @@ def _prepare_spacy_model(
 
     if not json_mode:
         _output.print(f"Installing {model.model}...")
-    installed = backend.ensure_spacy_model(request.language, request.spacy)
+    installed = cast(
+        SpacyModelView, backend.ensure_spacy_model(request.language, request.spacy)
+    )
     if not json_mode:
         version = f" {installed.model_version}" if installed.model_version else ""
         _output.print(f"Installed {installed.model}{version}")
@@ -796,10 +814,12 @@ def _catalog_command(
     label: str,
     values: tuple[object, ...],
     *,
-    view: Callable[[object], CatalogChoiceView],
+    view: Callable[[object], CatalogChoiceView | None],
     json_mode: bool,
 ) -> None:
-    items = tuple(view(value) for value in values)
+    items = tuple(
+        choice for value in values if (choice := view(value)) is not None
+    )
     if json_mode:
         _json_dump([asdict(item) for item in items])
     else:

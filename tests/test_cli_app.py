@@ -105,6 +105,20 @@ class _Backend:
         self.calls.append(("voices", kwargs))
         return ({"id": "voice-a", "engine": "engine-a", "language": "en-US"},)
 
+    def list_spacy_models(self, language: str) -> tuple[SpacyModelView, ...]:
+        self.calls.append(("spacy_list", language))
+        return tuple(
+            SpacyModelView(
+                language=language,
+                tier=tier,
+                model=f"{language}_core_web_{tier}",
+                installed=tier in {"sm", "lg"},
+                spacy_version="3.8.16",
+                model_version="3.8.0" if tier in {"sm", "lg"} else None,
+            )
+            for tier in ("sm", "md", "lg", "trf")
+        )
+
     def inspect_spacy_model(self, language: str, tier: str) -> SpacyModelView:
         self.calls.append(("spacy_inspect", language, tier))
         return SpacyModelView(
@@ -668,10 +682,18 @@ def test_interactive_setup_confirms_derived_language_and_filters_discovery(
         ),
     )
     prompts: list[tuple[str, object]] = []
+    events: list[tuple[str, str]] = []
+
+    def list_models(language: str) -> tuple[SpacyModelView, ...]:
+        events.append(("inventory", language))
+        return ()
+
+    backend.list_spacy_models = list_models
 
     def prompt(text: str, **kwargs: object) -> str:
         prompts.append((text, kwargs))
         if text == "Language":
+            events.append(("confirmed", "de"))
             return "de"
         return _setup_prompt(text, **kwargs)
 
@@ -698,6 +720,78 @@ def test_interactive_setup_confirms_derived_language_and_filters_discovery(
     assert target_call["language"] == "de"
     voice_call = next(call[1] for call in backend.calls if call[0] == "voices")
     assert voice_call["language"] == "de"
+    assert events == [("confirmed", "de"), ("inventory", "de")]
+
+
+@pytest.mark.parametrize(
+    ("answer", "expected"),
+    [("5", "lg"), ("trf", "trf"), ("off", "off"), ("auto", "auto")],
+)
+def test_spacy_tier_menu_marks_installed_concrete_tiers_and_keeps_selection(
+    monkeypatch, answer: str, expected: str
+) -> None:
+    models = tuple(
+        SpacyModelView(
+            language="en",
+            tier=tier,
+            model=f"en_core_web_{tier}",
+            installed=tier in {"sm", "lg"},
+            spacy_version="3.8.16",
+            model_version="3.8.0" if tier in {"sm", "lg"} else None,
+        )
+        for tier in ("sm", "md", "lg", "trf")
+    )
+    output = StringIO()
+    monkeypatch.setattr(
+        cli_app,
+        "_output",
+        Console(file=output, width=160, highlight=False, markup=False),
+    )
+    monkeypatch.setattr(cli_app.typer, "prompt", lambda *args, **kwargs: answer)
+
+    assert cli_app._choose_spacy_tier("sm", models) == expected
+
+    lines = output.getvalue().splitlines()
+    assert any(
+        line.startswith("  3.") and "sm" in line and "[installed]" in line
+        for line in lines
+    )
+    assert any(
+        line.startswith("  4.") and "md" in line and "[installed]" not in line
+        for line in lines
+    )
+    assert any(
+        line.startswith("  5.") and "lg" in line and "[installed]" in line
+        for line in lines
+    )
+    assert any(
+        line.startswith("  6.") and "trf" in line and "[installed]" not in line
+        for line in lines
+    )
+    assert all(
+        "[installed]" not in line for line in lines if "off" in line or "auto" in line
+    )
+
+
+def test_empty_optional_catalog_is_rendered_before_prompt(monkeypatch) -> None:
+    output = StringIO()
+    monkeypatch.setattr(
+        cli_app,
+        "_output",
+        Console(file=output, width=160, highlight=False, markup=False),
+    )
+
+    def prompt(text: str, **kwargs: object) -> str:
+        rendered = output.getvalue()
+        assert "Voices for en-US / target-a (0)" in rendered
+        assert "No matching items." in rendered
+        return ""
+
+    monkeypatch.setattr(cli_app.typer, "prompt", prompt)
+
+    assert cli_app._choose_catalog_value(
+        "Voices for en-US / target-a", (), optional=True
+    ) is None
 
 
 @pytest.mark.parametrize("origin", ["explicit", "project"])
@@ -836,6 +930,127 @@ def test_catalog_lists_curated_human_metadata_and_default_voice(monkeypatch) -> 
     assert "female" in voices.output and "en-US" in voices.output
     assert "American English" in voices.output
     assert "private_voice_payload" not in voices.output
+
+
+@pytest.mark.parametrize(
+    ("answer", "expected_voice"),
+    [("1", "AV_ariala"), ("AV_brody", "AV_brody"), ("", None)],
+)
+def test_interactive_voice_picker_uses_named_results_and_persists_selection(
+    monkeypatch, tmp_path: Path, answer: str, expected_voice: str | None
+) -> None:
+    source = tmp_path / "book.epub"
+    source.touch()
+    backend = _Backend()
+    target = SimpleNamespace(
+        id="akinvox-multispeaker-v1",
+        languages=("en", "de"),
+        status="ready",
+        runtime_available=True,
+        default_voice="AV_ariala",
+        voices=tuple(f"target-voice-{index}" for index in range(16)),
+        speakers=(),
+        voice_details=(),
+        qualities=("fp32",),
+        sample_rate=24000,
+        capabilities=frozenset({"named_voices", "lexicons"}),
+        metadata={"voice_mode": "static"},
+    )
+    backend.list_targets = lambda **kwargs: (target,)
+    returned_voices = (
+        SimpleNamespace(
+            selector="kokoro:akinvox-multispeaker-v1/AV_ariala",
+            voice="AV_ariala",
+            speaker=None,
+            kind="builtin",
+            languages=("en",),
+            gender="female",
+            locale="en-US",
+            installed=True,
+        ),
+        SimpleNamespace(
+            selector="kokoro:akinvox-multispeaker-v1/AV_brody",
+            voice="AV_brody",
+            speaker=None,
+            kind="builtin",
+            languages=("en",),
+            gender="male",
+            locale="en-US",
+            installed=True,
+        ),
+        SimpleNamespace(
+            selector="kokoro:akinvox-multispeaker-v1",
+            voice=None,
+            speaker=None,
+            kind="reference-capable",
+            languages=("en",),
+            installed=True,
+        ),
+    )
+    voice_calls: list[dict[str, object]] = []
+
+    def list_voices(**kwargs: object) -> tuple[object, ...]:
+        voice_calls.append(kwargs)
+        return returned_voices
+
+    backend.list_voices = list_voices
+    output = StringIO()
+    monkeypatch.setattr(
+        cli_app,
+        "_output",
+        Console(file=output, width=160, highlight=False, markup=False),
+    )
+    monkeypatch.setattr(
+        cli_app.typer,
+        "prompt",
+        lambda text, **kwargs: (
+            answer if text.startswith("Voices for") else str(kwargs.get("default", "1"))
+        ),
+    )
+    mode = InteractionMode(
+        interactive=True,
+        json=False,
+        live_progress=False,
+        confirm=False,
+    )
+
+    result = _invoke(
+        monkeypatch,
+        backend,
+        [
+            "convert",
+            str(source),
+            "--language",
+            "en-US",
+            "--engine",
+            "kokoro",
+            "--spacy",
+            "off",
+        ],
+        mode=mode,
+    )
+
+    assert result.exit_code == 0, result.output
+    rendered = output.getvalue()
+    assert "Kokoro targets for en-US (1)" in rendered
+    assert "16 voices" in rendered
+    assert "Voices for en-US / akinvox-multispeaker-v1 (2)" in rendered
+    assert "AV_ariala" in rendered and "[default]" in rendered
+    assert "AV_brody" in rendered
+    assert "kokoro:akinvox-multispeaker-v1" not in rendered
+    assert voice_calls == [
+        {
+            "engine": "kokoro",
+            "target": "akinvox-multispeaker-v1",
+            "language": "en-US",
+            "offline": False,
+            "refresh": False,
+        }
+    ]
+    saved = next(iter(backend.saved.values()))
+    assert saved.voice == expected_voice
+    assert backend.render_request is not None
+    assert backend.render_request[1].voice == expected_voice
 
 
 def test_reference_only_target_is_hidden_interactively_and_rejected_noninteractive(

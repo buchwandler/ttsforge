@@ -198,14 +198,12 @@ def voice_choice_view(
     voice: object,
     *,
     default_voice: str | None = None,
-) -> VoiceChoiceView:
-    identifier = (
-        _value(voice, "id") or _value(voice, "voice") or _value(voice, "speaker")
-    )
-    if not isinstance(identifier, str):
-        identifier = _value(voice, "selector")
-    if not isinstance(identifier, str):
-        identifier = str(identifier)
+) -> VoiceChoiceView | None:
+    identifier = _value(voice, "id")
+    if not isinstance(identifier, str) or not identifier:
+        identifier = _value(voice, "voice")
+    if not isinstance(identifier, str) or not identifier:
+        return None
     languages = _strings(_value(voice, "languages"))
     language_value = _value(voice, "language")
     language = language_value if isinstance(language_value, str) else None

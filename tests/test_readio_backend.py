@@ -111,6 +111,67 @@ def test_source_and_discovery_calls_delegate_to_public_functions(
     ]
 
 
+def test_spacy_model_inventory_maps_public_readio_api_and_normalizes_errors(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    models = (
+        SimpleNamespace(
+            language="en-US",
+            tier="sm",
+            model="en_core_web_sm",
+            installed=True,
+            spacy_version="3.8.16",
+            model_version="3.8.0",
+        ),
+        SimpleNamespace(
+            language="en-US",
+            tier="lg",
+            model="en_core_web_lg",
+            installed=False,
+            spacy_version="3.8.16",
+            model_version=None,
+        ),
+    )
+    calls: list[str] = []
+    api = backend_module.readio_api
+
+    def list_models(language: str) -> tuple[object, ...]:
+        calls.append(language)
+        return models
+
+    monkeypatch.setattr(api, "list_spacy_models", list_models)
+    backend = ReadioBackend(app=cast(Readio, object()))
+
+    assert backend.list_spacy_models("en-US") == (
+        backend_module.SpacyModelView(
+            language="en-US",
+            tier="sm",
+            model="en_core_web_sm",
+            installed=True,
+            spacy_version="3.8.16",
+            model_version="3.8.0",
+        ),
+        backend_module.SpacyModelView(
+            language="en-US",
+            tier="lg",
+            model="en_core_web_lg",
+            installed=False,
+            spacy_version="3.8.16",
+            model_version=None,
+        ),
+    )
+    assert calls == ["en-US"]
+
+    def fail_inventory(language: str) -> tuple[object, ...]:
+        raise api.ReadioError(f"inventory unavailable for {language}")
+
+    monkeypatch.setattr(api, "list_spacy_models", fail_inventory)
+    with pytest.raises(WorkflowFailureError) as error:
+        backend.list_spacy_models("en-US")
+    assert error.value.category == "spaCy model inventory failure"
+    assert str(error.value) == "inventory unavailable for en-US"
+
+
 def test_spacy_model_inspection_and_provisioning_use_readio_api(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
