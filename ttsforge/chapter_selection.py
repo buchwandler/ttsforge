@@ -30,7 +30,7 @@ def parse_chapter_selection(selection: str, total_chapters: int) -> list[int]:
     for part in selection.split(","):
         part = part.strip()
         if not part:
-            continue
+            raise ValueError("Chapter selection contains an empty item.")
 
         if "-" in part:
             # Range: "1-5"
@@ -97,6 +97,17 @@ def format_chapter_numbers(chapters: Iterable[int]) -> str:
         start = previous = number
     ranges.append(str(start) if start == previous else f"{start}-{previous}")
     return ",".join(ranges)
+
+
+def normalize_chapter_selection(selection: str, total_chapters: int) -> str:
+    """Validate and format a chapter selector for persistence and Readio."""
+    if selection.strip().casefold() == "all":
+        return "all"
+
+    selected = parse_chapter_selection(selection, total_chapters)
+    if not selected:
+        raise ValueError("Chapter selection must include at least one chapter.")
+    return format_chapter_numbers(index + 1 for index in selected)
 
 
 def resolve_chapter_selection(

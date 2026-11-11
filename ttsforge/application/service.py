@@ -8,7 +8,13 @@ from dataclasses import replace
 from pathlib import Path
 from typing import Protocol
 
-from .errors import InputValidationError, LegacyWorkspaceError, OperationConflictError
+from ..chapter_selection import normalize_chapter_selection
+from .errors import (
+    InputValidationError,
+    LegacyWorkspaceError,
+    OperationConflictError,
+    ProjectScopeConflictError,
+)
 from .events import ApplicationEvent
 from .models import (
     AudiobookRequest,
@@ -101,6 +107,20 @@ class AudiobookApplicationService:
         else:
             self._reject_legacy_workspace(paths.root, request.source)
         inspection = self.inspect_book(request.source)
+        if not inspection.chapters:
+            raise InputValidationError(
+                "No chapters were discovered in the source book."
+            )
+        if request.chapters is not None:
+            try:
+                request = replace(
+                    request,
+                    chapters=normalize_chapter_selection(
+                        request.chapters, len(inspection.chapters)
+                    ),
+                )
+            except ValueError as exc:
+                raise InputValidationError(str(exc)) from exc
 
         has_intent = paths.intent.is_file()
         has_profile = paths.profile.is_file()
@@ -125,6 +145,18 @@ class AudiobookApplicationService:
                 raise OperationConflictError(
                     f"Project directory is not empty: {paths.root}."
                 )
+        if (
+            saved is not None
+            and overrides.includes("chapters")
+            and request.chapters is not None
+            and request.chapters != saved.chapters
+        ):
+            raise ProjectScopeConflictError(
+                f"Project {paths.root} is configured for chapters "
+                f"'{saved.chapters}'. A different chapter selection "
+                f"('{request.chapters}') requires a separate project. "
+                "Use --fresh or pass a different --project path."
+            )
         derived = self._with_source_defaults(request, paths, inspection)
         merged = (
             derived

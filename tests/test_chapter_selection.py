@@ -2,6 +2,7 @@ import pytest
 
 from ttsforge.chapter_selection import (
     format_chapter_numbers,
+    normalize_chapter_selection,
     parse_chapter_selection,
     resolve_chapter_selection,
 )
@@ -49,3 +50,26 @@ def test_format_chapter_numbers_uses_compact_canonical_ranges() -> None:
 def test_format_chapter_numbers_rejects_zero_and_negative_values() -> None:
     with pytest.raises(ValueError, match=">= 1"):
         format_chapter_numbers((0, 1))
+
+
+@pytest.mark.parametrize("selection", ["1,,3", ",1", "1,"])
+def test_parse_rejects_empty_items(selection: str) -> None:
+    with pytest.raises(ValueError, match="empty item"):
+        parse_chapter_selection(selection, 5)
+
+
+def test_normalize_preserves_all() -> None:
+    assert normalize_chapter_selection("all", 5) == "all"
+
+
+def test_normalize_compacts_selection() -> None:
+    assert normalize_chapter_selection("3,1,2,5", 6) == "1-3,5"
+
+
+def test_normalize_closes_open_ended_range() -> None:
+    assert normalize_chapter_selection("3-", 5) == "3-5"
+
+
+def test_normalize_rejects_out_of_range() -> None:
+    with pytest.raises(ValueError, match="exceeds total chapters"):
+        normalize_chapter_selection("6", 5)

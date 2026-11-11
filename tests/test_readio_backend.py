@@ -341,8 +341,9 @@ def test_create_book_intent_maps_setup_settings_to_readio(
     assert intent.projection.pause_timing == "engaging"
 
 
+@pytest.mark.parametrize("chapters", ["2-4", "all"])
 def test_save_setup_persists_profile_and_render_intent(
-    monkeypatch: pytest.MonkeyPatch, tmp_path: Path
+    monkeypatch: pytest.MonkeyPatch, tmp_path: Path, chapters: str
 ) -> None:
     paths = ProjectPaths.for_root(tmp_path / "book.ttsforge")
     request = AudiobookRequest(
@@ -353,7 +354,7 @@ def test_save_setup_persists_profile_and_render_intent(
         voice="voice-a",
         engine_options={"quality": "high"},
         speed=1.1,
-        chapters="2-4",
+        chapters=chapters,
         output=tmp_path / "book.m4b",
         bitrate="128k",
         target_lufs=-19.0,
@@ -407,7 +408,7 @@ def test_save_setup_persists_profile_and_render_intent(
     assert intent_kwargs == {
         "profile": paths.profile,
         "bundle": paths.bundle,
-        "chapters": "2-4",
+        "chapters": chapters,
         "language": "en-US",
         "output_format": "m4b",
         "output": request.output,
@@ -514,6 +515,7 @@ def test_load_setup_recovers_spacy_profile_and_pause_timing(
     assert request.spacy == "md"
     assert request.speech_profile == speech_profile
     assert request.pause_timing == "natural"
+    assert request.chapters == "all"
 
 
 def test_request_bridge_uses_persisted_intent_and_runtime_controls(

@@ -16,6 +16,7 @@ from ttsforge.application import (
     LegacyWorkspaceError,
     OperationConflictError,
     ProjectPaths,
+    ProjectScopeConflictError,
     WorkflowPlanView,
 )
 
@@ -27,7 +28,12 @@ def _inspection(source: Path) -> BookInspectionView:
         title="A title",
         author="An author",
         language="en-US",
-        chapters=(BookChapterView(number=1, title="Opening", source_id="c1"),),
+        chapters=(
+            BookChapterView(number=1, title="Opening", source_id="c1"),
+            BookChapterView(number=2, title="Arrival", source_id="c2"),
+            BookChapterView(number=3, title="Conflict", source_id="c3"),
+            BookChapterView(number=4, title="Ending", source_id="c4"),
+        ),
     )
 
 
@@ -117,6 +123,8 @@ def test_prepare_setup_uses_source_defaults_and_ttsforge_paths(tmp_path: Path) -
     assert preparation.paths.profile.name == "narrator.renderprofile.toml"
     assert preparation.paths.bundle.name == "book.ssmd-bundle"
     assert preparation.request.chapters == "all"
+    assert "chapters" in preparation.origins.derived
+    assert preparation.origins.should_confirm_derived("chapters")
     assert preparation.request.output == tmp_path / "book.m4b"
     assert preparation.request.language == "en-US"
     assert preparation.request.title == "A title"
@@ -269,6 +277,8 @@ def test_saved_setup_precedence_and_dependent_choice_invalidation(
     assert preparation.request.engine_options == {}
     assert preparation.request.speed is None
     assert not preparation.origins.needs_input("chapters")
+    assert "chapters" in preparation.origins.project
+    assert not preparation.origins.should_confirm_derived("chapters")
     assert preparation.origins.needs_input("target")
     assert preparation.request.pause_timing == "fixed"
     assert preparation.request.spacy is None
@@ -452,3 +462,75 @@ def test_non_m4b_output_is_rejected_before_project_persistence(
 
     assert not preparation.paths.root.exists()
     assert not any(call[0] == "save_setup" for call in backend.calls)
+
+
+def test_explicit_chapter_selection_is_normalized_and_marked_explicit(
+    tmp_path: Path,
+) -> None:
+    service = AudiobookApplicationService(_FakeBackend())
+    source = tmp_path / "book.epub"
+
+    preparation = service.prepare_setup(
+        AudiobookRequest(source=source, chapters="3,1,2"),
+        InputOverrides(frozenset({"chapters"})),
+    )
+
+    assert preparation.request.chapters == "1-3"
+    assert "chapters" in preparation.origins.explicit
+    assert not preparation.origins.should_confirm_derived("chapters")
+
+
+def test_invalid_explicit_chapters_fail_during_setup_preparation(
+    tmp_path: Path,
+) -> None:
+    backend = _FakeBackend()
+    service = AudiobookApplicationService(backend)
+
+    with pytest.raises(InputValidationError, match="Chapter 9 exceeds"):
+        service.prepare_setup(
+            AudiobookRequest(source=tmp_path / "book.epub", chapters="9"),
+            InputOverrides(frozenset({"chapters"})),
+        )
+
+    assert not any(call[0] == "save_setup" for call in backend.calls)
+
+
+def test_explicit_chapter_scope_conflict_does_not_overwrite_saved_project(
+    tmp_path: Path,
+) -> None:
+    backend = _FakeBackend()
+    service = AudiobookApplicationService(backend)
+    source = tmp_path / "book.epub"
+    paths = ProjectPaths.for_root(tmp_path / "book.ttsforge")
+    paths.root.mkdir()
+    paths.intent.touch()
+    paths.profile.touch()
+    backend.saved = _saved_request(source)
+
+    with pytest.raises(ProjectScopeConflictError, match="--fresh.*--project"):
+        service.prepare_setup(
+            AudiobookRequest(source=source, chapters="all"),
+            InputOverrides(frozenset({"chapters"})),
+        )
+
+    assert backend.saved.chapters == "2-4"
+    assert not any(call[0] == "save_setup" for call in backend.calls)
+
+
+def test_equivalent_explicit_chapter_scope_is_accepted(tmp_path: Path) -> None:
+    backend = _FakeBackend()
+    service = AudiobookApplicationService(backend)
+    source = tmp_path / "book.epub"
+    paths = ProjectPaths.for_root(tmp_path / "book.ttsforge")
+    paths.root.mkdir()
+    paths.intent.touch()
+    paths.profile.touch()
+    backend.saved = _saved_request(source)
+
+    preparation = service.prepare_setup(
+        AudiobookRequest(source=source, chapters="4,2,3"),
+        InputOverrides(frozenset({"chapters"})),
+    )
+
+    assert preparation.request.chapters == "2-4"
+    assert preparation.reused

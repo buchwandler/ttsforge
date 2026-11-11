@@ -7,7 +7,7 @@ from rich.console import Console
 from rich.table import Table
 
 from ..application.models import BookInspectionView
-from ..chapter_selection import format_chapter_numbers, parse_chapter_selection
+from ..chapter_selection import normalize_chapter_selection
 
 
 def chapter_table(inspection: BookInspectionView) -> Table:
@@ -22,20 +22,22 @@ def choose_chapters(
     inspection: BookInspectionView,
     console: Console,
     *,
-    book_label: str | None = None,
+    default: str = "all",
 ) -> str:
-    if book_label:
-        console.print(book_label)
+    if not inspection.chapters:
+        raise ValueError("No chapters were discovered in the source book.")
+
     console.print(f"{len(inspection.chapters)} chapters detected")
     console.print(chapter_table(inspection))
+    console.print(
+        "Select all, a chapter number, ranges, or comma-separated combinations."
+    )
 
     while True:
-        raw = typer.prompt("Chapters to include", default="all")
+        raw = typer.prompt(
+            "Chapters to include (all, 4, 2-7, 1,3,8-10)", default=default
+        ).strip()
         try:
-            selected = parse_chapter_selection(raw, len(inspection.chapters))
-            if not selected:
-                raise ValueError("Chapter selection must include at least one chapter.")
+            return normalize_chapter_selection(raw, len(inspection.chapters))
         except ValueError as exc:
             console.print(f"[red]{exc}[/red]")
-            continue
-        return format_chapter_numbers(index + 1 for index in selected)

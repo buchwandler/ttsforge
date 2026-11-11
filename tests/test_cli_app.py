@@ -48,7 +48,12 @@ class _Backend:
             title="Book title",
             author="Writer",
             language="en-US",
-            chapters=(BookChapterView(1, "Opening", "c1", 100),),
+            chapters=(
+                BookChapterView(1, "Opening", "c1", 100),
+                BookChapterView(2, "Arrival", "c2", 200),
+                BookChapterView(3, "Conflict", "c3", 300),
+                BookChapterView(4, "Ending", "c4", 400),
+            ),
         )
 
     def load_setup(self, paths: ProjectPaths) -> AudiobookRequest:
@@ -167,6 +172,8 @@ def _invoke(
 
 
 def _setup_prompt(text: str, **kwargs: object) -> str:
+    if text.startswith("Chapters to include"):
+        return str(kwargs["default"])
     if text == "spaCy model":
         return str(kwargs["default"])
     if text == "Speech replacement profile (optional)":
@@ -178,6 +185,34 @@ def _setup_prompt(text: str, **kwargs: object) -> str:
 
 def _language_prompt(text: str, **kwargs: object) -> str:
     return "de" if text == "Language" else _setup_prompt(text, **kwargs)
+
+
+def _interactive_convert_args(source: Path) -> list[str]:
+    return [
+        "convert",
+        str(source),
+        "--language",
+        "en-US",
+        "--engine",
+        "engine-a",
+        "--target",
+        "target-a",
+        "--voice",
+        "voice-a",
+        "--spacy",
+        "off",
+        "--pause-timing",
+        "engaging",
+    ]
+
+
+def _interactive_mode() -> InteractionMode:
+    return InteractionMode(
+        interactive=True,
+        json=False,
+        live_progress=False,
+        confirm=False,
+    )
 
 
 def test_convert_persists_setup_before_preflight_and_uses_m4b(
@@ -399,6 +434,7 @@ def test_retry_reuses_saved_settings_without_repeating_setup_questions(
         live_progress=False,
         confirm=False,
     )
+    monkeypatch.setattr(cli_app.typer, "prompt", _setup_prompt)
     first = _invoke(
         monkeypatch,
         backend,
@@ -678,7 +714,7 @@ def test_interactive_setup_confirms_derived_language_and_filters_discovery(
         ),
         origins=SetupOrigins(
             project=frozenset({"engine", "target", "voice", "engine_options", "speed"}),
-            derived=frozenset({"language"}),
+            derived=frozenset({"language", "chapters"}),
         ),
     )
     prompts: list[tuple[str, object]] = []
@@ -710,12 +746,13 @@ def test_interactive_setup_confirms_derived_language_and_filters_discovery(
     assert selected.spacy == "sm"
     assert selected.speech_profile is None
     assert selected.pause_timing == "engaging"
-    assert prompts[1] == ("spaCy model", {"default": "sm"})
+    assert prompts[2] == ("spaCy model", {"default": "sm"})
     assert prompts[-1] == (
         "Pause timing (fixed/natural/engaging)",
         {"default": "engaging"},
     )
-    assert prompts[0] == ("Language", {"default": "en-US"})
+    assert prompts[0][0].startswith("Chapters to include")
+    assert prompts[1] == ("Language", {"default": "en-US"})
     target_call = next(call[1] for call in backend.calls if call[0] == "targets")
     assert target_call["language"] == "de"
     voice_call = next(call[1] for call in backend.calls if call[0] == "voices")
@@ -789,9 +826,10 @@ def test_empty_optional_catalog_is_rendered_before_prompt(monkeypatch) -> None:
 
     monkeypatch.setattr(cli_app.typer, "prompt", prompt)
 
-    assert cli_app._choose_catalog_value(
-        "Voices for en-US / target-a", (), optional=True
-    ) is None
+    assert (
+        cli_app._choose_catalog_value("Voices for en-US / target-a", (), optional=True)
+        is None
+    )
 
 
 @pytest.mark.parametrize("origin", ["explicit", "project"])
@@ -810,7 +848,7 @@ def test_explicit_and_saved_language_suppress_interactive_prompt(
     origins = SetupOrigins(
         explicit=frozenset({"language"}) if origin == "explicit" else frozenset(),
         project=(
-            frozenset({"language", "engine", "target", "voice"})
+            frozenset({"language", "engine", "target", "voice", "chapters"})
             if origin == "project"
             else frozenset({"engine", "target", "voice"})
         ),
@@ -853,6 +891,7 @@ def test_explicit_voice_is_rejected_when_language_filter_invalidates_it(
         inspection=backend.inspect_source(source),
         request=request,
         origins=SetupOrigins(
+            project=frozenset({"chapters"}),
             explicit=frozenset({"engine", "target", "voice"}),
             derived=frozenset({"language"}),
         ),
@@ -1083,7 +1122,9 @@ def test_reference_only_target_is_hidden_interactively_and_rejected_noninteracti
         paths=ProjectPaths.for_source(source),
         inspection=backend.inspect_source(source),
         request=request,
-        origins=SetupOrigins(project=frozenset({"language", "engine", "voice"})),
+        origins=SetupOrigins(
+            project=frozenset({"language", "engine", "voice", "chapters"})
+        ),
         reused=True,
     )
     monkeypatch.setattr(cli_app.typer, "prompt", _setup_prompt)
@@ -1127,3 +1168,253 @@ def test_catalog_selection_accepts_numeric_and_identifier_values(monkeypatch) ->
 
     assert cli_app._choose_catalog_value("Engines", choices) == "piper"
     assert cli_app._choose_catalog_value("Engines", choices) == "kokoro"
+
+
+@pytest.mark.parametrize(("selection", "expected"), [("all", "all"), ("2-3,4", "2-4")])
+def test_fresh_interactive_conversion_displays_and_persists_chapter_selection(
+    monkeypatch, tmp_path: Path, selection: str, expected: str
+) -> None:
+    source = tmp_path / "book.epub"
+    source.touch()
+    backend = _Backend()
+    output = StringIO()
+    monkeypatch.setattr(
+        cli_app,
+        "_output",
+        Console(file=output, width=160, highlight=False, markup=False),
+    )
+    chapter_prompts: list[str] = []
+
+    def prompt(text: str, **kwargs: object) -> str:
+        if text.startswith("Chapters to include"):
+            chapter_prompts.append(text)
+            rendered = output.getvalue()
+            assert "4 chapters detected" in rendered
+            assert all(
+                title in rendered
+                for title in ("Opening", "Arrival", "Conflict", "Ending")
+            )
+            return selection
+        return _setup_prompt(text, **kwargs)
+
+    monkeypatch.setattr(cli_app.typer, "prompt", prompt)
+    result = _invoke(
+        monkeypatch,
+        backend,
+        _interactive_convert_args(source),
+        mode=_interactive_mode(),
+    )
+
+    assert result.exit_code == 0, result.output
+    assert len(chapter_prompts) == 1
+    saved = backend.saved[ProjectPaths.for_source(source).root]
+    assert saved.chapters == expected
+    assert "Chapters" in output.getvalue()
+    assert expected in output.getvalue()
+
+
+def test_interactive_invalid_chapter_selection_reprompts(
+    monkeypatch, tmp_path: Path
+) -> None:
+    source = tmp_path / "book.epub"
+    source.touch()
+    backend = _Backend()
+    answers = iter(("9", "2-3"))
+    prompts: list[str] = []
+
+    def prompt(text: str, **kwargs: object) -> str:
+        if text.startswith("Chapters to include"):
+            prompts.append(text)
+            return next(answers)
+        return _setup_prompt(text, **kwargs)
+
+    monkeypatch.setattr(cli_app.typer, "prompt", prompt)
+    result = _invoke(
+        monkeypatch,
+        backend,
+        _interactive_convert_args(source),
+        mode=_interactive_mode(),
+    )
+
+    assert result.exit_code == 0, result.output
+    assert len(prompts) == 2
+    assert "Chapter 9 exceeds total chapters (4)" in result.output
+    assert backend.saved[ProjectPaths.for_source(source).root].chapters == "2-3"
+
+
+def test_explicit_chapters_suppress_interactive_chapter_prompt(
+    monkeypatch, tmp_path: Path
+) -> None:
+    source = tmp_path / "book.epub"
+    source.touch()
+    backend = _Backend()
+
+    def prompt(text: str, **kwargs: object) -> str:
+        if text.startswith("Chapters to include"):
+            pytest.fail("explicit chapters must suppress the chapter prompt")
+        return _setup_prompt(text, **kwargs)
+
+    monkeypatch.setattr(cli_app.typer, "prompt", prompt)
+    result = _invoke(
+        monkeypatch,
+        backend,
+        [*_interactive_convert_args(source), "--chapters", "3,1,2"],
+        mode=_interactive_mode(),
+    )
+
+    assert result.exit_code == 0, result.output
+    assert backend.saved[ProjectPaths.for_source(source).root].chapters == "1-3"
+    assert "4 chapters detected" not in result.output
+
+
+def test_saved_chapters_suppress_interactive_chapter_prompt(
+    monkeypatch, tmp_path: Path
+) -> None:
+    source = tmp_path / "book.epub"
+    source.touch()
+    backend = _Backend()
+    project = tmp_path / "saved.ttsforge"
+    paths = ProjectPaths.for_root(project)
+    paths.root.mkdir()
+    paths.intent.touch()
+    paths.profile.touch()
+    speech_profile = tmp_path / "speech.toml"
+    speech_profile.touch()
+    backend.saved[paths.root] = AudiobookRequest(
+        source=source.resolve(),
+        project=paths.root,
+        chapters="2-3",
+        output=source.with_suffix(".m4b"),
+        language="en-US",
+        engine="engine-a",
+        target="target-a",
+        voice="voice-a",
+        spacy="off",
+        speech_profile=speech_profile,
+        pause_timing="engaging",
+    )
+    monkeypatch.setattr(
+        cli_app.typer,
+        "prompt",
+        lambda *args, **kwargs: pytest.fail("saved setup must not prompt"),
+    )
+
+    result = _invoke(
+        monkeypatch,
+        backend,
+        ["convert", str(source), "--project", str(project)],
+        mode=_interactive_mode(),
+    )
+
+    assert result.exit_code == 0, result.output
+    assert backend.saved[paths.root].chapters == "2-3"
+    assert backend.render_request is not None
+    assert backend.render_request[1].chapters == "2-3"
+
+
+def test_interactive_fresh_project_can_choose_a_new_chapter_scope(
+    monkeypatch, tmp_path: Path
+) -> None:
+    source = tmp_path / "book.epub"
+    source.touch()
+    backend = _Backend()
+    normal_paths = ProjectPaths.for_source(source)
+    normal_paths.root.mkdir()
+    normal_paths.intent.touch()
+    normal_paths.profile.touch()
+    backend.saved[normal_paths.root] = AudiobookRequest(
+        source=source.resolve(), chapters="2-3", output=source.with_suffix(".m4b")
+    )
+    monkeypatch.setattr(
+        cli_app.typer,
+        "prompt",
+        lambda text, **kwargs: (
+            "1-2"
+            if text.startswith("Chapters to include")
+            else _setup_prompt(text, **kwargs)
+        ),
+    )
+
+    result = _invoke(
+        monkeypatch,
+        backend,
+        [*_interactive_convert_args(source), "--fresh"],
+        mode=_interactive_mode(),
+    )
+
+    fresh_paths = ProjectPaths.for_root(tmp_path / "book.fresh.ttsforge")
+    assert result.exit_code == 0, result.output
+    assert backend.saved[normal_paths.root].chapters == "2-3"
+    assert backend.saved[fresh_paths.root].chapters == "1-2"
+
+
+@pytest.mark.parametrize(
+    ("flag", "json_mode"), [("--non-interactive", False), ("--json", True)]
+)
+def test_noninteractive_modes_never_prompt_for_chapters(
+    monkeypatch, tmp_path: Path, flag: str, json_mode: bool
+) -> None:
+    source = tmp_path / "book.epub"
+    source.touch()
+    backend = _Backend()
+    monkeypatch.setattr(
+        cli_app.typer,
+        "prompt",
+        lambda *args, **kwargs: pytest.fail(
+            "non-interactive conversion must not prompt"
+        ),
+    )
+    mode = InteractionMode(
+        interactive=False,
+        json=json_mode,
+        live_progress=False,
+        confirm=False,
+    )
+
+    result = _invoke(
+        monkeypatch,
+        backend,
+        [*_interactive_convert_args(source), flag],
+        mode=mode,
+    )
+
+    assert result.exit_code == 0, result.output
+    assert backend.saved[ProjectPaths.for_source(source).root].chapters == "all"
+
+
+def test_explicit_invalid_chapters_fail_before_persistence_or_preflight(
+    monkeypatch, tmp_path: Path
+) -> None:
+    source = tmp_path / "book.epub"
+    source.touch()
+    backend = _Backend()
+    monkeypatch.setattr(
+        cli_app.typer,
+        "prompt",
+        lambda *args, **kwargs: pytest.fail(
+            "invalid explicit chapters must not prompt"
+        ),
+    )
+
+    result = _invoke(
+        monkeypatch,
+        backend,
+        [*_interactive_convert_args(source), "--chapters", "9", "--json"],
+    )
+
+    assert result.exit_code == 1
+    assert "Chapter 9 exceeds total chapters (4)" in result.output
+    assert not any(call[0] in {"save", "inspect", "render"} for call in backend.calls)
+
+
+def test_chapter_chooser_rejects_empty_inventory_before_prompt(monkeypatch) -> None:
+    backend = _Backend()
+    inspection = replace(backend.inspect_source(Path("book.epub")), chapters=())
+    monkeypatch.setattr(
+        cli_app.typer,
+        "prompt",
+        lambda *args, **kwargs: pytest.fail("empty chapter inventory must not prompt"),
+    )
+
+    with pytest.raises(ValueError, match="No chapters were discovered"):
+        cli_app.choose_chapters(inspection, Console(file=StringIO()))

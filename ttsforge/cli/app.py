@@ -38,6 +38,7 @@ from .catalog import (
     target_choice_view,
     voice_choice_view,
 )
+from .chapters import choose_chapters
 from .interaction import resolve_interaction_mode
 from .presenters import (
     render_catalog,
@@ -274,9 +275,7 @@ def _prompt_choice(label: str, choices: tuple[str, ...], default: str) -> str:
     raise InputValidationError(f"Choose {label.lower()} from: {available}.")
 
 
-def _choose_spacy_tier(
-    default: str | None, models: tuple[SpacyModelView, ...]
-) -> str:
+def _choose_spacy_tier(default: str | None, models: tuple[SpacyModelView, ...]) -> str:
     installed_tiers = {item.tier for item in models if item.installed}
     _output.print("spaCy model")
     for index, tier in enumerate(_SPACY_CHOICES, 1):
@@ -324,6 +323,7 @@ def _complete_interactive_setup(
     preparation: SetupPreparation,
 ) -> AudiobookRequest:
     request = preparation.request
+    chapters = request.chapters
     language = request.language
     engine = request.engine
     target = request.target
@@ -334,6 +334,12 @@ def _complete_interactive_setup(
     speech_profile = request.speech_profile
     pause_timing = request.pause_timing
 
+    if preparation.origins.should_confirm_derived("chapters"):
+        chapters = choose_chapters(
+            preparation.inspection,
+            _output,
+            default=chapters or "all",
+        )
     language = _confirm_language(language, preparation)
     if preparation.origins.needs_input("spacy"):
         models = backend.list_spacy_models(language)
@@ -418,7 +424,8 @@ def _complete_interactive_setup(
                         else None
                     ),
                 )
-            ) is not None
+            )
+            is not None
         )
 
     if language_changed and voice is not None and "voice" in explicit:
@@ -443,6 +450,7 @@ def _complete_interactive_setup(
 
     return replace(
         request,
+        chapters=chapters,
         language=language,
         engine=engine,
         target=target,
@@ -817,9 +825,7 @@ def _catalog_command(
     view: Callable[[object], CatalogChoiceView | None],
     json_mode: bool,
 ) -> None:
-    items = tuple(
-        choice for value in values if (choice := view(value)) is not None
-    )
+    items = tuple(choice for value in values if (choice := view(value)) is not None)
     if json_mode:
         _json_dump([asdict(item) for item in items])
     else:

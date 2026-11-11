@@ -26,16 +26,22 @@ setup.
 
 ## Select chapters
 
-For a new project, an interactive terminal asks which chapters to include. Specify the
-selection explicitly to skip that question:
+For a new project, an interactive terminal displays the chapter inventory and asks
+which chapters to include. Selectors are 1-based, ranges are inclusive, and
+comma-separated selections are supported. Examples include `all`, `4`, `2-7`, and
+`1,3,8-10`. TTSForge also accepts an open-ended range such as `5-` and closes it
+against the inspected book. Press Enter to select `all`.
+
+Specify `--chapters` to skip the prompt:
 
 ```bash
 ttsforge convert novel.epub --chapters 1-5
 ```
 
-The chapter selection is saved in the project's render intent. Reusing the project keeps
-that selection. Use another `--project` path or `--fresh` to create a separate project
-for a different selection.
+The chapter selection is saved in the project's render intent. Reusing a project
+without `--chapters` keeps its saved selection. An explicit different selection is
+rejected because chapter scope is part of the project; use another `--project` path
+or `--fresh` to select a different scope.
 
 ## Choose an engine, target, and voice
 
