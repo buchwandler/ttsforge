@@ -23,6 +23,7 @@ from .catalog import (
     TargetChoiceView,
     VoiceChoiceView,
 )
+from .progress import format_elapsed
 
 
 def _show(value: object | None) -> str:
@@ -119,9 +120,16 @@ def render_preflight(
     render_workflow(preflight.workflow, console)
 
 
-def render_completion(result: ConversionResultView, console: Console) -> None:
+def render_completion(
+    result: ConversionResultView,
+    console: Console,
+    *,
+    elapsed_seconds: float | None = None,
+) -> None:
     console.print("Audiobook created")
     console.print(f"Output: {result.output}")
+    if elapsed_seconds is not None:
+        console.print(f"Elapsed: {format_elapsed(elapsed_seconds)}")
     if result.workspace is not None:
         console.print(f"Workspace: {result.workspace} ({result.workspace_mode})")
     if result.executed_stages:

@@ -714,6 +714,7 @@ def convert(
         PreflightView,
         ConversionResultView | None,
         SpacyModelView | None,
+        float | None,
     ]:
         backend, service = _service()
         preparation = service.prepare_setup(
@@ -746,21 +747,32 @@ def convert(
             "Create this audiobook?", default=True
         ):
             _output.print("Cancelled. The saved setup is ready to retry.")
-            return preparation, preflight, None, spacy_model
+            return preparation, preflight, None, spacy_model, None
         progress = (
             NullReadioProgress()
             if interaction.json
-            else LiveReadioProgress()
+            else LiveReadioProgress(
+                chapters=preparation.inspection.chapters,
+                selected_chapters=resolved.request.chapters,
+            )
             if interaction.live_progress
-            else LineReadioProgress()
+            else LineReadioProgress(
+                chapters=preparation.inspection.chapters,
+                selected_chapters=resolved.request.chapters,
+            )
         )
         try:
             result = service.render(resolved, on_progress=progress)
-        finally:
-            progress.close()
-        return preparation, preflight, result, spacy_model
+        except Exception:
+            progress.close(success=False)
+            raise
+        else:
+            progress.close(success=True)
+        return preparation, preflight, result, spacy_model, progress.elapsed_seconds
 
-    preparation, preflight, result, spacy_model = _run(action, debug=debug)
+    preparation, preflight, result, spacy_model, elapsed_seconds = _run(
+        action, debug=debug
+    )
     if result is None:
         return
     if json_mode:
@@ -776,7 +788,7 @@ def convert(
             }
         )
     else:
-        render_completion(result, _output)
+        render_completion(result, _output, elapsed_seconds=elapsed_seconds)
 
 
 @app.command("list")

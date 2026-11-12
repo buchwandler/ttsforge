@@ -38,17 +38,16 @@ ttsforge convert novel.epub
 | `--json`                        | Emit structured output without prompts or progress prose.                                         |
 | `--debug`                       | Show a traceback after an error.                                                                  |
 
-Chapter selectors are 1-based and ranges are inclusive. Use `all`, a number such as
-`4`, a range such as `2-7`, or comma-separated combinations such as `1,3,8-10`.
-Open-ended ranges such as `5-` are accepted and normalized to the inspected chapter
-count.
+Chapter selectors are 1-based and ranges are inclusive. Use `all`, a number such as `4`,
+a range such as `2-7`, or comma-separated combinations such as `1,3,8-10`. Open-ended
+ranges such as `5-` are accepted and normalized to the inspected chapter count.
 
 A new interactive project displays the chapter inventory and prompts for a selection
 when `--chapters` is omitted. Press Enter to select `all`. Explicit `--chapters` skips
-the prompt. Existing projects reuse their saved selector when the option is omitted,
-and a different explicit selector is rejected. Use `--fresh` or pass a different
-project path to create a project with a different chapter scope. `--non-interactive`
-and `--json` never prompt; a new project defaults to `all`.
+the prompt. Existing projects reuse their saved selector when the option is omitted, and
+a different explicit selector is rejected. Use `--fresh` or pass a different project
+path to create a project with a different chapter scope. `--non-interactive` and
+`--json` never prompt; a new project defaults to `all`.
 
 TTSForge saves the resolved render intent and narrator profile before rendering. A
 failed render can be retried with the saved setup. Readio owns preflight decisions,

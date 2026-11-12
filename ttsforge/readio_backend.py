@@ -202,6 +202,7 @@ class ReadioBackend:
                 error,
                 category="runtime/backend unavailable",
             ) from error
+
     def list_spacy_models(self, language: str) -> tuple[SpacyModelView, ...]:
         try:
             models = readio_api.list_spacy_models(language)
@@ -211,7 +212,6 @@ class ReadioBackend:
                 category="spaCy model inventory failure",
             ) from error
         return tuple(_spacy_model_view(model) for model in models)
-
 
     def inspect_spacy_model(self, language: str, tier: str) -> SpacyModelView:
         try:

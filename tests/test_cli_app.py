@@ -6,6 +6,7 @@ from importlib import import_module
 from io import StringIO
 from pathlib import Path
 from types import SimpleNamespace
+from typing import ClassVar
 
 import pytest
 from readio.api import WorkflowStageError
@@ -150,6 +151,28 @@ class _Backend:
             spacy_version="3.8.16",
             model_version="3.8.0",
         )
+
+
+class _ProgressSpy:
+    instances: ClassVar[list[_ProgressSpy]] = []
+
+    def __init__(
+        self,
+        *,
+        chapters: tuple[BookChapterView, ...] = (),
+        selected_chapters: str | None = None,
+    ) -> None:
+        self.chapters = chapters
+        self.selected_chapters = selected_chapters
+        self.elapsed_seconds = 125.0
+        self.close_calls: list[bool] = []
+        self.__class__.instances.append(self)
+
+    def __call__(self, event: object) -> None:
+        del event
+
+    def close(self, *, success: bool = False) -> None:
+        self.close_calls.append(success)
 
 
 def _invoke(
@@ -1623,3 +1646,99 @@ def test_explicit_speech_profile_skips_discovery_and_prompt(
     assert result.exit_code == 0, result.output
     saved = backend.saved[ProjectPaths.for_source(source).root]
     assert saved.speech_profile == explicit_profile
+
+
+@pytest.mark.parametrize("live_progress", [False, True])
+def test_convert_passes_chapter_context_and_completion_elapsed(
+    monkeypatch, tmp_path: Path, live_progress: bool
+) -> None:
+    _ProgressSpy.instances.clear()
+    monkeypatch.setattr(cli_app, "LiveReadioProgress", _ProgressSpy)
+    monkeypatch.setattr(cli_app, "LineReadioProgress", _ProgressSpy)
+    output = StringIO()
+    monkeypatch.setattr(
+        cli_app,
+        "_output",
+        Console(file=output, width=160, highlight=False, markup=False),
+    )
+    source = tmp_path / "book.epub"
+    source.touch()
+    backend = _Backend()
+    mode = InteractionMode(
+        interactive=False,
+        json=False,
+        live_progress=live_progress,
+        confirm=False,
+    )
+
+    result = _invoke(
+        monkeypatch,
+        backend,
+        [
+            "convert",
+            str(source),
+            "--chapters",
+            "2-4",
+            "--language",
+            "en-US",
+            "--engine",
+            "engine-a",
+            "--target",
+            "target-a",
+        ],
+        mode=mode,
+    )
+
+    assert result.exit_code == 0, result.output
+    progress = _ProgressSpy.instances[0]
+    assert len(progress.chapters) == 4
+    assert progress.chapters[1].title == "Arrival"
+    assert progress.selected_chapters == "2-4"
+    assert progress.close_calls == [True]
+    assert "Elapsed: 02:05" in output.getvalue()
+
+
+def test_convert_closes_progress_as_failed_without_completion_summary(
+    monkeypatch, tmp_path: Path
+) -> None:
+    _ProgressSpy.instances.clear()
+    monkeypatch.setattr(cli_app, "LineReadioProgress", _ProgressSpy)
+    output = StringIO()
+    monkeypatch.setattr(
+        cli_app,
+        "_output",
+        Console(file=output, width=160, highlight=False, markup=False),
+    )
+    source = tmp_path / "book.epub"
+    source.touch()
+    backend = _Backend()
+    backend.render_error = WorkflowFailureError(
+        "renderer failed", category="render-stage failure"
+    )
+    mode = InteractionMode(
+        interactive=False,
+        json=False,
+        live_progress=False,
+        confirm=False,
+    )
+
+    result = _invoke(
+        monkeypatch,
+        backend,
+        [
+            "convert",
+            str(source),
+            "--language",
+            "en-US",
+            "--engine",
+            "engine-a",
+            "--target",
+            "target-a",
+        ],
+        mode=mode,
+    )
+
+    assert result.exit_code == 1
+    assert "Error (render-stage failure)" in result.output
+    assert _ProgressSpy.instances[0].close_calls == [False]
+    assert "Audiobook created" not in output.getvalue()
