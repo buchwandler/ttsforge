@@ -176,7 +176,9 @@ def _setup_prompt(text: str, **kwargs: object) -> str:
         return str(kwargs["default"])
     if text == "spaCy model":
         return str(kwargs["default"])
-    if text == "Speech replacement profile (optional)":
+    if text == "Speech replacement profile":
+        return str(kwargs["default"])
+    if text == "Speech replacement profile path":
         return ""
     if text.startswith("Pause timing"):
         return str(kwargs["default"])
@@ -1267,7 +1269,7 @@ def test_explicit_chapters_suppress_interactive_chapter_prompt(
     assert "4 chapters detected" not in result.output
 
 
-def test_saved_chapters_suppress_interactive_chapter_prompt(
+def test_saved_none_suppresses_discovery_and_chapter_prompts(
     monkeypatch, tmp_path: Path
 ) -> None:
     source = tmp_path / "book.epub"
@@ -1278,8 +1280,10 @@ def test_saved_chapters_suppress_interactive_chapter_prompt(
     paths.root.mkdir()
     paths.intent.touch()
     paths.profile.touch()
-    speech_profile = tmp_path / "speech.toml"
-    speech_profile.touch()
+    speech_profile = tmp_path / "speech-replacements.toml"
+    speech_profile.write_text(
+        'schema = "ssmdconvert-speech-profile"\n', encoding="utf-8"
+    )
     backend.saved[paths.root] = AudiobookRequest(
         source=source.resolve(),
         project=paths.root,
@@ -1290,7 +1294,7 @@ def test_saved_chapters_suppress_interactive_chapter_prompt(
         target="target-a",
         voice="voice-a",
         spacy="off",
-        speech_profile=speech_profile,
+        speech_profile=None,
         pause_timing="engaging",
     )
     monkeypatch.setattr(
@@ -1310,6 +1314,7 @@ def test_saved_chapters_suppress_interactive_chapter_prompt(
     assert backend.saved[paths.root].chapters == "2-3"
     assert backend.render_request is not None
     assert backend.render_request[1].chapters == "2-3"
+    assert backend.render_request[1].speech_profile is None
 
 
 def test_interactive_fresh_project_can_choose_a_new_chapter_scope(
@@ -1317,6 +1322,8 @@ def test_interactive_fresh_project_can_choose_a_new_chapter_scope(
 ) -> None:
     source = tmp_path / "book.epub"
     source.touch()
+    profile = tmp_path / "speech-replacements.toml"
+    profile.write_text('schema = "ssmdconvert-speech-profile"\n', encoding="utf-8")
     backend = _Backend()
     normal_paths = ProjectPaths.for_source(source)
     normal_paths.root.mkdir()
@@ -1325,15 +1332,15 @@ def test_interactive_fresh_project_can_choose_a_new_chapter_scope(
     backend.saved[normal_paths.root] = AudiobookRequest(
         source=source.resolve(), chapters="2-3", output=source.with_suffix(".m4b")
     )
-    monkeypatch.setattr(
-        cli_app.typer,
-        "prompt",
-        lambda text, **kwargs: (
-            "1-2"
-            if text.startswith("Chapters to include")
-            else _setup_prompt(text, **kwargs)
-        ),
-    )
+
+    def prompt(text: str, **kwargs: object) -> str:
+        if text.startswith("Chapters to include"):
+            return "1-2"
+        if text == "Speech replacement profile":
+            return "2"
+        return _setup_prompt(text, **kwargs)
+
+    monkeypatch.setattr(cli_app.typer, "prompt", prompt)
 
     result = _invoke(
         monkeypatch,
@@ -1346,16 +1353,20 @@ def test_interactive_fresh_project_can_choose_a_new_chapter_scope(
     assert result.exit_code == 0, result.output
     assert backend.saved[normal_paths.root].chapters == "2-3"
     assert backend.saved[fresh_paths.root].chapters == "1-2"
+    assert backend.saved[normal_paths.root].speech_profile is None
+    assert backend.saved[fresh_paths.root].speech_profile == profile
 
 
 @pytest.mark.parametrize(
     ("flag", "json_mode"), [("--non-interactive", False), ("--json", True)]
 )
-def test_noninteractive_modes_never_prompt_for_chapters(
+def test_noninteractive_modes_never_prompt_or_autoselect_speech_profiles(
     monkeypatch, tmp_path: Path, flag: str, json_mode: bool
 ) -> None:
     source = tmp_path / "book.epub"
     source.touch()
+    profile = tmp_path / "speech-replacements.toml"
+    profile.write_text('schema = "ssmdconvert-speech-profile"\n', encoding="utf-8")
     backend = _Backend()
     monkeypatch.setattr(
         cli_app.typer,
@@ -1380,6 +1391,7 @@ def test_noninteractive_modes_never_prompt_for_chapters(
 
     assert result.exit_code == 0, result.output
     assert backend.saved[ProjectPaths.for_source(source).root].chapters == "all"
+    assert backend.saved[ProjectPaths.for_source(source).root].speech_profile is None
 
 
 def test_explicit_invalid_chapters_fail_before_persistence_or_preflight(
@@ -1418,3 +1430,196 @@ def test_chapter_chooser_rejects_empty_inventory_before_prompt(monkeypatch) -> N
 
     with pytest.raises(ValueError, match="No chapters were discovered"):
         cli_app.choose_chapters(inspection, Console(file=StringIO()))
+
+
+def test_speech_profile_menu_selects_detected_profile_by_number(
+    monkeypatch, tmp_path: Path, capsys
+) -> None:
+    profile = tmp_path / "speech-replacements.toml"
+    profile.write_text('schema = "ssmdconvert-speech-profile"\n', encoding="utf-8")
+    monkeypatch.setattr(cli_app.typer, "prompt", lambda *args, **kwargs: "2")
+
+    selected = cli_app._prompt_speech_profile(None, directory=tmp_path)
+
+    output = capsys.readouterr().out
+    assert selected == profile
+    assert "  1. none" in output
+    assert "  2. speech-replacements.toml  [detected]" in output
+
+
+def test_speech_profile_menu_defaults_to_none(
+    monkeypatch, tmp_path: Path, capsys
+) -> None:
+    (tmp_path / "profile.toml").write_text(
+        'schema = "ssmdconvert-speech-profile"\n', encoding="utf-8"
+    )
+    prompts: list[tuple[str, str]] = []
+
+    def prompt(text: str, **kwargs: object) -> str:
+        prompts.append((text, str(kwargs["default"])))
+        return str(kwargs["default"])
+
+    monkeypatch.setattr(cli_app.typer, "prompt", prompt)
+
+    assert cli_app._prompt_speech_profile(None, directory=tmp_path) is None
+    assert prompts == [("Speech replacement profile", "1")]
+    assert "  1. none" in capsys.readouterr().out
+
+
+def test_speech_profile_menu_custom_path_expands_home(
+    monkeypatch, tmp_path: Path
+) -> None:
+    (tmp_path / "profile.toml").write_text(
+        'schema = "ssmdconvert-speech-profile"\n', encoding="utf-8"
+    )
+    home = tmp_path / "home"
+    monkeypatch.setenv("HOME", str(home))
+    responses = iter(("3", "~/custom.toml"))
+    monkeypatch.setattr(
+        cli_app.typer, "prompt", lambda *args, **kwargs: next(responses)
+    )
+
+    selected = cli_app._prompt_speech_profile(None, directory=tmp_path)
+    assert selected == home / "custom.toml"
+
+
+def test_speech_profile_menu_offers_custom_path_without_detected_profiles(
+    monkeypatch, tmp_path: Path, capsys
+) -> None:
+    responses = iter(("2", "../profiles/custom.toml"))
+    monkeypatch.setattr(
+        cli_app.typer, "prompt", lambda *args, **kwargs: next(responses)
+    )
+
+    assert cli_app._prompt_speech_profile(None, directory=tmp_path) == Path(
+        "../profiles/custom.toml"
+    )
+    output = capsys.readouterr().out
+    assert "  1. none" in output
+    assert "  2. enter custom path..." in output
+
+
+def test_speech_profile_menu_accepts_direct_path_text(
+    monkeypatch, tmp_path: Path
+) -> None:
+    monkeypatch.setattr(
+        cli_app.typer, "prompt", lambda *args, **kwargs: "../profiles/custom.toml"
+    )
+
+    assert cli_app._prompt_speech_profile(None, directory=tmp_path) == Path(
+        "../profiles/custom.toml"
+    )
+
+
+def test_speech_profile_menu_uses_detected_default_without_duplicate(
+    monkeypatch, tmp_path: Path, capsys
+) -> None:
+    profile = tmp_path / "profile.toml"
+    profile.write_text('schema = "ssmdconvert-speech-profile"\n', encoding="utf-8")
+    prompts: list[str] = []
+
+    def prompt(text: str, **kwargs: object) -> str:
+        prompts.append(str(kwargs["default"]))
+        return str(kwargs["default"])
+
+    monkeypatch.setattr(cli_app.typer, "prompt", prompt)
+
+    assert cli_app._prompt_speech_profile(profile, directory=tmp_path) == profile
+    assert prompts == ["2"]
+    assert capsys.readouterr().out.count("profile.toml") == 1
+
+
+def test_speech_profile_menu_uses_unlisted_current_default(
+    monkeypatch, tmp_path: Path, capsys
+) -> None:
+    current = Path("../profiles/current.toml")
+    prompts: list[str] = []
+
+    def prompt(text: str, **kwargs: object) -> str:
+        prompts.append(str(kwargs["default"]))
+        return str(kwargs["default"])
+
+    monkeypatch.setattr(cli_app.typer, "prompt", prompt)
+
+    assert cli_app._prompt_speech_profile(current, directory=tmp_path) == current
+    assert prompts == ["2"]
+    output = capsys.readouterr().out
+    assert "  2. ../profiles/current.toml  [current]" in output
+    assert "  3. enter custom path..." in output
+
+
+def test_speech_profile_menu_accepts_none_text(monkeypatch, tmp_path: Path) -> None:
+    monkeypatch.setattr(cli_app.typer, "prompt", lambda *args, **kwargs: "NONE")
+
+    assert cli_app._prompt_speech_profile(None, directory=tmp_path) is None
+
+
+def test_speech_profile_menu_rejects_out_of_range_number(
+    monkeypatch, tmp_path: Path
+) -> None:
+    (tmp_path / "profile.toml").write_text(
+        'schema = "ssmdconvert-speech-profile"\n', encoding="utf-8"
+    )
+    monkeypatch.setattr(cli_app.typer, "prompt", lambda *args, **kwargs: "9")
+
+    with pytest.raises(InputValidationError, match="from 1 to 3"):
+        cli_app._prompt_speech_profile(None, directory=tmp_path)
+
+
+def test_new_interactive_setup_discovers_profile_in_source_parent(
+    monkeypatch, tmp_path: Path
+) -> None:
+    source = tmp_path / "book.epub"
+    source.touch()
+    profile = tmp_path / "speech-replacements.toml"
+    profile.write_text('schema = "ssmdconvert-speech-profile"\n', encoding="utf-8")
+    backend = _Backend()
+
+    def prompt(text: str, **kwargs: object) -> str:
+        if text == "Speech replacement profile":
+            return "2"
+        return _setup_prompt(text, **kwargs)
+
+    monkeypatch.setattr(cli_app.typer, "prompt", prompt)
+    result = _invoke(
+        monkeypatch,
+        backend,
+        _interactive_convert_args(source),
+        mode=_interactive_mode(),
+    )
+
+    assert result.exit_code == 0, result.output
+    assert backend.saved[ProjectPaths.for_source(source).root].speech_profile == profile
+
+
+def test_explicit_speech_profile_skips_discovery_and_prompt(
+    monkeypatch, tmp_path: Path
+) -> None:
+    source = tmp_path / "book.epub"
+    source.touch()
+    explicit_profile = tmp_path / "manual.toml"
+    backend = _Backend()
+
+    def prompt(text: str, **kwargs: object) -> str:
+        if text == "Speech replacement profile":
+            pytest.fail("explicit speech profile must suppress the selection prompt")
+        return _setup_prompt(text, **kwargs)
+
+    monkeypatch.setattr(cli_app.typer, "prompt", prompt)
+    monkeypatch.setattr(
+        cli_app,
+        "discover_speech_replacement_profiles",
+        lambda directory: pytest.fail(
+            "explicit speech profile must suppress discovery"
+        ),
+    )
+    result = _invoke(
+        monkeypatch,
+        backend,
+        [*_interactive_convert_args(source), "--speech-profile", str(explicit_profile)],
+        mode=_interactive_mode(),
+    )
+
+    assert result.exit_code == 0, result.output
+    saved = backend.saved[ProjectPaths.for_source(source).root]
+    assert saved.speech_profile == explicit_profile

@@ -49,6 +49,7 @@ from .presenters import (
     render_workflow,
 )
 from .progress import LineReadioProgress, LiveReadioProgress, NullReadioProgress
+from .speech_profiles import discover_speech_replacement_profiles
 
 _output = Console(stderr=False, highlight=False, markup=False)
 
@@ -296,16 +297,55 @@ def _choose_pause_timing(default: str | None) -> str:
     )
 
 
-def _prompt_speech_profile(default: Path | None) -> Path | None:
-    value = cast(
+def _prompt_speech_profile(
+    default: Path | None,
+    *,
+    directory: Path,
+) -> Path | None:
+    detected = discover_speech_replacement_profiles(directory)
+    entries: list[tuple[str, Path | None]] = [("none", None)]
+
+    if default is not None and default not in detected:
+        entries.append((f"{default}  [current]", default))
+
+    for path in detected:
+        marker = "  [current]" if default == path else "  [detected]"
+        entries.append((f"{path.name}{marker}", path))
+
+    custom_index = len(entries) + 1
+    _output.print("Speech replacement profile")
+    for index, (label, _) in enumerate(entries, 1):
+        _output.print(f"  {index}. {label}")
+    _output.print(f"  {custom_index}. enter custom path...")
+
+    default_index = 1
+    if default is not None:
+        for index, (_, candidate) in enumerate(entries, 1):
+            if candidate == default:
+                default_index = index
+                break
+
+    selection = cast(
         str,
-        typer.prompt(
-            "Speech replacement profile (optional)",
-            default=str(default) if default is not None else "",
-            show_default=default is not None,
-        ),
+        typer.prompt("Speech replacement profile", default=str(default_index)),
     )
-    return Path(value).expanduser() if value else None
+    if selection.isdecimal():
+        selected = int(selection)
+        if 1 <= selected <= len(entries):
+            return entries[selected - 1][1]
+        if selected == custom_index:
+            custom = cast(
+                str,
+                typer.prompt("Speech replacement profile path", default=""),
+            )
+            return Path(custom).expanduser() if custom else None
+        raise InputValidationError(
+            f"Choose speech replacement profile from 1 to {custom_index}."
+        )
+
+    if selection.casefold() == "none":
+        return None
+    return Path(selection).expanduser() if selection else None
 
 
 def _confirm_language(language: str | None, preparation: SetupPreparation) -> str:
@@ -444,7 +484,10 @@ def _complete_interactive_setup(
             optional=True,
         )
     if preparation.origins.needs_input("speech_profile"):
-        speech_profile = _prompt_speech_profile(speech_profile)
+        speech_profile = _prompt_speech_profile(
+            speech_profile,
+            directory=request.source.parent,
+        )
     if preparation.origins.needs_input("pause_timing"):
         pause_timing = _choose_pause_timing(pause_timing)
 

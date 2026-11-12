@@ -20,6 +20,7 @@ dependencies = [
     "readio>=0.6.3,<0.7",
     "rich>=13.0.0",
     "typer>=0.20.0",
+    "tomli>=2; python_version < '3.11'",
 ]
 classifiers=[
     'Intended Audience :: End Users/Desktop',
