@@ -23,6 +23,7 @@ from ttsforge.application import (
     blocked_workflow_steps,
     require_runnable_workflow,
 )
+from ttsforge.application.service import _configuration_variant_key
 
 
 def _inspection(source: Path) -> BookInspectionView:
@@ -605,3 +606,352 @@ def test_blocked_workflow_steps_preserve_stage_reasons_and_public_fields() -> No
             "selector": None,
         },
     ]
+
+
+def _prepare_saved_variant_project(
+    backend: _FakeBackend, source: Path, tmp_path: Path
+) -> AudiobookRequest:
+    paths = ProjectPaths.for_root(tmp_path / "book.ttsforge")
+    paths.root.mkdir()
+    paths.intent.touch()
+    paths.profile.touch()
+    saved = replace(
+        _saved_request(source),
+        spacy="off",
+        speech_profile=Path("speech.toml"),
+        pause_timing="engaging",
+    )
+    backend.saved = saved
+    return saved
+
+
+def test_new_variant_requires_an_existing_base_setup(tmp_path: Path) -> None:
+    backend = _FakeBackend()
+    service = AudiobookApplicationService(backend)
+    source = tmp_path / "book.epub"
+
+    with pytest.raises(
+        InputValidationError, match="requires an existing TTSForge project"
+    ):
+        service.prepare_setup(
+            AudiobookRequest(source=source, new_variant=True), InputOverrides()
+        )
+
+    assert not ProjectPaths.for_source(source).root.exists()
+    assert not any(call[0] == "save_setup" for call in backend.calls)
+
+
+def test_new_variant_inherits_shared_setup_and_clears_saved_synthesis_choices(
+    tmp_path: Path,
+) -> None:
+    backend = _FakeBackend()
+    service = AudiobookApplicationService(backend)
+    source = tmp_path / "book.epub"
+    saved = _prepare_saved_variant_project(backend, source, tmp_path)
+
+    preparation = service.prepare_setup(
+        AudiobookRequest(source=source, new_variant=True), InputOverrides()
+    )
+
+    request = preparation.request
+    assert preparation.reused
+    assert request.new_variant
+    assert request.chapters == saved.chapters
+    assert request.language == saved.language
+    assert request.spacy == saved.spacy
+    assert request.speech_profile == saved.speech_profile
+    assert request.pause_timing == saved.pause_timing
+    assert request.output == saved.output
+    assert request.title == saved.title
+    assert request.author == saved.author
+    assert request.engine is None
+    assert request.target is None
+    assert request.voice is None
+    assert request.engine_options == {}
+    assert request.speed is None
+    assert all(
+        preparation.origins.needs_input(name) for name in ("engine", "target", "voice")
+    )
+    assert all(
+        not preparation.origins.needs_input(name)
+        for name in ("chapters", "language", "spacy", "speech_profile", "pause_timing")
+    )
+    assert backend.saved == saved
+
+
+def test_noninteractive_new_variant_requires_engine_and_target(tmp_path: Path) -> None:
+    backend = _FakeBackend()
+    service = AudiobookApplicationService(backend)
+    source = tmp_path / "book.epub"
+    _prepare_saved_variant_project(backend, source, tmp_path)
+
+    with pytest.raises(
+        InputValidationError,
+        match=(
+            r"--new-variant in non-interactive mode requires explicit "
+            r"--engine and --target"
+        ),
+    ):
+        service.prepare_setup(
+            AudiobookRequest(source=source, new_variant=True),
+            InputOverrides(),
+            interactive=False,
+        )
+
+
+def test_noninteractive_new_variant_preserves_explicit_synthesis_choices(
+    tmp_path: Path,
+) -> None:
+    backend = _FakeBackend()
+    service = AudiobookApplicationService(backend)
+    source = tmp_path / "book.epub"
+    _prepare_saved_variant_project(backend, source, tmp_path)
+    request = AudiobookRequest(
+        source=source,
+        new_variant=True,
+        engine="engine-b",
+        target="target-b",
+        voice="voice-b",
+        engine_options={"quality": "medium"},
+        speed=1.2,
+    )
+
+    preparation = service.prepare_setup(
+        request,
+        InputOverrides(
+            frozenset({"engine", "target", "voice", "engine_options", "speed"})
+        ),
+        interactive=False,
+    )
+
+    assert preparation.request.engine == "engine-b"
+    assert preparation.request.target == "target-b"
+    assert preparation.request.voice == "voice-b"
+    assert preparation.request.engine_options == {"quality": "medium"}
+    assert preparation.request.speed == 1.2
+
+
+@pytest.mark.parametrize(
+    ("field_name", "value"),
+    [
+        ("chapters", "1-2"),
+        ("language", "fr-FR"),
+        ("spacy", "md"),
+        ("speech_profile", Path("other.toml")),
+        ("pause_timing", "natural"),
+    ],
+)
+def test_new_variant_rejects_shared_preparation_changes(
+    tmp_path: Path, field_name: str, value: object
+) -> None:
+    backend = _FakeBackend()
+    service = AudiobookApplicationService(backend)
+    source = tmp_path / "book.epub"
+    _prepare_saved_variant_project(backend, source, tmp_path)
+    request = AudiobookRequest(source=source, new_variant=True, **{field_name: value})
+
+    with pytest.raises(ProjectScopeConflictError, match="--new-variant cannot change"):
+        service.prepare_setup(request, InputOverrides(frozenset({field_name})))
+
+
+def test_new_variant_accepts_unchanged_shared_preparation_overrides(
+    tmp_path: Path,
+) -> None:
+    backend = _FakeBackend()
+    service = AudiobookApplicationService(backend)
+    source = tmp_path / "book.epub"
+    saved = _prepare_saved_variant_project(backend, source, tmp_path)
+    request = AudiobookRequest(
+        source=source,
+        new_variant=True,
+        chapters="4,2,3",
+        language=saved.language,
+        spacy=saved.spacy,
+        speech_profile=saved.speech_profile,
+        pause_timing=saved.pause_timing,
+    )
+    fields = frozenset(
+        {"chapters", "language", "spacy", "speech_profile", "pause_timing"}
+    )
+
+    preparation = service.prepare_setup(request, InputOverrides(fields))
+
+    assert preparation.request.chapters == "2-4"
+    assert preparation.request.language == saved.language
+    assert preparation.request.spacy == saved.spacy
+    assert preparation.request.speech_profile == saved.speech_profile
+    assert preparation.request.pause_timing == saved.pause_timing
+
+
+def _prepare_resolvable_variant(
+    backend: _FakeBackend,
+    service: AudiobookApplicationService,
+    source: Path,
+    output: Path | None = None,
+):
+    request = AudiobookRequest(
+        source=source,
+        new_variant=True,
+        engine="engine-b",
+        target="target-b",
+        voice="voice-b",
+        output=output,
+    )
+    fields = {"engine", "target", "voice"}
+    if output is not None:
+        fields.add("output")
+    preparation = service.prepare_setup(
+        request, InputOverrides(frozenset(fields)), interactive=False
+    )
+    return preparation
+
+
+def test_variant_key_is_deterministic_sanitized_and_bounded() -> None:
+    request = AudiobookRequest(
+        source=Path("book.epub"),
+        engine="piper/" + "e" * 80,
+        target="../en_US\\" + "t" * 80,
+        voice="voice/../one",
+        engine_options={"b": 2, "a": 1},
+        speed=1.1,
+    )
+    reordered = replace(request, engine_options={"a": 1, "b": 2})
+
+    key = _configuration_variant_key(request)
+
+    assert key == _configuration_variant_key(reordered)
+    assert len(key) <= 64
+    assert "/" not in key
+    assert "\\" not in key
+    assert ".." not in key
+    digest = key.rsplit("-", 1)[-1]
+    assert len(digest) == 8
+    assert all(character in "0123456789abcdef" for character in digest)
+
+
+def test_new_variant_saves_separate_setup_and_keeps_base_files_unchanged(
+    tmp_path: Path,
+) -> None:
+    backend = _FakeBackend()
+    service = AudiobookApplicationService(backend)
+    source = tmp_path / "book.epub"
+    base_request = _prepare_saved_variant_project(backend, source, tmp_path)
+    base_output = tmp_path / "Platform Decay - Martha Wells.m4b"
+    base_request = replace(base_request, output=base_output)
+    backend.saved = base_request
+    base_paths = ProjectPaths.for_source(source)
+    base_paths.intent.write_bytes(b"base intent")
+    base_paths.profile.write_bytes(b"base profile")
+    base_intent = base_paths.intent.read_bytes()
+    base_profile = base_paths.profile.read_bytes()
+    preparation = service.prepare_setup(
+        AudiobookRequest(source=source, new_variant=True), InputOverrides()
+    )
+    selected = replace(
+        preparation.request,
+        engine="engine-b",
+        target="target-b",
+        voice="voice-b",
+    )
+
+    resolved = service.save_setup(preparation, selected)
+
+    variant_paths = resolved.preparation.paths
+    assert variant_paths.root == base_paths.root
+    assert variant_paths.bundle == base_paths.bundle
+    assert variant_paths.variant_key is not None
+    assert variant_paths.intent == (
+        base_paths.root / "variants" / variant_paths.variant_key / "render.readio.toml"
+    )
+    assert variant_paths.profile == (
+        base_paths.root
+        / "variants"
+        / variant_paths.variant_key
+        / "narrator.renderprofile.toml"
+    )
+    assert variant_paths.intent.is_file()
+    assert variant_paths.profile.is_file()
+    assert resolved.request.output == tmp_path / (
+        f"Platform Decay - Martha Wells [{variant_paths.variant_key}].m4b"
+    )
+    assert resolved.request.output != base_output
+    assert not resolved.request.replace_output
+    assert base_paths.intent.read_bytes() == base_intent
+    assert base_paths.profile.read_bytes() == base_profile
+
+
+@pytest.mark.parametrize("output_kind", ["base", "project"])
+def test_new_variant_rejects_base_or_project_output_paths(
+    tmp_path: Path, output_kind: str
+) -> None:
+    backend = _FakeBackend()
+    service = AudiobookApplicationService(backend)
+    source = tmp_path / "book.epub"
+    saved = _prepare_saved_variant_project(backend, source, tmp_path)
+    paths = ProjectPaths.for_source(source)
+    output = saved.output if output_kind == "base" else paths.root / "other.m4b"
+    preparation = _prepare_resolvable_variant(backend, service, source, output=output)
+
+    message = (
+        "must differ from the base audiobook output"
+        if output_kind == "base"
+        else "cannot be inside the TTSForge project"
+    )
+    with pytest.raises(InputValidationError, match=message):
+        service.save_setup(preparation)
+    assert not any(call[0] == "save_setup" for call in backend.calls)
+
+
+def test_new_variant_rejects_source_as_explicit_output(tmp_path: Path) -> None:
+    backend = _FakeBackend()
+    service = AudiobookApplicationService(backend)
+    source = tmp_path / "book.m4b"
+    _prepare_saved_variant_project(backend, source, tmp_path)
+    preparation = _prepare_resolvable_variant(backend, service, source, output=source)
+
+    with pytest.raises(InputValidationError, match="cannot be the source file"):
+        service.save_setup(preparation)
+    assert not any(call[0] == "save_setup" for call in backend.calls)
+
+
+def test_variant_inventory_reports_valid_incomplete_and_malformed_setups(
+    tmp_path: Path,
+) -> None:
+    backend = _FakeBackend()
+    service = AudiobookApplicationService(backend)
+    source = tmp_path / "book.epub"
+    saved = _prepare_saved_variant_project(backend, source, tmp_path)
+    paths = ProjectPaths.for_source(source)
+    variants_root = paths.root / "variants"
+
+    valid_paths = ProjectPaths.for_variant(paths.root, "valid")
+    valid_paths.setup_root.mkdir(parents=True)
+    valid_paths.intent.touch()
+    valid_paths.profile.touch()
+    incomplete = variants_root / "incomplete"
+    incomplete.mkdir()
+    (incomplete / "render.readio.toml").touch()
+    malformed_paths = ProjectPaths.for_variant(paths.root, "malformed")
+    malformed_paths.setup_root.mkdir()
+    malformed_paths.intent.touch()
+    malformed_paths.profile.touch()
+    backend.load_setup = lambda variant_paths: (
+        (_ for _ in ()).throw(ValueError("bad intent"))
+        if variant_paths.variant_key == "malformed"
+        else saved
+    )
+
+    variants = service.list_variants(paths, source=source)
+
+    assert [variant.variant_key for variant in variants] == [
+        "incomplete",
+        "malformed",
+        "valid",
+    ]
+    assert "Incomplete setup" in (variants[0].error or "")
+    assert "bad intent" in (variants[1].error or "")
+    assert variants[2].error is None
+    assert variants[2].output == saved.output
+    assert variants[2].engine == saved.engine
+    assert variants[2].target == saved.target
+    assert variants[2].voice == saved.voice

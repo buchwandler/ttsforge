@@ -165,8 +165,10 @@ def test_convert_help_exposes_the_audiobook_workflow_controls() -> None:
         "--rebuild-from",
         "--replace-output",
         "--fresh",
+        "--new-variant",
     ):
         assert option in help_text
+    assert "new variants require explicit engine and target" in help_text
     for obsolete in (
         "--format",
         "--model",

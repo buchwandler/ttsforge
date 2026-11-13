@@ -9,7 +9,7 @@
 into M4B audiobooks while Readio owns workflow planning, synthesis, composition,
 progress, and export.
 
-TTSForge requires `readio>=0.6.6,<0.7`. Its base dependencies are provider-neutral.
+TTSForge requires `readio>=0.6.7,<0.7`. Its base dependencies are provider-neutral.
 Install and configure a Readio engine integration separately when you want to synthesize
 speech; use Readio's installation documentation for the integrations supported by your
 platform.
@@ -57,6 +57,12 @@ choose another location or `--fresh` to start in a separate project directory. S
 Output replacement and stage rebuild are separate explicit controls: use
 `--replace-output` to authorize replacing an existing M4B, and `--rebuild-from STAGE` to
 ask Readio to rebuild from a selected workflow stage.
+
+To use a different synthesis setup while keeping the project's prepared book state, run
+`ttsforge convert novel.epub --new-variant`. TTSForge stores the alternate Readio setup
+under `variants/<configuration-key>/` and writes a separately named M4B. It reuses the
+project's SSMD bundle and leaves the base setup and output untouched. Use
+`ttsforge info` to inspect alternate setups.
 
 ## Discover engines and voices
 

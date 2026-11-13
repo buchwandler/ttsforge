@@ -5,7 +5,7 @@ application models are implementation details, not a second public project or sy
 API.
 
 Python integrations should use Readio's public `readio.api` workflow gateway. TTSForge
-requires Readio `>=0.6.1,<0.7` and uses its typed source-inspection, render-intent,
+requires Readio `>=0.6.7,<0.7` and uses its typed source-inspection, render-intent,
 profile, discovery, workflow-inspection, and render operations.
 
 ## Inspect and render a saved intent

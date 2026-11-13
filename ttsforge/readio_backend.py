@@ -486,6 +486,7 @@ class ReadioBackend:
                 for step in plan.steps
             ),
             warnings=tuple(plan.warnings),
+            variant=plan.variant,
         )
 
     def render(
@@ -522,6 +523,7 @@ class ReadioBackend:
             executed_stages=tuple(result.executed_stages),
             reused_stages=tuple(result.reused_stages),
             warnings=tuple(result.warnings),
+            variant=result.variant,
         )
 
 

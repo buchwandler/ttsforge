@@ -46,6 +46,8 @@ class _Backend:
         self.render_request: tuple[ProjectPaths, AudiobookRequest] | None = None
         self.spacy_installed = True
         self.workflow_steps: tuple[WorkflowStepView, ...] = ()
+        self.workflow_variant: str | None = None
+        self.result_variant: str | None = None
 
     def inspect_source(self, source: Path) -> BookInspectionView:
         self.calls.append(("source", source))
@@ -89,6 +91,7 @@ class _Backend:
             workspace_mode="bundle",
             output=selected.output,
             steps=self.workflow_steps,
+            variant=self.workflow_variant,
         )
 
     def render(self, request: object, *, on_progress=None) -> ConversionResultView:
@@ -103,6 +106,7 @@ class _Backend:
             workspace_mode="bundle",
             executed_stages=("render", "compose", "export"),
             reused_stages=("convert", "compile"),
+            variant=self.result_variant,
         )
 
     def list_engines(self) -> tuple[object, ...]:
@@ -1956,3 +1960,385 @@ def test_convert_closes_progress_as_failed_without_completion_summary(
     assert "Error (render-stage failure)" in result.output
     assert _ProgressSpy.instances[0].close_calls == [False]
     assert "Audiobook created" not in output.getvalue()
+
+
+def _create_cli_base_setup(
+    backend: _Backend, source: Path, tmp_path: Path, **saved_updates: object
+) -> None:
+    paths = ProjectPaths.for_source(source)
+    paths.root.mkdir()
+    paths.intent.touch()
+    paths.profile.touch()
+    backend.saved[paths.root] = AudiobookRequest(
+        source=source.resolve(),
+        language="en-US",
+        engine="engine-a",
+        target="target-a",
+        voice="voice-a",
+        chapters="2-3",
+        output=tmp_path / "book.m4b",
+        spacy="off",
+        speech_profile=Path("speech.toml"),
+        pause_timing="engaging",
+        **saved_updates,
+    )
+
+
+def test_interactive_new_variant_reselects_synthesis_only(
+    monkeypatch, tmp_path: Path
+) -> None:
+    source = tmp_path / "book.epub"
+    source.touch()
+    backend = _Backend()
+    _create_cli_base_setup(backend, source, tmp_path)
+    prompts: list[str] = []
+
+    def prompt(text: str, **kwargs: object) -> str:
+        prompts.append(text)
+        return _setup_prompt(text, **kwargs)
+
+    monkeypatch.setattr(cli_app.typer, "prompt", prompt)
+    result = _invoke(
+        monkeypatch,
+        backend,
+        ["convert", str(source), "--new-variant"],
+        mode=_interactive_mode(),
+    )
+
+    assert result.exit_code == 0, result.output
+    assert any(text.startswith("Engines for") for text in prompts)
+    assert any(text.startswith("Engine-a targets for en-US") for text in prompts)
+    assert any(text.startswith("Voices for en-US / target-a") for text in prompts)
+    assert not any(text == "Language" for text in prompts)
+    assert not any(text.startswith("Chapters to include") for text in prompts)
+    assert "spaCy model" not in prompts
+    assert "Speech replacement profile" not in prompts
+    assert not any(text.startswith("Pause timing") for text in prompts)
+    saved = backend.saved[ProjectPaths.for_source(source).root]
+    assert saved.engine == "engine-a"
+    assert saved.target == "target-a"
+    assert saved.voice == "voice-a"
+    assert saved.pause_timing == "engaging"
+
+
+def test_interactive_new_variant_explicit_selectors_suppress_their_prompts(
+    monkeypatch, tmp_path: Path
+) -> None:
+    source = tmp_path / "book.epub"
+    source.touch()
+    backend = _Backend()
+    _create_cli_base_setup(backend, source, tmp_path)
+    prompts: list[str] = []
+
+    def prompt(text: str, **kwargs: object) -> str:
+        prompts.append(text)
+        return _setup_prompt(text, **kwargs)
+
+    monkeypatch.setattr(cli_app.typer, "prompt", prompt)
+    result = _invoke(
+        monkeypatch,
+        backend,
+        [
+            "convert",
+            str(source),
+            "--new-variant",
+            "--engine",
+            "engine-a",
+            "--target",
+            "target-a",
+            "--voice",
+            "voice-a",
+        ],
+        mode=_interactive_mode(),
+    )
+
+    assert result.exit_code == 0, result.output
+    assert not any(text.startswith("Engines for") for text in prompts)
+    assert not any(text.startswith("Engine-a targets for en-US") for text in prompts)
+    assert not any(text.startswith("Voices for en-US / target-a") for text in prompts)
+
+
+def test_noninteractive_new_variant_requires_synthesis_selectors(
+    monkeypatch, tmp_path: Path
+) -> None:
+    source = tmp_path / "book.epub"
+    source.touch()
+    backend = _Backend()
+    _create_cli_base_setup(backend, source, tmp_path)
+
+    result = _invoke(
+        monkeypatch, backend, ["convert", str(source), "--new-variant", "--json"]
+    )
+
+    assert result.exit_code == 1
+    assert "requires explicit --engine and --target" in result.output
+    assert not any(call[0] == "save" for call in backend.calls)
+
+
+def test_noninteractive_new_variant_requires_voice_for_named_voice_target(
+    monkeypatch, tmp_path: Path
+) -> None:
+    source = tmp_path / "book.epub"
+    source.touch()
+    backend = _Backend()
+    _create_cli_base_setup(backend, source, tmp_path)
+    backend.list_targets = lambda **kwargs: (
+        {
+            "id": "target-a",
+            "engine": "engine-a",
+            "language": "en-US",
+            "voices": ["voice-a"],
+        },
+    )
+
+    result = _invoke(
+        monkeypatch,
+        backend,
+        [
+            "convert",
+            str(source),
+            "--new-variant",
+            "--engine",
+            "engine-a",
+            "--target",
+            "target-a",
+            "--json",
+        ],
+    )
+
+    assert result.exit_code == 1
+    assert "requires --voice for target 'target-a'" in result.output
+    assert not any(call[0] == "save" for call in backend.calls)
+
+
+@pytest.mark.parametrize(
+    "extra_args",
+    [
+        ["--fresh"],
+        ["--rebuild-from", "convert"],
+        ["--rebuild-from", "compile"],
+    ],
+)
+def test_new_variant_rejects_incompatible_flags(
+    monkeypatch, tmp_path: Path, extra_args: list[str]
+) -> None:
+    source = tmp_path / "book.epub"
+    source.touch()
+    backend = _Backend()
+
+    result = _invoke(
+        monkeypatch,
+        backend,
+        ["convert", str(source), "--new-variant", *extra_args],
+    )
+
+    assert result.exit_code == 2
+    assert "cannot be combined" in result.output
+    assert backend.calls == []
+
+
+def test_info_lists_valid_and_malformed_alternate_variants(
+    monkeypatch, tmp_path: Path
+) -> None:
+    source = tmp_path / "book.epub"
+    source.touch()
+    backend = _Backend()
+    _create_cli_base_setup(backend, source, tmp_path)
+    root = ProjectPaths.for_source(source).root
+    valid_paths = ProjectPaths.for_variant(root, "valid-key")
+    valid_paths.setup_root.mkdir(parents=True)
+    valid_paths.intent.touch()
+    valid_paths.profile.touch()
+    incomplete = root / "variants" / "incomplete-key"
+    incomplete.mkdir()
+    (incomplete / "render.readio.toml").touch()
+    malformed_paths = ProjectPaths.for_variant(root, "malformed-key")
+    malformed_paths.setup_root.mkdir()
+    malformed_paths.intent.touch()
+    malformed_paths.profile.touch()
+    load_setup = backend.load_setup
+
+    def load_variant(paths: ProjectPaths) -> AudiobookRequest:
+        if paths.variant_key == "malformed-key":
+            raise ValueError("invalid profile")
+        return load_setup(paths)
+
+    backend.load_setup = load_variant
+    result = _invoke(monkeypatch, backend, ["info", str(source), "--json"])
+
+    assert result.exit_code == 0, result.output
+    variants = json.loads(result.stdout)["variants"]
+    assert [variant["variant_key"] for variant in variants] == [
+        "incomplete-key",
+        "malformed-key",
+        "valid-key",
+    ]
+    assert "Incomplete setup" in variants[0]["error"]
+    assert "invalid profile" in variants[1]["error"]
+    assert variants[2]["engine"] == "engine-a"
+    assert variants[2]["target"] == "target-a"
+    assert variants[2]["voice"] == "voice-a"
+
+    output = StringIO()
+    monkeypatch.setattr(
+        cli_app,
+        "_output",
+        Console(file=output, width=160, highlight=False, markup=False),
+    )
+    human_result = _invoke(monkeypatch, backend, ["info", str(source)])
+    assert human_result.exit_code == 0, human_result.output
+    rendered = output.getvalue()
+    assert "Variants:" in rendered
+    assert "valid-key" in rendered
+    assert "invalid profile" in rendered
+
+
+def test_new_variant_keeps_config_and_readio_variants_distinct_in_output(
+    monkeypatch, tmp_path: Path
+) -> None:
+    source = tmp_path / "book.epub"
+    source.touch()
+    backend = _Backend()
+    _create_cli_base_setup(backend, source, tmp_path)
+    backend.workflow_variant = "specialist-variant"
+    backend.result_variant = "specialist-variant"
+    args = [
+        "convert",
+        str(source),
+        "--new-variant",
+        "--engine",
+        "engine-a",
+        "--target",
+        "target-a",
+        "--voice",
+        "voice-a",
+    ]
+
+    json_result = _invoke(monkeypatch, backend, [*args, "--json"])
+
+    assert json_result.exit_code == 0, json_result.output
+    payload = json.loads(json_result.stdout)
+    configuration_variant = payload["configuration_variant"]
+    assert configuration_variant
+    assert payload["workflow"]["variant"] == "specialist-variant"
+    assert payload["result"]["variant"] == "specialist-variant"
+    assert configuration_variant != "specialist-variant"
+
+    output = StringIO()
+    monkeypatch.setattr(
+        cli_app,
+        "_output",
+        Console(file=output, width=160, highlight=False, markup=False),
+    )
+    mode = InteractionMode(
+        interactive=False, json=False, live_progress=False, confirm=False
+    )
+    human_result = _invoke(monkeypatch, backend, args, mode=mode)
+
+    assert human_result.exit_code == 0, human_result.output
+    rendered = output.getvalue()
+    assert f"Config variant: {configuration_variant}" in rendered
+    assert "Render variant: specialist-variant" in rendered
+    assert "Output: " in rendered
+
+
+def test_reported_two_output_variant_scenario_preserves_base_artifacts(
+    monkeypatch, tmp_path: Path
+) -> None:
+    class WritingBackend(_Backend):
+        def render(self, request: object, *, on_progress=None) -> ConversionResultView:
+            paths, selected = request  # type: ignore[misc]
+            self.saved_render_paths = paths
+            assert selected.output is not None
+            selected.output.write_bytes(b"alternate audiobook")
+            Path(f"{selected.output}.audioexport.json").write_text(
+                "alternate export identity", encoding="utf-8"
+            )
+            return super().render(request, on_progress=on_progress)
+
+    source = tmp_path / "Platform Decay - Martha Wells.epub"
+    source.touch()
+    backend = WritingBackend()
+    _create_cli_base_setup(backend, source, tmp_path)
+    base_paths = ProjectPaths.for_source(source)
+    base_output = tmp_path / "Platform Decay - Martha Wells.m4b"
+    base_sidecar = Path(f"{base_output}.audioexport.json")
+    base_output.write_bytes(b"original audiobook")
+    base_sidecar.write_text("original export identity", encoding="utf-8")
+    base_paths.intent.write_bytes(b"original intent")
+    base_paths.profile.write_bytes(b"original profile")
+    original_artifacts = (
+        base_output.read_bytes(),
+        base_sidecar.read_bytes(),
+        base_paths.intent.read_bytes(),
+        base_paths.profile.read_bytes(),
+    )
+    backend.saved[base_paths.root] = replace(
+        backend.saved[base_paths.root],
+        output=base_output,
+        title="Platform Decay",
+        author="Martha Wells",
+    )
+    backend.workflow_variant = "narrator--specialist-variant"
+    backend.result_variant = "narrator--specialist-variant"
+    backend.workflow_steps = (
+        WorkflowStepView("convert", "readio", "reuse", None, "Shared SSMD", "complete"),
+        WorkflowStepView(
+            "compile", "utterplan", "reuse", None, "Shared FlowPlans", "complete"
+        ),
+        WorkflowStepView(
+            "render_plan", "utterplan", "execute", None, "New profile", "ready"
+        ),
+        WorkflowStepView(
+            "render", "voicerender", "execute", None, "New voice", "ready"
+        ),
+        WorkflowStepView(
+            "compose", "audiocompose", "execute", None, "New render", "ready"
+        ),
+        WorkflowStepView(
+            "export", "audioexport", "execute", None, "New output", "ready"
+        ),
+    )
+
+    result = _invoke(
+        monkeypatch,
+        backend,
+        [
+            "convert",
+            str(source),
+            "--new-variant",
+            "--engine",
+            "engine-a",
+            "--target",
+            "target-a",
+            "--voice",
+            "voice-b",
+            "--json",
+        ],
+    )
+
+    assert result.exit_code == 0, result.output
+    payload = json.loads(result.stdout)
+    variant_paths, selected = backend.render_request
+    variant_key = variant_paths.variant_key
+    assert variant_key
+    assert variant_paths.root == base_paths.root
+    assert variant_paths.bundle == base_paths.bundle
+    assert variant_paths.intent.is_file()
+    assert variant_paths.profile.is_file()
+    assert selected.output == tmp_path / (
+        f"Platform Decay - Martha Wells [{variant_key}].m4b"
+    )
+    assert selected.output.is_file()
+    assert Path(f"{selected.output}.audioexport.json").is_file()
+    assert payload["workflow"]["steps"][0]["action"] == "reuse"
+    assert payload["workflow"]["steps"][1]["action"] == "reuse"
+    assert payload["workflow"]["steps"][2]["action"] == "execute"
+    assert payload["result"]["reused_stages"] == ["convert", "compile"]
+    assert payload["result"]["variant"] == "narrator--specialist-variant"
+    assert (
+        base_output.read_bytes(),
+        base_sidecar.read_bytes(),
+        base_paths.intent.read_bytes(),
+        base_paths.profile.read_bytes(),
+    ) == original_artifacts

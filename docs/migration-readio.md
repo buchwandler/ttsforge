@@ -2,7 +2,7 @@
 
 TTSForge 0.5 is a breaking migration from the Readio 0.4 project/facade API to Readio's
 workflow-gateway API. It also replaces the former TTSForge renderer workspace with an
-audiobook project directory. TTSForge requires Readio `>=0.6.1,<0.7`.
+audiobook project directory. TTSForge requires Readio `>=0.6.7,<0.7`.
 
 ## No automatic project migration
 

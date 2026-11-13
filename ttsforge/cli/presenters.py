@@ -14,6 +14,7 @@ from ..application.models import (
     BookInspectionView,
     ConversionResultView,
     PreflightView,
+    ProjectVariantView,
     SpacyModelView,
     WorkflowPlanView,
 )
@@ -47,6 +48,7 @@ def render_source_info(
     project: Path,
     saved: AudiobookRequest | None,
     console: Console,
+    variants: tuple[ProjectVariantView, ...] = (),
 ) -> None:
     table = Table("Field", "Value", show_header=False)
     for label, value in (
@@ -69,6 +71,18 @@ def render_source_info(
         ):
             table.add_row(label, _show(value))
     console.print(table)
+
+    if variants:
+        console.print("Variants:")
+        for variant in variants:
+            console.print(f"  {variant.variant_key}")
+            if variant.error is not None:
+                console.print(f"    error: {variant.error}")
+                continue
+            console.print(f"    output: {_show(variant.output)}")
+            console.print(f"    engine: {_show(variant.engine)}")
+            console.print(f"    target: {_show(variant.target)}")
+            console.print(f"    voice: {_show(variant.voice)}")
 
 
 def render_workflow(plan: WorkflowPlanView, console: Console) -> None:
@@ -93,6 +107,10 @@ def render_preflight(
     table.add_row("Book", request.title or inspection.source.name)
     table.add_row("Author", _show(request.author))
     table.add_row("Project", str(setup.preparation.paths.root))
+    if setup.preparation.paths.variant_key is not None:
+        table.add_row("Config variant", setup.preparation.paths.variant_key)
+    if preflight.workflow.variant is not None:
+        table.add_row("Render variant", preflight.workflow.variant)
     table.add_row("Chapters", _show(request.chapters))
     table.add_row("Output", _show(request.output))
     table.add_row("Format", "M4B")
@@ -125,8 +143,13 @@ def render_completion(
     console: Console,
     *,
     elapsed_seconds: float | None = None,
+    configuration_variant: str | None = None,
 ) -> None:
     console.print("Audiobook created")
+    if configuration_variant is not None:
+        console.print(f"Config variant: {configuration_variant}")
+    if result.variant is not None:
+        console.print(f"Render variant: {result.variant}")
     console.print(f"Output: {result.output}")
     if elapsed_seconds is not None:
         console.print(f"Elapsed: {format_elapsed(elapsed_seconds)}")

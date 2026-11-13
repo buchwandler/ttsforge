@@ -43,6 +43,32 @@ to validate the resulting setup.
 workflow and presents its stage actions; it does not make its own artifact-validity
 decisions.
 
+## New synthesis variants
+
+Use `--new-variant` when the project already has a complete saved setup and you want to
+synthesize the same prepared book with another engine, target, or voice:
+
+```bash
+ttsforge convert novel.epub --new-variant
+```
+
+TTSForge requires fresh synthesis selectors. Interactive conversion prompts for the
+engine, target, and applicable voice. With `--non-interactive` or `--json`, pass
+`--engine` and `--target` explicitly, and pass `--voice` if the selected target has no
+default voice. Chapter scope, source metadata, and shared preparation settings come from
+the base setup; changing them requires a separate project or the normal rebuild
+workflow.
+
+The alternate Readio intent and narrator profile are stored under
+`novel.ttsforge/variants/<configuration-key>/`. The project root and `book.ssmd-bundle/`
+remain shared, and the root intent/profile and existing audiobook are not rewritten. By
+default, the new output is named `novel [<configuration-key>].m4b`. The configuration
+key is distinct from Readio's specialist render variant, and TTSForge does not enable
+output replacement implicitly.
+
+`ttsforge info novel.epub` lists valid alternate setups and reports incomplete or
+invalid variant directories. `ttsforge status` continues to inspect the root setup.
+
 ## Chapter selection
 
 The chapter selector is persisted in the render intent. For example:

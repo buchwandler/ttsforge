@@ -4,7 +4,7 @@ TTSForge is an audiobook-oriented command-line frontend for Readio. It inspects 
 saves audiobook setup in a TTSForge project directory, and delegates workflow planning
 and M4B rendering to Readio.
 
-TTSForge requires Readio `>=0.6.1,<0.7`. The base installation remains provider-neutral;
+TTSForge requires Readio `>=0.6.7,<0.7`. The base installation remains provider-neutral;
 engine integrations are installed separately. See [Installation](installation.md).
 
 ```{toctree}

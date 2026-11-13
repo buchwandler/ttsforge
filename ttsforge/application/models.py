@@ -13,6 +13,7 @@ class ProjectPaths:
     intent: Path
     profile: Path
     bundle: Path
+    variant_key: str | None = None
 
     @classmethod
     def for_root(cls, root: Path) -> ProjectPaths:
@@ -21,6 +22,21 @@ class ProjectPaths:
             intent=root / "render.readio.toml",
             profile=root / "narrator.renderprofile.toml",
             bundle=root / "book.ssmd-bundle",
+        )
+
+    @property
+    def setup_root(self) -> Path:
+        return self.intent.parent
+
+    @classmethod
+    def for_variant(cls, root: Path, variant_key: str) -> ProjectPaths:
+        setup_root = root / "variants" / variant_key
+        return cls(
+            root=root,
+            intent=setup_root / "render.readio.toml",
+            profile=setup_root / "narrator.renderprofile.toml",
+            bundle=root / "book.ssmd-bundle",
+            variant_key=variant_key,
         )
 
     @classmethod
@@ -54,6 +70,7 @@ class AudiobookRequest:
     rebuild_from: str | None = None
     replace_output: bool = False
     fresh: bool = False
+    new_variant: bool = False
 
 
 AudiobookOptions = AudiobookRequest
@@ -97,6 +114,16 @@ class BookInspectionView:
     language: str | None
     chapters: tuple[BookChapterView, ...]
     cover: Path | None = None
+
+
+@dataclass(frozen=True, slots=True)
+class ProjectVariantView:
+    variant_key: str
+    output: Path | None = None
+    engine: str | None = None
+    target: str | None = None
+    voice: str | None = None
+    error: str | None = None
 
 
 @dataclass(frozen=True, slots=True)
@@ -146,6 +173,8 @@ class WorkflowPlanView:
     steps: tuple[WorkflowStepView, ...]
     warnings: tuple[str, ...] = ()
 
+    variant: str | None = None
+
 
 @dataclass(frozen=True, slots=True)
 class SetupPreparation:
@@ -177,3 +206,4 @@ class ConversionResultView:
     executed_stages: tuple[str, ...]
     reused_stages: tuple[str, ...]
     warnings: tuple[str, ...] = ()
+    variant: str | None = None

@@ -345,7 +345,9 @@ def test_create_book_intent_maps_setup_settings_to_readio(
 def test_save_setup_persists_profile_and_render_intent(
     monkeypatch: pytest.MonkeyPatch, tmp_path: Path, chapters: str
 ) -> None:
-    paths = ProjectPaths.for_root(tmp_path / "book.ttsforge")
+    paths = ProjectPaths.for_variant(tmp_path / "book.ttsforge", "piper-key")
+    assert paths.root == tmp_path / "book.ttsforge"
+    assert paths.bundle == paths.root / "book.ssmd-bundle"
     request = AudiobookRequest(
         source=tmp_path / "book.epub",
         language="en-US",
@@ -363,6 +365,7 @@ def test_save_setup_persists_profile_and_render_intent(
         spacy="sm",
         speech_profile=tmp_path / "speech.toml",
         pause_timing="engaging",
+        new_variant=True,
     )
     calls: list[tuple[str, object]] = []
 
@@ -521,12 +524,13 @@ def test_load_setup_recovers_spacy_profile_and_pause_timing(
 def test_request_bridge_uses_persisted_intent_and_runtime_controls(
     monkeypatch: pytest.MonkeyPatch, tmp_path: Path
 ) -> None:
-    paths = ProjectPaths.for_root(tmp_path / "book.ttsforge")
+    paths = ProjectPaths.for_variant(tmp_path / "book.ttsforge", "piper-key")
     intent = cast(RenderIntent, object())
     request = AudiobookRequest(
         source=tmp_path / "book.epub",
         rebuild_from="render",
         replace_output=True,
+        new_variant=True,
     )
     resolved = cast(RenderRequest, object())
     calls: list[tuple[str, object]] = []
@@ -577,6 +581,7 @@ def test_inspect_and_render_map_public_gateway_results() -> None:
         output=Path("book.m4b"),
         steps=(step,),
         warnings=("warning",),
+        variant="specialist-variant",
     )
     result = SimpleNamespace(
         output=Path("book.m4b"),
@@ -585,6 +590,7 @@ def test_inspect_and_render_map_public_gateway_results() -> None:
         executed_stages=("compose",),
         reused_stages=("render",),
         warnings=("warning",),
+        variant="specialist-variant",
     )
     calls: list[tuple[str, object]] = []
 
@@ -619,6 +625,8 @@ def test_inspect_and_render_map_public_gateway_results() -> None:
     conversion = backend.render(request, on_progress=events.append)
 
     assert workflow.steps[0].stage == "render"
+    assert workflow.variant == "specialist-variant"
+    assert conversion.variant == "specialist-variant"
     assert workflow.steps[0].state == "ready"
     assert workflow.warnings == ("warning",)
     assert conversion.executed_stages == ("compose",)

@@ -1,6 +1,6 @@
 # Testing and integration checks
 
-TTSForge requires Readio `>=0.6.1,<0.7`. The public API contract test checks the
+TTSForge requires Readio `>=0.6.7,<0.7`. The public API contract test checks the
 gateway, typed render/workflow contracts, source inspection, intent/profile helpers,
 discovery operations, and normalized progress types required by the adapter.
 
@@ -27,7 +27,7 @@ APIs.
 
 ## Practical acceptance checks
 
-Before a package release, exercise a real conversion with Readio `>=0.6.1,<0.7` and a
+Before a package release, exercise a real conversion with Readio `>=0.6.7,<0.7` and a
 supported engine integration:
 
 1. Convert a fresh EPUB to the default M4B and verify the `.ttsforge/` intent, profile,

@@ -14,29 +14,30 @@ render/export an M4B:
 ttsforge convert novel.epub
 ```
 
-| Option                          | Meaning                                                                                           |
-| ------------------------------- | ------------------------------------------------------------------------------------------------- |
-| `--project PATH`                | Project directory. Defaults to `<source-stem>.ttsforge` beside the EPUB.                          |
-| `--chapters SELECTOR`           | Chapter selection for the book workflow, for example `1-5`, `1,3,5`, or `all`.                    |
-| `-o, --output PATH`             | M4B output path; defaults to `<source-stem>.m4b`.                                                 |
-| `--language LANG`               | Language used for the audiobook setup.                                                            |
-| `--engine ENGINE`               | Readio synthesis engine.                                                                          |
-| `--target TARGET`               | Runnable target exposed by the selected engine.                                                   |
-| `--voice VOICE`                 | Voice selector supported by the selected target.                                                  |
-| `--engine-option KEY=VALUE`     | Engine-specific option; repeatable. Use options exposed by Readio for that engine and target.     |
-| `--speed FLOAT`                 | Speech speed in the range shown by help; the selected engine may impose stricter support.         |
-| `--bitrate VALUE`               | M4B export bitrate.                                                                               |
-| `--target-lufs FLOAT`           | Composition loudness target.                                                                      |
-| `--title TEXT`, `--author TEXT` | Audiobook metadata overrides.                                                                     |
-| `--cover PATH`                  | Cover image for the audiobook.                                                                    |
-| `--offline` / `--refresh`       | Control Readio discovery/resource behavior for this request.                                      |
-| `--rebuild-from STAGE`          | Ask Readio to rebuild from `convert`, `compile`, `render_plan`, `render`, `compose`, or `export`. |
-| `--replace-output`              | Explicitly authorize replacing an existing M4B output.                                            |
-| `--fresh`                       | Use a separate new TTSForge project directory. Does not replace output or force a rebuild.        |
-| `-y, --yes`                     | Skip final confirmation only.                                                                     |
-| `--non-interactive`             | Disable prompts and use saved setup and Readio defaults.                                          |
-| `--json`                        | Emit structured output without prompts or progress prose.                                         |
-| `--debug`                       | Show a traceback after an error.                                                                  |
+| Option                          | Meaning                                                                                              |
+| ------------------------------- | ---------------------------------------------------------------------------------------------------- |
+| `--project PATH`                | Project directory. Defaults to `<source-stem>.ttsforge` beside the EPUB.                             |
+| `--chapters SELECTOR`           | Chapter selection for the book workflow, for example `1-5`, `1,3,5`, or `all`.                       |
+| `-o, --output PATH`             | M4B output path; defaults to `<source-stem>.m4b`.                                                    |
+| `--language LANG`               | Language used for the audiobook setup.                                                               |
+| `--engine ENGINE`               | Readio synthesis engine.                                                                             |
+| `--target TARGET`               | Runnable target exposed by the selected engine.                                                      |
+| `--voice VOICE`                 | Voice selector supported by the selected target.                                                     |
+| `--engine-option KEY=VALUE`     | Engine-specific option; repeatable. Use options exposed by Readio for that engine and target.        |
+| `--speed FLOAT`                 | Speech speed in the range shown by help; the selected engine may impose stricter support.            |
+| `--bitrate VALUE`               | M4B export bitrate.                                                                                  |
+| `--target-lufs FLOAT`           | Composition loudness target.                                                                         |
+| `--title TEXT`, `--author TEXT` | Audiobook metadata overrides.                                                                        |
+| `--cover PATH`                  | Cover image for the audiobook.                                                                       |
+| `--offline` / `--refresh`       | Control Readio discovery/resource behavior for this request.                                         |
+| `--rebuild-from STAGE`          | Ask Readio to rebuild from `convert`, `compile`, `render_plan`, `render`, `compose`, or `export`.    |
+| `--replace-output`              | Explicitly authorize replacing an existing M4B output.                                               |
+| `--fresh`                       | Use a separate new TTSForge project directory. Does not replace output or force a rebuild.           |
+| `--new-variant`                 | Create a separate setup and M4B in an existing project, reusing source conversion and compile state. |
+| `-y, --yes`                     | Skip final confirmation only.                                                                        |
+| `--non-interactive`             | Disable prompts; new variants require explicit engine and target selectors.                          |
+| `--json`                        | Emit structured output without prompts or progress prose.                                            |
+| `--debug`                       | Show a traceback after an error.                                                                     |
 
 Chapter selectors are 1-based and ranges are inclusive. Use `all`, a number such as `4`,
 a range such as `2-7`, or comma-separated combinations such as `1,3,8-10`. Open-ended
@@ -49,10 +50,21 @@ a different explicit selector is rejected. Use `--fresh` or pass a different pro
 path to create a project with a different chapter scope. `--non-interactive` and
 `--json` never prompt; a new project defaults to `all`.
 
-TTSForge saves the resolved render intent and narrator profile before rendering. A
-failed render can be retried with the saved setup. Readio owns preflight decisions,
-stage reuse, and rendering. See [Projects and outputs](projects.md) for persistence and
-precedence.
+`--new-variant` requires a complete saved base setup. It inherits the base source,
+chapter scope, and preparation settings, then asks for a new engine, target, and
+applicable voice. With `--non-interactive` or `--json`, supply `--engine` and
+`--target`; supply `--voice` when the selected target does not provide a default. It
+rejects `--fresh`, convert/compile rebuilds, and changes to shared preparation settings.
+It does not enable `--replace-output`.
+
+Each alternate configuration gets its own Readio intent and render profile below
+`variants/<configuration-key>/`, while sharing the project's `book.ssmd-bundle/`. The
+configuration key is TTSForge setup identity, not Readio's specialist render variant.
+`info` lists valid and incomplete alternate setups; `status` continues to inspect the
+root setup. TTSForge saves the resolved render intent and narrator profile before
+rendering. A failed render can be retried with the saved setup. Readio owns preflight
+decisions, stage reuse, and rendering. See [Projects and outputs](projects.md) for
+persistence and precedence.
 
 ## `list`
 

@@ -1,7 +1,7 @@
 # Quick start
 
 Install TTSForge and a Readio engine integration if you want to render speech. TTSForge
-requires Readio `>=0.6.1,<0.7`; see [Installation](installation.md) for setup.
+requires Readio `>=0.6.7,<0.7`; see [Installation](installation.md) for setup.
 
 ## Inspect and convert
 
@@ -71,13 +71,39 @@ on later runs; source metadata and Readio defaults supply remaining values befor
 interactive prompts fill any missing choices. Changes to language, engine, or target
 invalidate dependent saved selections so incompatible choices are gathered again.
 
-`--yes` skips only final confirmation. `--non-interactive` disables prompts and uses the
-saved setup and Readio defaults. `--json` is also prompt-free and emits structured
-output without progress prose:
+`--yes` skips only final confirmation. In normal conversion, `--non-interactive`
+disables prompts and uses the saved setup and Readio defaults. With `--new-variant`,
+non-interactive and JSON modes instead require explicit engine and target selectors and
+never silently reuse the base engine or target.
 
 ```bash
 ttsforge convert novel.epub --chapters all --non-interactive --json
 ```
+
+## Create a synthesis variant
+
+After a normal conversion has saved a complete base setup, use `--new-variant` to choose
+a different synthesis profile for the same prepared book:
+
+```bash
+ttsforge convert novel.epub --new-variant
+```
+
+Interactive mode prompts for a new engine, target, and applicable voice. For automation,
+supply at least the engine and target, plus a voice when the target has no default:
+
+```bash
+ttsforge convert novel.epub --new-variant \\
+  --engine ENGINE --target TARGET --voice VOICE --non-interactive
+```
+
+The alternate intent and profile are stored in
+`novel.ttsforge/variants/<configuration-key>/`. They share the root `book.ssmd-bundle/`,
+so source conversion and semantic compilation can be reused while a profile-specific
+render plan and audiobook are created. The default output is
+`novel [<configuration-key>].m4b`; the base setup and M4B remain untouched. The TTSForge
+configuration key is separate from Readio's specialist render variant. `info` lists
+alternate setups, while `status` continues to show the root workflow.
 
 ## Output, replacement, and rebuilds
 

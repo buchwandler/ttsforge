@@ -14,6 +14,7 @@ from ttsforge.application import (
     ConversionResultView,
     InputOverrides,
     ProjectPaths,
+    ProjectVariantView,
     SetupConflictError,
     SetupOrigins,
     WorkflowPlanView,
@@ -29,6 +30,8 @@ def test_audiobook_request_keeps_the_public_options_compatibility_name() -> None
     assert AudiobookOptions is AudiobookRequest
     assert CompatibilityAudiobookOptions is AudiobookRequest
     assert request.source == Path("book.epub")
+
+    assert request.new_variant is False
     assert request.language == "en-us"
 
 
@@ -39,6 +42,18 @@ def test_project_paths_follow_ttsforge_layout() -> None:
     assert paths.intent == Path("book.ttsforge/render.readio.toml")
     assert paths.profile == Path("book.ttsforge/narrator.renderprofile.toml")
     assert paths.bundle == Path("book.ttsforge/book.ssmd-bundle")
+
+    variant_paths = ProjectPaths.for_variant(paths.root, "piper-key")
+
+    assert paths.setup_root == paths.root
+    assert variant_paths.root == paths.root
+    assert variant_paths.bundle == paths.bundle
+    assert variant_paths.intent == paths.root / "variants/piper-key/render.readio.toml"
+    assert variant_paths.profile == (
+        paths.root / "variants/piper-key/narrator.renderprofile.toml"
+    )
+    assert variant_paths.setup_root == paths.root / "variants/piper-key"
+    assert variant_paths.variant_key == "piper-key"
 
 
 def test_input_overrides_and_setup_origins_are_frontend_neutral() -> None:
@@ -84,12 +99,27 @@ def test_application_views_have_no_readio_dto_requirement() -> None:
         executed_stages=(),
         reused_stages=("render",),
     )
+
+    variant_plan = replace(plan, variant="specialist-variant")
+    variant_result = replace(result, variant="specialist-variant")
+    variant = ProjectVariantView(
+        variant_key="piper-key",
+        output=Path("variant.m4b"),
+        engine="piper",
+        target="target",
+        voice="lessac",
+    )
     item = CatalogItemView(id="voice-1", label="Narrator", engine="engine-a")
 
     assert inspection.chapters[0].title == "Opening"
     assert plan.steps[0].state == "ready"
     assert result.reused_stages == ("render",)
     assert item.engine == "engine-a"
+
+    assert variant_plan.variant == "specialist-variant"
+    assert variant_result.variant == "specialist-variant"
+    assert variant.variant_key == "piper-key"
+    assert variant.output == Path("variant.m4b")
 
 
 def test_noninteractive_saved_setup_conflict_reports_dependent_values() -> None:

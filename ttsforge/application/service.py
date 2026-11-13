@@ -2,6 +2,9 @@
 
 from __future__ import annotations
 
+import hashlib
+import json
+import re
 import shlex
 from collections.abc import Callable
 from dataclasses import replace
@@ -24,6 +27,7 @@ from .models import (
     InputOverrides,
     PreflightView,
     ProjectPaths,
+    ProjectVariantView,
     ResolvedSetup,
     SetupOrigins,
     SetupPreparation,
@@ -80,6 +84,99 @@ def _rebuild_for_setup_change(
     return request
 
 
+_NEW_VARIANT_SHARED_FIELDS = (
+    "chapters",
+    "language",
+    "spacy",
+    "speech_profile",
+    "pause_timing",
+)
+
+
+def _validate_new_variant_inputs(
+    request: AudiobookRequest,
+    saved: AudiobookRequest,
+    overrides: InputOverrides,
+) -> None:
+    changed = tuple(
+        field_name
+        for field_name in _NEW_VARIANT_SHARED_FIELDS
+        if overrides.includes(field_name)
+        and (
+            (request.pause_timing or "fixed") != (saved.pause_timing or "fixed")
+            if field_name == "pause_timing"
+            else getattr(request, field_name) != getattr(saved, field_name)
+        )
+    )
+    if changed:
+        flags = ", ".join(f"--{name.replace('_', '-')}" for name in changed)
+        raise ProjectScopeConflictError(
+            f"--new-variant cannot change {flags}: these settings affect shared "
+            "source preparation or compile state. Use a separate project with "
+            "--project or the normal rebuild workflow."
+        )
+
+
+def _validate_new_variant_flags(request: AudiobookRequest) -> None:
+    if not request.new_variant:
+        return
+    if request.fresh:
+        raise InputValidationError("--new-variant cannot be combined with --fresh.")
+    if request.rebuild_from in {"convert", "compile"}:
+        raise InputValidationError(
+            "--new-variant cannot be combined with --rebuild-from convert or compile."
+        )
+
+
+def _merge_setup_request(
+    request: AudiobookRequest,
+    saved: AudiobookRequest | None,
+    overrides: InputOverrides,
+    derived: AudiobookRequest,
+    *,
+    interactive: bool,
+) -> AudiobookRequest:
+    merge_overrides = overrides
+    if request.new_variant and saved is not None:
+        merge_overrides = InputOverrides(
+            overrides.fields
+            | frozenset({"engine", "target", "voice", "engine_options", "speed"})
+        )
+    merged = (
+        derived
+        if saved is None
+        else merge_saved_setup(derived, saved, merge_overrides, interactive=interactive)
+    )
+    if request.new_variant and saved is not None:
+        merged = replace(
+            merged,
+            engine=request.engine if overrides.includes("engine") else None,
+            target=request.target if overrides.includes("target") else None,
+            voice=request.voice if overrides.includes("voice") else None,
+            engine_options=(
+                request.engine_options if overrides.includes("engine_options") else {}
+            ),
+            speed=request.speed if overrides.includes("speed") else None,
+        )
+    return merged
+
+
+def _validate_new_variant_selectors(
+    request: AudiobookRequest,
+    merged: AudiobookRequest,
+    *,
+    interactive: bool,
+) -> None:
+    if not request.new_variant or interactive:
+        return
+    missing = [name for name in ("engine", "target") if getattr(merged, name) is None]
+    if missing:
+        selectors = " and ".join(f"--{name}" for name in missing)
+        raise InputValidationError(
+            f"--new-variant in non-interactive mode requires explicit {selectors}."
+        )
+
+
 def blocked_workflow_steps(plan: WorkflowPlanView) -> tuple[WorkflowStepView, ...]:
     """Return Readio workflow stages explicitly marked as blocked."""
     return tuple(step for step in plan.steps if step.action == "blocked")
@@ -90,6 +187,59 @@ def require_runnable_workflow(plan: WorkflowPlanView) -> None:
     blocked = blocked_workflow_steps(plan)
     if blocked:
         raise BlockedWorkflowError(blocked)
+
+
+def _configuration_variant_key(request: AudiobookRequest) -> str:
+    identity = {
+        "engine": request.engine,
+        "target": request.target,
+        "voice": request.voice,
+        "engine_options": dict(request.engine_options),
+        "speed": request.speed,
+    }
+    serialized = json.dumps(
+        identity, sort_keys=True, separators=(",", ":"), default=str
+    )
+    digest = hashlib.sha256(serialized.encode("utf-8")).hexdigest()[:8]
+    label = "-".join(
+        (request.engine or "", request.target or "", request.voice or "default")
+    )
+    slug = re.sub(r"[^a-z0-9]+", "-", label.casefold()).strip("-")[:55].rstrip("-")
+    return f"{slug}-{digest}" if slug else f"variant-{digest}"
+
+
+def _resolve_variant_setup(
+    preparation: SetupPreparation,
+    selected: AudiobookRequest,
+    base_request: AudiobookRequest,
+) -> tuple[ProjectPaths, AudiobookRequest]:
+    variant_key = _configuration_variant_key(selected)
+    paths = ProjectPaths.for_variant(preparation.paths.root, variant_key)
+    base_output = base_request.output or base_request.source.with_suffix(".m4b")
+    if "output" in preparation.origins.explicit:
+        output = selected.output
+    else:
+        output_directory = base_output.parent
+        project_root = preparation.paths.root.resolve()
+        if output_directory.resolve().is_relative_to(project_root):
+            output_directory = selected.source.parent
+        output = output_directory / f"{base_output.stem} [{variant_key}].m4b"
+    if output is None:
+        raise InputValidationError("Audiobook output path is required.")
+    if output.suffix.casefold() != ".m4b":
+        raise InputValidationError("Audiobook output must use the .m4b extension.")
+    resolved_output = output.resolve()
+    if resolved_output == selected.source.resolve():
+        raise InputValidationError("New-variant output cannot be the source file.")
+    if resolved_output.is_relative_to(preparation.paths.root.resolve()):
+        raise InputValidationError(
+            "New-variant output cannot be inside the TTSForge project."
+        )
+    if resolved_output == base_output.resolve():
+        raise InputValidationError(
+            "New-variant output must differ from the base audiobook output."
+        )
+    return paths, replace(selected, output=output)
 
 
 class AudiobookApplicationService:
@@ -113,6 +263,7 @@ class AudiobookApplicationService:
             raise LegacyWorkspaceError(
                 self._legacy_workspace_message(request.source, source=None)
             )
+        _validate_new_variant_flags(request)
         if request.fresh:
             root = paths.root
             if self._is_legacy_workspace(root):
@@ -150,6 +301,11 @@ class AudiobookApplicationService:
                 raise OperationConflictError(
                     f"Project {paths.root} is configured for a different source."
                 )
+        elif request.new_variant:
+            raise InputValidationError(
+                "--new-variant requires an existing TTSForge project. "
+                "Run the normal conversion first."
+            )
         elif paths.root.exists():
             if not paths.root.is_dir():
                 raise OperationConflictError(
@@ -159,6 +315,8 @@ class AudiobookApplicationService:
                 raise OperationConflictError(
                     f"Project directory is not empty: {paths.root}."
                 )
+        if request.new_variant and saved is not None:
+            _validate_new_variant_inputs(request, saved, overrides)
         if (
             saved is not None
             and overrides.includes("chapters")
@@ -172,15 +330,8 @@ class AudiobookApplicationService:
                 "Use --fresh or pass a different --project path."
             )
         derived = self._with_source_defaults(request, paths, inspection)
-        merged = (
-            derived
-            if saved is None
-            else merge_saved_setup(
-                derived,
-                saved,
-                overrides,
-                interactive=interactive,
-            )
+        merged = _merge_setup_request(
+            request, saved, overrides, derived, interactive=interactive
         )
         if saved is None:
             merged = replace(
@@ -190,6 +341,7 @@ class AudiobookApplicationService:
             )
         elif merged.pause_timing is None:
             merged = replace(merged, pause_timing="fixed")
+        _validate_new_variant_selectors(request, merged, interactive=interactive)
         if saved is not None:
             merged = _rebuild_for_setup_change(merged, saved)
         origins = self._setup_origins(merged, overrides, saved, inspection)
@@ -221,10 +373,18 @@ class AudiobookApplicationService:
         if selected.output.suffix.casefold() != ".m4b":
             raise InputValidationError("Audiobook output must use the .m4b extension.")
 
-        preparation.paths.root.mkdir(parents=True, exist_ok=True)
-        self._backend.save_setup(preparation.paths, selected)
-        render_request = self._backend.request_from_intent(preparation.paths, selected)
-        return ResolvedSetup(preparation, selected, render_request)
+        paths = preparation.paths
+        resolved_preparation = preparation
+        if selected.new_variant:
+            base_request = self._backend.load_setup(paths)
+            paths, selected = _resolve_variant_setup(
+                preparation, selected, base_request
+            )
+            resolved_preparation = replace(preparation, paths=paths, request=selected)
+        paths.setup_root.mkdir(parents=True, exist_ok=True)
+        self._backend.save_setup(paths, selected)
+        render_request = self._backend.request_from_intent(paths, selected)
+        return ResolvedSetup(resolved_preparation, selected, render_request)
 
     def preflight(self, resolved: ResolvedSetup) -> PreflightView:
         return PreflightView(
@@ -250,6 +410,56 @@ class AudiobookApplicationService:
                 f"{paths.root}: intent and profile must both exist."
             )
         return self._backend.load_setup(paths) if has_intent else None
+
+    def list_variants(
+        self, paths: ProjectPaths, *, source: Path | None = None
+    ) -> tuple[ProjectVariantView, ...]:
+        variants_root = paths.root / "variants"
+        if not variants_root.is_dir():
+            return ()
+        variants: list[ProjectVariantView] = []
+        for directory in sorted(variants_root.iterdir(), key=lambda item: item.name):
+            if not directory.is_dir():
+                continue
+            variant_paths = ProjectPaths.for_variant(paths.root, directory.name)
+            if (
+                not variant_paths.intent.is_file()
+                or not variant_paths.profile.is_file()
+            ):
+                variants.append(
+                    ProjectVariantView(
+                        variant_key=directory.name,
+                        error=(
+                            "Incomplete setup: both render.readio.toml and "
+                            "narrator.renderprofile.toml are required."
+                        ),
+                    )
+                )
+                continue
+            try:
+                saved = self._backend.load_setup(variant_paths)
+            except Exception as exc:
+                variants.append(
+                    ProjectVariantView(
+                        variant_key=directory.name,
+                        error=f"Invalid setup: {exc}",
+                    )
+                )
+                continue
+            error = None
+            if source is not None and saved.source.resolve() != source.resolve():
+                error = "Saved setup refers to a different source."
+            variants.append(
+                ProjectVariantView(
+                    variant_key=directory.name,
+                    output=saved.output,
+                    engine=saved.engine,
+                    target=saved.target,
+                    voice=saved.voice,
+                    error=error,
+                )
+            )
+        return tuple(variants)
 
     def status(self, paths: ProjectPaths) -> WorkflowPlanView:
         saved = self.load_saved_setup(paths)
@@ -323,6 +533,7 @@ class AudiobookApplicationService:
             rebuild_from=request.rebuild_from,
             replace_output=request.replace_output,
             fresh=request.fresh,
+            new_variant=request.new_variant,
         )
 
     @staticmethod

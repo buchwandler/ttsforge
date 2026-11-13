@@ -25,6 +25,7 @@ from ..application.models import (
     InputOverrides,
     PreflightView,
     ProjectPaths,
+    ProjectVariantView,
     SetupPreparation,
     SpacyModelView,
     WorkflowPlanView,
@@ -509,7 +510,12 @@ def _complete_interactive_setup(
     )
 
 
-def _validate_reference_target(backend: Any, request: AudiobookRequest) -> None:
+def _validate_reference_target(
+    backend: Any,
+    request: AudiobookRequest,
+    *,
+    require_voice: bool = False,
+) -> None:
     if request.engine is None or request.target is None:
         return
     choices = tuple(
@@ -522,6 +528,18 @@ def _validate_reference_target(backend: Any, request: AudiobookRequest) -> None:
         )
     )
     _reject_reference_only_target(request.target, choices)
+    selected = next((choice for choice in choices if choice.id == request.target), None)
+    if (
+        require_voice
+        and request.voice is None
+        and selected is not None
+        and selected.voice_count > 0
+        and selected.default_voice is None
+    ):
+        raise InputValidationError(
+            f"--new-variant requires --voice for target {request.target!r}, "
+            "which has no default voice."
+        )
 
 
 def _prepare_spacy_model(
@@ -653,12 +671,34 @@ def convert(
         bool,
         typer.Option("--fresh", help="Use a separate new TTSForge project directory."),
     ] = False,
+    new_variant: Annotated[
+        bool,
+        typer.Option(
+            "--new-variant",
+            help=(
+                "Create a separate setup and output in the existing project, reusing "
+                "source conversion and semantic compile state."
+            ),
+        ),
+    ] = False,
     yes: Annotated[bool, typer.Option("-y", "--yes")] = False,
-    non_interactive: Annotated[bool, typer.Option("--non-interactive")] = False,
+    non_interactive: Annotated[
+        bool,
+        typer.Option(
+            "--non-interactive",
+            help="Disable prompts; new variants require explicit engine and target.",
+        ),
+    ] = False,
     json_mode: Annotated[bool, typer.Option("--json")] = False,
     debug: Annotated[bool, typer.Option("--debug")] = False,
 ) -> None:
     """Inspect, configure, and render an EPUB audiobook as M4B."""
+    if new_variant and fresh:
+        raise typer.BadParameter("--new-variant cannot be combined with --fresh.")
+    if new_variant and rebuild_from in {"convert", "compile"}:
+        raise typer.BadParameter(
+            "--new-variant cannot be combined with --rebuild-from convert or compile."
+        )
     if rebuild_from is not None and rebuild_from not in _REBUILD_STAGES:
         choices = ", ".join(_REBUILD_STAGES)
         raise typer.BadParameter(f"Choose --rebuild-from from: {choices}.")
@@ -692,6 +732,7 @@ def convert(
         rebuild_from=rebuild_from,
         replace_output=replace_output,
         fresh=fresh,
+        new_variant=new_variant,
     )
     overrides = _overrides(
         chapters=chapters,
@@ -733,8 +774,11 @@ def convert(
             selected = _complete_interactive_setup(backend, preparation)
         else:
             selected = preparation.request
-            _validate_reference_target(backend, selected)
+            _validate_reference_target(
+                backend, selected, require_voice=selected.new_variant
+            )
         resolved = service.save_setup(preparation, selected)
+        preparation = resolved.preparation
         spacy_model = _prepare_spacy_model(
             backend,
             resolved.request,
@@ -784,6 +828,7 @@ def convert(
             {
                 "source": str(source),
                 "project": str(preparation.paths.root),
+                "configuration_variant": preparation.paths.variant_key,
                 "reused_setup": preparation.reused,
                 "spacy_model": None if spacy_model is None else asdict(spacy_model),
                 "request": asdict(preflight.setup.request),
@@ -792,7 +837,12 @@ def convert(
             }
         )
     else:
-        render_completion(result, _output, elapsed_seconds=elapsed_seconds)
+        render_completion(
+            result,
+            _output,
+            elapsed_seconds=elapsed_seconds,
+            configuration_variant=preparation.paths.variant_key,
+        )
 
 
 @app.command("list")
@@ -822,6 +872,7 @@ def info(
         BookInspectionView,
         ProjectPaths,
         AudiobookRequest | None,
+        tuple[ProjectVariantView, ...],
     ]:
         _, service = _service()
         inspection = service.inspect_book(source)
@@ -831,16 +882,18 @@ def info(
             raise OperationConflictError(
                 f"Project {paths.root} is configured for a different source."
             )
-        return inspection, paths, saved
+        variants = service.list_variants(paths, source=source)
+        return inspection, paths, saved, variants
 
-    inspection, paths, saved = _run(action, debug=debug)
+    inspection, paths, saved, variants = _run(action, debug=debug)
     if json_mode:
         payload = _inspection_payload(inspection)
         payload["project"] = str(paths.root)
         payload["saved_setup"] = None if saved is None else asdict(saved)
+        payload["variants"] = [asdict(variant) for variant in variants]
         _json_dump(payload)
     else:
-        render_source_info(inspection, paths.root, saved, _output)
+        render_source_info(inspection, paths.root, saved, _output, variants=variants)
 
 
 @app.command()

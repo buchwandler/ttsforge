@@ -5,7 +5,7 @@ workflow API and does not bundle a speech engine.
 
 ## Requirements
 
-TTSForge requires Readio `>=0.6.1,<0.7`, which provides the workflow gateway,
+TTSForge requires Readio `>=0.6.7,<0.7`, which provides the workflow gateway,
 render-intent helpers, source inspection, and engine discovery used by this CLI. A
 Readio source checkout is not required for a normal installation.
 
@@ -27,7 +27,7 @@ or provide a parallel set of engine extras.
 ## Development installation
 
 For local development, check out TTSForge beside a Readio checkout that provides the
-required `>=0.6.1,<0.7` API, then install both editable:
+required `>=0.6.7,<0.7` API, then install both editable:
 
 ```bash
 python -m venv .venv
