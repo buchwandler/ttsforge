@@ -2,6 +2,7 @@
 
 from .errors import (
     ApplicationError,
+    BlockedWorkflowError,
     CatalogSelectionError,
     InputValidationError,
     LegacyWorkspaceError,
@@ -28,7 +29,12 @@ from .models import (
     WorkflowPlanView,
     WorkflowStepView,
 )
-from .service import ApplicationBackend, AudiobookApplicationService
+from .service import (
+    ApplicationBackend,
+    AudiobookApplicationService,
+    blocked_workflow_steps,
+    require_runnable_workflow,
+)
 
 __all__ = [
     "ApplicationBackend",
@@ -37,6 +43,7 @@ __all__ = [
     "AudiobookApplicationService",
     "AudiobookOptions",
     "AudiobookRequest",
+    "BlockedWorkflowError",
     "BookChapterView",
     "BookInspectionView",
     "CatalogItemView",
@@ -58,4 +65,6 @@ __all__ = [
     "WorkflowFailureError",
     "WorkflowPlanView",
     "WorkflowStepView",
+    "blocked_workflow_steps",
+    "require_runnable_workflow",
 ]

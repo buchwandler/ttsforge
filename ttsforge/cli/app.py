@@ -29,7 +29,10 @@ from ..application.models import (
     SpacyModelView,
     WorkflowPlanView,
 )
-from ..application.service import AudiobookApplicationService
+from ..application.service import (
+    AudiobookApplicationService,
+    require_runnable_workflow,
+)
 from .catalog import (
     CatalogChoiceView,
     TargetChoiceView,
@@ -743,6 +746,7 @@ def convert(
         preflight = service.preflight(resolved)
         if not interaction.json:
             render_preflight(preflight, _output, spacy_model=spacy_model)
+        require_runnable_workflow(preflight.workflow)
         if interaction.confirm and not typer.confirm(
             "Create this audiobook?", default=True
         ):

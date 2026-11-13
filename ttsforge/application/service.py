@@ -10,6 +10,7 @@ from typing import Protocol
 
 from ..chapter_selection import normalize_chapter_selection
 from .errors import (
+    BlockedWorkflowError,
     InputValidationError,
     LegacyWorkspaceError,
     OperationConflictError,
@@ -27,6 +28,7 @@ from .models import (
     SetupOrigins,
     SetupPreparation,
     WorkflowPlanView,
+    WorkflowStepView,
 )
 from .setup import merge_saved_setup
 
@@ -76,6 +78,18 @@ def _rebuild_for_setup_change(
     ):
         return replace(request, rebuild_from=required)
     return request
+
+
+def blocked_workflow_steps(plan: WorkflowPlanView) -> tuple[WorkflowStepView, ...]:
+    """Return Readio workflow stages explicitly marked as blocked."""
+    return tuple(step for step in plan.steps if step.action == "blocked")
+
+
+def require_runnable_workflow(plan: WorkflowPlanView) -> None:
+    """Raise an application error when Readio's workflow plan is blocked."""
+    blocked = blocked_workflow_steps(plan)
+    if blocked:
+        raise BlockedWorkflowError(blocked)
 
 
 class AudiobookApplicationService:

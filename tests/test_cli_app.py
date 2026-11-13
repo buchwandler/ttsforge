@@ -13,7 +13,10 @@ from readio.api import WorkflowStageError
 from rich.console import Console
 from typer.testing import CliRunner
 
-from ttsforge.application.errors import InputValidationError, WorkflowFailureError
+from ttsforge.application.errors import (
+    InputValidationError,
+    WorkflowFailureError,
+)
 from ttsforge.application.models import (
     AudiobookRequest,
     BookChapterView,
@@ -25,6 +28,7 @@ from ttsforge.application.models import (
     SetupPreparation,
     SpacyModelView,
     WorkflowPlanView,
+    WorkflowStepView,
 )
 from ttsforge.application.service import AudiobookApplicationService
 from ttsforge.cli import app
@@ -40,6 +44,7 @@ class _Backend:
         self.render_error: Exception | None = None
         self.render_request: tuple[ProjectPaths, AudiobookRequest] | None = None
         self.spacy_installed = True
+        self.workflow_steps: tuple[WorkflowStepView, ...] = ()
 
     def inspect_source(self, source: Path) -> BookInspectionView:
         self.calls.append(("source", source))
@@ -82,7 +87,7 @@ class _Backend:
             workspace=paths.bundle,
             workspace_mode="bundle",
             output=selected.output,
-            steps=(),
+            steps=self.workflow_steps,
         )
 
     def render(self, request: object, *, on_progress=None) -> ConversionResultView:
@@ -287,6 +292,200 @@ def test_convert_persists_setup_before_preflight_and_uses_m4b(
         "inspect",
         "render",
     ]
+
+
+def test_interactive_convert_confirms_and_renders_runnable_compose_recovery(
+    monkeypatch, tmp_path: Path
+) -> None:
+    _ProgressSpy.instances.clear()
+    events: list[str] = []
+    output = StringIO()
+    monkeypatch.setattr(
+        cli_app,
+        "_output",
+        Console(file=output, width=160, highlight=False, markup=False),
+    )
+
+    def create_progress(*args: object, **kwargs: object) -> _ProgressSpy:
+        del args
+        events.append("progress")
+        return _ProgressSpy(**kwargs)
+
+    def confirm(prompt: str, **kwargs: object) -> bool:
+        del kwargs
+        assert prompt == "Create this audiobook?"
+        events.append("confirm")
+        return True
+
+    monkeypatch.setattr(cli_app, "LiveReadioProgress", create_progress)
+    monkeypatch.setattr(cli_app, "LineReadioProgress", create_progress)
+    monkeypatch.setattr(cli_app.typer, "prompt", _setup_prompt)
+    monkeypatch.setattr(cli_app.typer, "confirm", confirm)
+    source = tmp_path / "book.epub"
+    source.touch()
+    backend = _Backend()
+    backend.workflow_steps = (
+        WorkflowStepView(
+            stage="compose",
+            package="audiocompose",
+            action="replace",
+            selector=None,
+            reason="Rebuild this stale stage safely.",
+            state="stale",
+        ),
+        WorkflowStepView(
+            stage="export",
+            package="audioexport",
+            action="execute",
+            selector=None,
+            reason="Not started.",
+            state="not_started",
+        ),
+    )
+    original_render = backend.render
+
+    def render(request: object, *, on_progress=None) -> ConversionResultView:
+        events.append("render")
+        return original_render(request, on_progress=on_progress)
+
+    monkeypatch.setattr(backend, "render", render)
+    mode = replace(_interactive_mode(), live_progress=True, confirm=True)
+
+    result = _invoke(monkeypatch, backend, _interactive_convert_args(source), mode=mode)
+
+    assert result.exit_code == 0, result.output
+    assert events == ["confirm", "progress", "render"]
+    assert len(_ProgressSpy.instances) == 1
+    assert "compose" in output.getvalue()
+    assert "replace" in output.getvalue()
+    assert "stale" in output.getvalue()
+
+
+def test_interactive_blocked_preflight_displays_all_stages_without_prompt_or_render(
+    monkeypatch, tmp_path: Path
+) -> None:
+    _ProgressSpy.instances.clear()
+    events: list[str] = []
+    output = StringIO()
+    monkeypatch.setattr(
+        cli_app,
+        "_output",
+        Console(file=output, width=160, highlight=False, markup=False),
+    )
+
+    def unexpected_progress(*args: object, **kwargs: object) -> _ProgressSpy:
+        del args, kwargs
+        events.append("progress")
+        return _ProgressSpy()
+
+    def confirm(prompt: str, **kwargs: object) -> bool:
+        del prompt, kwargs
+        events.append("confirm")
+        return True
+
+    monkeypatch.setattr(cli_app, "LiveReadioProgress", unexpected_progress)
+    monkeypatch.setattr(cli_app, "LineReadioProgress", unexpected_progress)
+    monkeypatch.setattr(cli_app.typer, "prompt", _setup_prompt)
+    monkeypatch.setattr(cli_app.typer, "confirm", confirm)
+    source = tmp_path / "book.epub"
+    source.touch()
+    backend = _Backend()
+    backend.workflow_steps = (
+        WorkflowStepView(
+            stage="compose",
+            package="audiocompose",
+            action="blocked",
+            selector="failed-work",
+            reason="Selected composition work failed.",
+            state="error",
+        ),
+        WorkflowStepView(
+            stage="export",
+            package="audioexport",
+            action="blocked",
+            selector=None,
+            reason="Composition output is unavailable.",
+            state="error",
+        ),
+    )
+
+    result = _invoke(
+        monkeypatch,
+        backend,
+        _interactive_convert_args(source),
+        mode=replace(_interactive_mode(), live_progress=True, confirm=True),
+    )
+
+    assert result.exit_code == 1
+    assert "compose" in output.getvalue()
+    assert "export" in output.getvalue()
+    assert "blocked" in output.getvalue()
+    assert "Selected composition work failed." in result.output
+    assert "Composition output is unavailable." in result.output
+    assert "workflow_blocked" in result.output
+    assert events == []
+    assert _ProgressSpy.instances == []
+    assert not any(call[0] == "render" for call in backend.calls)
+
+
+@pytest.mark.parametrize(
+    ("mode", "option"),
+    [
+        (InteractionMode(False, True, False, False), "--json"),
+        (InteractionMode(False, False, False, False), "--non-interactive"),
+    ],
+)
+def test_noninteractive_blocked_preflight_reports_structured_error_without_render(
+    monkeypatch, tmp_path: Path, mode: InteractionMode, option: str
+) -> None:
+    _ProgressSpy.instances.clear()
+    events: list[str] = []
+
+    def unexpected_interaction(*args: object, **kwargs: object) -> bool:
+        del args, kwargs
+        events.append("interaction")
+        return True
+
+    def unexpected_progress(*args: object, **kwargs: object) -> _ProgressSpy:
+        del args, kwargs
+        events.append("progress")
+        return _ProgressSpy()
+
+    monkeypatch.setattr(cli_app.typer, "confirm", unexpected_interaction)
+    monkeypatch.setattr(cli_app, "LiveReadioProgress", unexpected_progress)
+    monkeypatch.setattr(cli_app, "LineReadioProgress", unexpected_progress)
+    monkeypatch.setattr(cli_app, "NullReadioProgress", unexpected_progress)
+    source = tmp_path / "book.epub"
+    source.touch()
+    backend = _Backend()
+    backend.workflow_steps = (
+        WorkflowStepView(
+            stage="compose",
+            package="audiocompose",
+            action="blocked",
+            selector="failed-work",
+            reason="Readio marked composition blocked.",
+            state="error",
+        ),
+    )
+
+    result = _invoke(
+        monkeypatch,
+        backend,
+        [*_interactive_convert_args(source), option],
+        mode=mode,
+    )
+
+    assert result.exit_code == 1
+    assert "workflow_blocked" in result.output
+    details = next(
+        json.loads(line) for line in result.output.splitlines() if line.startswith("{")
+    )
+    assert details["blocked_steps"][0]["stage"] == "compose"
+    assert details["blocked_steps"][0]["reason"] == "Readio marked composition blocked."
+    assert events == []
+    assert _ProgressSpy.instances == []
+    assert not any(call[0] == "render" for call in backend.calls)
 
 
 def test_concrete_spacy_model_is_provisioned_before_preflight(

@@ -4,9 +4,34 @@ from __future__ import annotations
 
 from collections.abc import Mapping
 
+from .models import WorkflowStepView
+
 
 class ApplicationError(Exception):
     """Base class for expected application-operation failures."""
+
+
+class BlockedWorkflowError(ApplicationError):
+    """A preflight plan cannot execute because one or more stages are blocked."""
+
+    def __init__(self, blocked_steps: tuple[WorkflowStepView, ...]) -> None:
+        self.blocked_steps = blocked_steps
+        self.code = "workflow_blocked"
+        self.details = {
+            "blocked_steps": [
+                {
+                    "stage": step.stage,
+                    "action": step.action,
+                    "state": step.state,
+                    "reason": step.reason,
+                    "package": step.package,
+                    "selector": step.selector,
+                }
+                for step in blocked_steps
+            ]
+        }
+        summary = "; ".join(f"{step.stage}: {step.reason}" for step in blocked_steps)
+        super().__init__(f"Workflow is blocked: {summary}")
 
 
 class InputValidationError(ApplicationError, ValueError):

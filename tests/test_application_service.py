@@ -8,6 +8,7 @@ import pytest
 from ttsforge.application import (
     AudiobookApplicationService,
     AudiobookRequest,
+    BlockedWorkflowError,
     BookChapterView,
     BookInspectionView,
     ConversionResultView,
@@ -18,6 +19,9 @@ from ttsforge.application import (
     ProjectPaths,
     ProjectScopeConflictError,
     WorkflowPlanView,
+    WorkflowStepView,
+    blocked_workflow_steps,
+    require_runnable_workflow,
 )
 
 
@@ -534,3 +538,70 @@ def test_equivalent_explicit_chapter_scope_is_accepted(tmp_path: Path) -> None:
 
     assert preparation.request.chapters == "2-4"
     assert preparation.reused
+
+
+def test_blocked_workflow_steps_preserve_stage_reasons_and_public_fields() -> None:
+    compose = WorkflowStepView(
+        stage="compose",
+        package="audiocompose",
+        action="blocked",
+        selector="selected-voice",
+        reason="Selected composition work failed.",
+        state="error",
+    )
+    export = WorkflowStepView(
+        stage="export",
+        package="audioexport",
+        action="blocked",
+        selector=None,
+        reason="Composition output is unavailable.",
+        state="error",
+    )
+    plan = WorkflowPlanView(
+        source=Path("book.epub"),
+        workspace=None,
+        workspace_mode="none",
+        output=Path("book.m4b"),
+        steps=(
+            WorkflowStepView(
+                stage="render",
+                package="voicerender",
+                action="reuse",
+                selector=None,
+                reason="Already complete.",
+                state="complete",
+            ),
+            compose,
+            export,
+        ),
+    )
+
+    blocked = blocked_workflow_steps(plan)
+    with pytest.raises(BlockedWorkflowError) as error_info:
+        require_runnable_workflow(plan)
+    error = error_info.value
+
+    assert blocked == (compose, export)
+    assert str(error) == (
+        "Workflow is blocked: compose: Selected composition work failed.; "
+        "export: Composition output is unavailable."
+    )
+    assert error.code == "workflow_blocked"
+    assert error.details["blocked_steps"] == [
+        {
+            "stage": "compose",
+            "action": "blocked",
+            "state": "error",
+            "reason": "Selected composition work failed.",
+            "package": "audiocompose",
+            "selector": "selected-voice",
+        },
+        {
+            "stage": "export",
+            "action": "blocked",
+            "state": "error",
+            "reason": "Composition output is unavailable.",
+            "package": "audioexport",
+            "selector": None,
+        },
+    ]
