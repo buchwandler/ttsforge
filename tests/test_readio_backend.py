@@ -685,7 +685,7 @@ def test_render_failure_reports_persisted_setup_paths() -> None:
 
     assert raised.value.category == "render-stage failure"
     assert raised.value.details["saved_setup"] == {
-        "project": "book.ttsforge",
-        "intent": "book.ttsforge/render.readio.toml",
-        "profile": "book.ttsforge/narrator.renderprofile.toml",
+        "project": str(profile.parent),
+        "intent": str(profile.parent / "render.readio.toml"),
+        "profile": str(profile),
     }

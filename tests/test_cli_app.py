@@ -1710,6 +1710,7 @@ def test_speech_profile_menu_custom_path_expands_home(
     )
     home = tmp_path / "home"
     monkeypatch.setenv("HOME", str(home))
+    monkeypatch.setenv("USERPROFILE", str(home))
     responses = iter(("3", "~/custom.toml"))
     monkeypatch.setattr(
         cli_app.typer, "prompt", lambda *args, **kwargs: next(responses)
@@ -1780,7 +1781,7 @@ def test_speech_profile_menu_uses_unlisted_current_default(
     assert cli_app._prompt_speech_profile(current, directory=tmp_path) == current
     assert prompts == ["2"]
     output = capsys.readouterr().out
-    assert "  2. ../profiles/current.toml  [current]" in output
+    assert f"  2. {current}  [current]" in output
     assert "  3. enter custom path..." in output
 
 
