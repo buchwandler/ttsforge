@@ -78,6 +78,7 @@ def test_discover_speech_profiles_sorts_case_insensitively_with_stable_ties(
         entries[0],
     )
 
+
 def test_discover_speech_profiles_does_not_require_version_one(tmp_path: Path) -> None:
     profile = _write_profile(tmp_path / "future.toml", version=7)
 
