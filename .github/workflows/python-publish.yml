@@ -19,31 +19,9 @@ jobs:
       - name: Install build tools and published Readio
         run: |
           python -m pip install --upgrade pip
-          python -m pip install build readio
+          python -m pip install build readio pytest
       - name: Require Readio's compatible public API before publishing
-        run: |
-          python - <<'PY'
-          import readio.api as api
-          assert getattr(api, "PUBLIC_API_VERSION", None) == 1, (
-              "PyPI Readio does not publish the public API required by TTSForge"
-          )
-          required = (
-              "AudiobookExportOptions",
-              "AUDIOBOOK_EXPORT_FORMAT",
-              "SUPPORTED_AUDIOBOOK_FORMATS",
-              "SUPPORTED_AUDIO_FORMATS",
-              "Readio",
-          )
-          missing = [name for name in required if not hasattr(api, name)]
-          assert not missing, f"Incompatible published Readio API: {missing}"
-          app = api.Readio()
-          assert callable(app.audiobooks.export)
-          assert callable(app.projects.build)
-          assert callable(app.catalog.voices_listing)
-          assert callable(app.configuration.set_value)
-          assert callable(app.diagnostics.run)
-          assert callable(app.ssmd.materialize_bindings)
-          PY
+        run: python -m pytest -q tests/test_readio_api_contract.py
       - name: Build package
         run: python -m build
       - name: Publish package
