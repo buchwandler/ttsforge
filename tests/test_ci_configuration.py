@@ -33,6 +33,5 @@ def test_publish_workflow_gates_on_the_published_readio_api() -> None:
     build = workflow.index("- name: Build package")
     publish = workflow.index("- name: Publish package")
     assert install < gate < build < publish
-    assert "PUBLIC_API_VERSION" in workflow
-    assert "app.audiobooks.export" in workflow
-    assert "app.projects.build" in workflow
+    assert "python -m pip install build readio pytest" in workflow
+    assert "python -m pytest -q tests/test_readio_api_contract.py" in workflow
