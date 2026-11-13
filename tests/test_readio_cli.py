@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+from click import unstyle
 from typer.testing import CliRunner
 
 from ttsforge.cli import app
@@ -10,7 +11,8 @@ def test_convert_help_documents_current_audiobook_controls() -> None:
         app, ["convert", "--help"], color=False, env={"FORCE_COLOR": ""}
     )
 
-    assert result.exit_code == 0, result.output
+    output = unstyle(result.output)
+    assert result.exit_code == 0, output
     for option in (
         "--chapters",
         "--project",
@@ -25,7 +27,7 @@ def test_convert_help_documents_current_audiobook_controls() -> None:
         "--non-interactive",
         "--json",
     ):
-        assert option in result.output
+        assert option in output
     for obsolete_option in (
         "--format",
         "--model",

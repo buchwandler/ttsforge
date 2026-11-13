@@ -9,6 +9,7 @@ from types import SimpleNamespace
 from typing import ClassVar
 
 import pytest
+from click import unstyle
 from readio.api import WorkflowStageError
 from rich.console import Console
 from typer.testing import CliRunner
@@ -888,7 +889,7 @@ def test_unknown_rebuild_stage_is_rejected_before_setup(
     )
 
     assert result.exit_code == 2
-    assert "Choose --rebuild-from" in result.output
+    assert "Choose --rebuild-from" in unstyle(result.output)
     assert backend.calls == []
 
 

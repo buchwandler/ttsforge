@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+from collections.abc import Iterator
 from pathlib import Path
 
 from ttsforge.cli.speech_profiles import (
@@ -54,18 +55,28 @@ def test_discover_speech_profiles_is_non_recursive(tmp_path: Path) -> None:
 
 
 def test_discover_speech_profiles_sorts_case_insensitively_with_stable_ties(
-    tmp_path: Path,
+    tmp_path: Path, monkeypatch
 ) -> None:
     names = ("zeta.toml", "beta.TOML", "alpha.toml", "Alpha.toml")
-    profiles = {name: _write_profile(tmp_path / name) for name in names}
+    entries = tuple(tmp_path / name for name in names)
+    original_iterdir = Path.iterdir
 
-    assert discover_speech_replacement_profiles(tmp_path) == (
-        profiles["Alpha.toml"],
-        profiles["alpha.toml"],
-        profiles["beta.TOML"],
-        profiles["zeta.toml"],
+    def iterdir(path: Path) -> Iterator[Path]:
+        if path == tmp_path:
+            return iter(entries)
+        return original_iterdir(path)
+
+    monkeypatch.setattr(Path, "iterdir", iterdir)
+    monkeypatch.setattr(
+        "ttsforge.cli.speech_profiles.is_speech_replacement_profile", lambda _: True
     )
 
+    assert discover_speech_replacement_profiles(tmp_path) == (
+        entries[3],
+        entries[2],
+        entries[1],
+        entries[0],
+    )
 
 def test_discover_speech_profiles_does_not_require_version_one(tmp_path: Path) -> None:
     profile = _write_profile(tmp_path / "future.toml", version=7)
