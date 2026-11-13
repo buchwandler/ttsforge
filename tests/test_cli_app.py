@@ -326,6 +326,14 @@ def test_interactive_convert_confirms_and_renders_runnable_compose_recovery(
     backend = _Backend()
     backend.workflow_steps = (
         WorkflowStepView(
+            stage="render",
+            package="voicerender",
+            action="replace",
+            selector=None,
+            reason="Readio requested a safe rerender.",
+            state="complete",
+        ),
+        WorkflowStepView(
             stage="compose",
             package="audiocompose",
             action="replace",
@@ -359,6 +367,11 @@ def test_interactive_convert_confirms_and_renders_runnable_compose_recovery(
     assert "compose" in output.getvalue()
     assert "replace" in output.getvalue()
     assert "stale" in output.getvalue()
+
+    assert "render" in output.getvalue()
+    assert "complete" in output.getvalue()
+    assert "export" in output.getvalue()
+    assert "execute" in output.getvalue()
 
 
 def test_interactive_blocked_preflight_displays_all_stages_without_prompt_or_render(
