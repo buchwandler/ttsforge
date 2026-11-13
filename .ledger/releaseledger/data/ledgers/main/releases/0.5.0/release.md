@@ -8,7 +8,7 @@ version: 0.5.0
 status: released
 history_state: curated
 title: TTSForge 0.5.0
-released_at: '2026-11-13'
+released_at: "2026-11-13"
 previous_version: 0.4.1
 cancel_reason: null
 superseded_by: null
