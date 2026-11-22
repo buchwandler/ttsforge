@@ -218,3 +218,18 @@ def test_phoneme_command_is_not_registered() -> None:
     )
     assert result.returncode != 0
     assert "No such command 'phonemes'." in result.stderr
+
+
+def test_application_and_server_modules_do_not_import_cli_modules() -> None:
+    roots = (PRODUCTION / "application", PRODUCTION / "server")
+    violations = [
+        f"{path.relative_to(ROOT)}: {module}"
+        for root in roots
+        for path in root.rglob("*.py")
+        for module in _import_modules(path)
+        if module == "ttsforge.cli" or module.startswith("ttsforge.cli.")
+    ]
+
+    assert not violations, "CLI imports outside the CLI package:\n" + "\n".join(
+        violations
+    )

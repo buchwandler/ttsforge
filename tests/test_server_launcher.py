@@ -1,8 +1,11 @@
 from __future__ import annotations
 
 import builtins
+import errno
+import ipaddress
 import json
 import select
+import socket
 import subprocess
 import sys
 from pathlib import Path
@@ -93,11 +96,12 @@ def test_missing_optional_server_dependencies_have_precise_diagnostic(
     )
 
 
+@pytest.mark.parametrize("host", ["0.0.0.0", "2001:db8::1"])
 def test_non_loopback_binding_is_rejected(
-    capsys: pytest.CaptureFixture[str],
+    capsys: pytest.CaptureFixture[str], host: str
 ) -> None:
     with pytest.raises(SystemExit) as error:
-        launcher.run_server(host="0.0.0.0", token="test-token", port=0)
+        launcher.run_server(host=host, token="test-token", port=0)
 
     assert error.value.code == 1
     captured = capsys.readouterr()
@@ -106,6 +110,31 @@ def test_non_loopback_binding_is_rejected(
         "Unable to start the TTSForge local API: ValueError: "
         "The local API can bind only to a loopback host.\n"
     )
+
+
+@pytest.mark.parametrize("host", ["127.0.0.1", "127.0.0.2", "localhost"])
+def test_loopback_hosts_bind_to_loopback_addresses(host: str) -> None:
+    listener = launcher._create_listener(host, 0)
+    try:
+        address = ipaddress.ip_address(listener.getsockname()[0])
+        assert address.is_loopback
+        expected_family = socket.AF_INET6 if address.version == 6 else socket.AF_INET
+        assert listener.family == expected_family
+    finally:
+        listener.close()
+
+
+@pytest.mark.skipif(not socket.has_ipv6, reason="IPv6 is disabled by the OS")
+def test_ipv6_loopback_listener_uses_ipv6_family() -> None:
+    try:
+        listener = launcher._create_listener("::1", 0)
+    except OSError as error:
+        if error.errno in {errno.EADDRNOTAVAIL, errno.EAFNOSUPPORT}:
+            pytest.skip("The OS has no configured IPv6 loopback address")
+        raise
+    with listener:
+        assert listener.family == socket.AF_INET6
+        assert ipaddress.ip_address(listener.getsockname()[0]).is_loopback
 
 
 @pytest.mark.parametrize("entrypoint", ["module", "console"])

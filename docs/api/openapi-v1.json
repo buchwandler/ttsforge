@@ -1,0 +1,2908 @@
+{
+  "openapi": "3.1.0",
+  "info": {"version": "1", "title": "TTSForge Local API"},
+  "paths": {
+    "/api/v1/health": {
+      "get": {
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {"$ref": "#/components/schemas/HealthResponseModel"}
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v1/system": {
+      "get": {
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {"$ref": "#/components/schemas/SystemResponseModel"}
+              }
+            }
+          },
+          "400": {
+            "content": {
+              "application/json": {
+                "schema": {"$ref": "#/components/schemas/ApiErrorResponseModel"}
+              }
+            }
+          },
+          "401": {
+            "content": {
+              "application/json": {
+                "schema": {"$ref": "#/components/schemas/ApiErrorResponseModel"}
+              }
+            }
+          },
+          "403": {
+            "content": {
+              "application/json": {
+                "schema": {"$ref": "#/components/schemas/ApiErrorResponseModel"}
+              }
+            }
+          },
+          "404": {
+            "content": {
+              "application/json": {
+                "schema": {"$ref": "#/components/schemas/ApiErrorResponseModel"}
+              }
+            }
+          },
+          "409": {
+            "content": {
+              "application/json": {
+                "schema": {"$ref": "#/components/schemas/ApiErrorResponseModel"}
+              }
+            }
+          },
+          "413": {
+            "content": {
+              "application/json": {
+                "schema": {"$ref": "#/components/schemas/ApiErrorResponseModel"}
+              }
+            }
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {"$ref": "#/components/schemas/ApiErrorResponseModel"}
+              }
+            }
+          },
+          "503": {
+            "content": {
+              "application/json": {
+                "schema": {"$ref": "#/components/schemas/ApiErrorResponseModel"}
+              }
+            }
+          }
+        },
+        "security": [{"HTTPBearer": []}]
+      }
+    },
+    "/api/v1/system/runtime": {
+      "get": {
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {"$ref": "#/components/schemas/RuntimeStatusResponseModel"}
+              }
+            }
+          },
+          "400": {
+            "content": {
+              "application/json": {
+                "schema": {"$ref": "#/components/schemas/ApiErrorResponseModel"}
+              }
+            }
+          },
+          "401": {
+            "content": {
+              "application/json": {
+                "schema": {"$ref": "#/components/schemas/ApiErrorResponseModel"}
+              }
+            }
+          },
+          "403": {
+            "content": {
+              "application/json": {
+                "schema": {"$ref": "#/components/schemas/ApiErrorResponseModel"}
+              }
+            }
+          },
+          "404": {
+            "content": {
+              "application/json": {
+                "schema": {"$ref": "#/components/schemas/ApiErrorResponseModel"}
+              }
+            }
+          },
+          "409": {
+            "content": {
+              "application/json": {
+                "schema": {"$ref": "#/components/schemas/ApiErrorResponseModel"}
+              }
+            }
+          },
+          "413": {
+            "content": {
+              "application/json": {
+                "schema": {"$ref": "#/components/schemas/ApiErrorResponseModel"}
+              }
+            }
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {"$ref": "#/components/schemas/ApiErrorResponseModel"}
+              }
+            }
+          },
+          "503": {
+            "content": {
+              "application/json": {
+                "schema": {"$ref": "#/components/schemas/ApiErrorResponseModel"}
+              }
+            }
+          }
+        },
+        "security": [{"HTTPBearer": []}]
+      }
+    },
+    "/api/v1/sources/inspect": {
+      "post": {
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {"$ref": "#/components/schemas/SourceInspectRequest"}
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {"$ref": "#/components/schemas/BookInspectionResponseModel"}
+              }
+            }
+          },
+          "400": {
+            "content": {
+              "application/json": {
+                "schema": {"$ref": "#/components/schemas/ApiErrorResponseModel"}
+              }
+            }
+          },
+          "401": {
+            "content": {
+              "application/json": {
+                "schema": {"$ref": "#/components/schemas/ApiErrorResponseModel"}
+              }
+            }
+          },
+          "403": {
+            "content": {
+              "application/json": {
+                "schema": {"$ref": "#/components/schemas/ApiErrorResponseModel"}
+              }
+            }
+          },
+          "404": {
+            "content": {
+              "application/json": {
+                "schema": {"$ref": "#/components/schemas/ApiErrorResponseModel"}
+              }
+            }
+          },
+          "409": {
+            "content": {
+              "application/json": {
+                "schema": {"$ref": "#/components/schemas/ApiErrorResponseModel"}
+              }
+            }
+          },
+          "413": {
+            "content": {
+              "application/json": {
+                "schema": {"$ref": "#/components/schemas/ApiErrorResponseModel"}
+              }
+            }
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {"$ref": "#/components/schemas/ApiErrorResponseModel"}
+              }
+            }
+          },
+          "503": {
+            "content": {
+              "application/json": {
+                "schema": {"$ref": "#/components/schemas/ApiErrorResponseModel"}
+              }
+            }
+          }
+        },
+        "security": [{"HTTPBearer": []}]
+      }
+    },
+    "/api/v1/sources/import": {
+      "post": {
+        "requestBody": {
+          "content": {
+            "multipart/form-data": {
+              "schema": {
+                "$ref": "#/components/schemas/Body_import_source_api_v1_sources_import_post"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {"$ref": "#/components/schemas/SourceImportResponseModel"}
+              }
+            }
+          },
+          "400": {
+            "content": {
+              "application/json": {
+                "schema": {"$ref": "#/components/schemas/ApiErrorResponseModel"}
+              }
+            }
+          },
+          "401": {
+            "content": {
+              "application/json": {
+                "schema": {"$ref": "#/components/schemas/ApiErrorResponseModel"}
+              }
+            }
+          },
+          "403": {
+            "content": {
+              "application/json": {
+                "schema": {"$ref": "#/components/schemas/ApiErrorResponseModel"}
+              }
+            }
+          },
+          "404": {
+            "content": {
+              "application/json": {
+                "schema": {"$ref": "#/components/schemas/ApiErrorResponseModel"}
+              }
+            }
+          },
+          "409": {
+            "content": {
+              "application/json": {
+                "schema": {"$ref": "#/components/schemas/ApiErrorResponseModel"}
+              }
+            }
+          },
+          "413": {
+            "content": {
+              "application/json": {
+                "schema": {"$ref": "#/components/schemas/ApiErrorResponseModel"}
+              }
+            }
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {"$ref": "#/components/schemas/ApiErrorResponseModel"}
+              }
+            }
+          },
+          "503": {
+            "content": {
+              "application/json": {
+                "schema": {"$ref": "#/components/schemas/ApiErrorResponseModel"}
+              }
+            }
+          }
+        },
+        "security": [{"HTTPBearer": []}]
+      }
+    },
+    "/api/v1/sources/imports/{source_id}": {
+      "get": {
+        "security": [{"HTTPBearer": []}],
+        "parameters": [
+          {
+            "name": "source_id",
+            "in": "path",
+            "required": true,
+            "schema": {"type": "string"}
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/SourceImportStatusResponseModel"
+                }
+              }
+            }
+          },
+          "400": {
+            "content": {
+              "application/json": {
+                "schema": {"$ref": "#/components/schemas/ApiErrorResponseModel"}
+              }
+            }
+          },
+          "401": {
+            "content": {
+              "application/json": {
+                "schema": {"$ref": "#/components/schemas/ApiErrorResponseModel"}
+              }
+            }
+          },
+          "403": {
+            "content": {
+              "application/json": {
+                "schema": {"$ref": "#/components/schemas/ApiErrorResponseModel"}
+              }
+            }
+          },
+          "404": {
+            "content": {
+              "application/json": {
+                "schema": {"$ref": "#/components/schemas/ApiErrorResponseModel"}
+              }
+            }
+          },
+          "409": {
+            "content": {
+              "application/json": {
+                "schema": {"$ref": "#/components/schemas/ApiErrorResponseModel"}
+              }
+            }
+          },
+          "413": {
+            "content": {
+              "application/json": {
+                "schema": {"$ref": "#/components/schemas/ApiErrorResponseModel"}
+              }
+            }
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {"$ref": "#/components/schemas/ApiErrorResponseModel"}
+              }
+            }
+          },
+          "503": {
+            "content": {
+              "application/json": {
+                "schema": {"$ref": "#/components/schemas/ApiErrorResponseModel"}
+              }
+            }
+          }
+        }
+      },
+      "delete": {
+        "security": [{"HTTPBearer": []}],
+        "parameters": [
+          {
+            "name": "source_id",
+            "in": "path",
+            "required": true,
+            "schema": {"type": "string"}
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/DeleteSourceImportResponseModel"
+                }
+              }
+            }
+          },
+          "400": {
+            "content": {
+              "application/json": {
+                "schema": {"$ref": "#/components/schemas/ApiErrorResponseModel"}
+              }
+            }
+          },
+          "401": {
+            "content": {
+              "application/json": {
+                "schema": {"$ref": "#/components/schemas/ApiErrorResponseModel"}
+              }
+            }
+          },
+          "403": {
+            "content": {
+              "application/json": {
+                "schema": {"$ref": "#/components/schemas/ApiErrorResponseModel"}
+              }
+            }
+          },
+          "404": {
+            "content": {
+              "application/json": {
+                "schema": {"$ref": "#/components/schemas/ApiErrorResponseModel"}
+              }
+            }
+          },
+          "409": {
+            "content": {
+              "application/json": {
+                "schema": {"$ref": "#/components/schemas/ApiErrorResponseModel"}
+              }
+            }
+          },
+          "413": {
+            "content": {
+              "application/json": {
+                "schema": {"$ref": "#/components/schemas/ApiErrorResponseModel"}
+              }
+            }
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {"$ref": "#/components/schemas/ApiErrorResponseModel"}
+              }
+            }
+          },
+          "503": {
+            "content": {
+              "application/json": {
+                "schema": {"$ref": "#/components/schemas/ApiErrorResponseModel"}
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v1/setup/resolve": {
+      "post": {
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {"$ref": "#/components/schemas/JobSubmissionModel"}
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {"$ref": "#/components/schemas/SetupResolutionResponseModel"}
+              }
+            }
+          },
+          "400": {
+            "content": {
+              "application/json": {
+                "schema": {"$ref": "#/components/schemas/ApiErrorResponseModel"}
+              }
+            }
+          },
+          "401": {
+            "content": {
+              "application/json": {
+                "schema": {"$ref": "#/components/schemas/ApiErrorResponseModel"}
+              }
+            }
+          },
+          "403": {
+            "content": {
+              "application/json": {
+                "schema": {"$ref": "#/components/schemas/ApiErrorResponseModel"}
+              }
+            }
+          },
+          "404": {
+            "content": {
+              "application/json": {
+                "schema": {"$ref": "#/components/schemas/ApiErrorResponseModel"}
+              }
+            }
+          },
+          "409": {
+            "content": {
+              "application/json": {
+                "schema": {"$ref": "#/components/schemas/ApiErrorResponseModel"}
+              }
+            }
+          },
+          "413": {
+            "content": {
+              "application/json": {
+                "schema": {"$ref": "#/components/schemas/ApiErrorResponseModel"}
+              }
+            }
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {"$ref": "#/components/schemas/ApiErrorResponseModel"}
+              }
+            }
+          },
+          "503": {
+            "content": {
+              "application/json": {
+                "schema": {"$ref": "#/components/schemas/ApiErrorResponseModel"}
+              }
+            }
+          }
+        },
+        "security": [{"HTTPBearer": []}]
+      }
+    },
+    "/api/v1/conversions/preflight": {
+      "post": {
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {"$ref": "#/components/schemas/JobSubmissionModel"}
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {"$ref": "#/components/schemas/PreflightResponseModel"}
+              }
+            }
+          },
+          "400": {
+            "content": {
+              "application/json": {
+                "schema": {"$ref": "#/components/schemas/ApiErrorResponseModel"}
+              }
+            }
+          },
+          "401": {
+            "content": {
+              "application/json": {
+                "schema": {"$ref": "#/components/schemas/ApiErrorResponseModel"}
+              }
+            }
+          },
+          "403": {
+            "content": {
+              "application/json": {
+                "schema": {"$ref": "#/components/schemas/ApiErrorResponseModel"}
+              }
+            }
+          },
+          "404": {
+            "content": {
+              "application/json": {
+                "schema": {"$ref": "#/components/schemas/ApiErrorResponseModel"}
+              }
+            }
+          },
+          "409": {
+            "content": {
+              "application/json": {
+                "schema": {"$ref": "#/components/schemas/ApiErrorResponseModel"}
+              }
+            }
+          },
+          "413": {
+            "content": {
+              "application/json": {
+                "schema": {"$ref": "#/components/schemas/ApiErrorResponseModel"}
+              }
+            }
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {"$ref": "#/components/schemas/ApiErrorResponseModel"}
+              }
+            }
+          },
+          "503": {
+            "content": {
+              "application/json": {
+                "schema": {"$ref": "#/components/schemas/ApiErrorResponseModel"}
+              }
+            }
+          }
+        },
+        "security": [{"HTTPBearer": []}]
+      }
+    },
+    "/api/v1/catalog/engines": {
+      "get": {
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "items": {"$ref": "#/components/schemas/EngineChoiceResponseModel"},
+                  "type": "array"
+                }
+              }
+            }
+          },
+          "400": {
+            "content": {
+              "application/json": {
+                "schema": {"$ref": "#/components/schemas/ApiErrorResponseModel"}
+              }
+            }
+          },
+          "401": {
+            "content": {
+              "application/json": {
+                "schema": {"$ref": "#/components/schemas/ApiErrorResponseModel"}
+              }
+            }
+          },
+          "403": {
+            "content": {
+              "application/json": {
+                "schema": {"$ref": "#/components/schemas/ApiErrorResponseModel"}
+              }
+            }
+          },
+          "404": {
+            "content": {
+              "application/json": {
+                "schema": {"$ref": "#/components/schemas/ApiErrorResponseModel"}
+              }
+            }
+          },
+          "409": {
+            "content": {
+              "application/json": {
+                "schema": {"$ref": "#/components/schemas/ApiErrorResponseModel"}
+              }
+            }
+          },
+          "413": {
+            "content": {
+              "application/json": {
+                "schema": {"$ref": "#/components/schemas/ApiErrorResponseModel"}
+              }
+            }
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {"$ref": "#/components/schemas/ApiErrorResponseModel"}
+              }
+            }
+          },
+          "503": {
+            "content": {
+              "application/json": {
+                "schema": {"$ref": "#/components/schemas/ApiErrorResponseModel"}
+              }
+            }
+          }
+        },
+        "security": [{"HTTPBearer": []}]
+      }
+    },
+    "/api/v1/catalog/targets": {
+      "get": {
+        "security": [{"HTTPBearer": []}],
+        "parameters": [
+          {
+            "name": "engine",
+            "in": "query",
+            "required": true,
+            "schema": {"type": "string"}
+          },
+          {
+            "name": "language",
+            "in": "query",
+            "required": false,
+            "schema": {"anyOf": [{"type": "string"}, {"type": "null"}]}
+          },
+          {
+            "name": "offline",
+            "in": "query",
+            "required": false,
+            "schema": {"type": "boolean", "default": false}
+          },
+          {
+            "name": "refresh",
+            "in": "query",
+            "required": false,
+            "schema": {"type": "boolean", "default": false}
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "array",
+                  "items": {"$ref": "#/components/schemas/TargetChoiceResponseModel"}
+                }
+              }
+            }
+          },
+          "400": {
+            "content": {
+              "application/json": {
+                "schema": {"$ref": "#/components/schemas/ApiErrorResponseModel"}
+              }
+            }
+          },
+          "401": {
+            "content": {
+              "application/json": {
+                "schema": {"$ref": "#/components/schemas/ApiErrorResponseModel"}
+              }
+            }
+          },
+          "403": {
+            "content": {
+              "application/json": {
+                "schema": {"$ref": "#/components/schemas/ApiErrorResponseModel"}
+              }
+            }
+          },
+          "404": {
+            "content": {
+              "application/json": {
+                "schema": {"$ref": "#/components/schemas/ApiErrorResponseModel"}
+              }
+            }
+          },
+          "409": {
+            "content": {
+              "application/json": {
+                "schema": {"$ref": "#/components/schemas/ApiErrorResponseModel"}
+              }
+            }
+          },
+          "413": {
+            "content": {
+              "application/json": {
+                "schema": {"$ref": "#/components/schemas/ApiErrorResponseModel"}
+              }
+            }
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {"$ref": "#/components/schemas/ApiErrorResponseModel"}
+              }
+            }
+          },
+          "503": {
+            "content": {
+              "application/json": {
+                "schema": {"$ref": "#/components/schemas/ApiErrorResponseModel"}
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v1/catalog/voices": {
+      "get": {
+        "security": [{"HTTPBearer": []}],
+        "parameters": [
+          {
+            "name": "engine",
+            "in": "query",
+            "required": true,
+            "schema": {"type": "string"}
+          },
+          {
+            "name": "target",
+            "in": "query",
+            "required": true,
+            "schema": {"type": "string"}
+          },
+          {
+            "name": "language",
+            "in": "query",
+            "required": false,
+            "schema": {"anyOf": [{"type": "string"}, {"type": "null"}]}
+          },
+          {
+            "name": "offline",
+            "in": "query",
+            "required": false,
+            "schema": {"type": "boolean", "default": false}
+          },
+          {
+            "name": "refresh",
+            "in": "query",
+            "required": false,
+            "schema": {"type": "boolean", "default": false}
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "array",
+                  "items": {"$ref": "#/components/schemas/VoiceChoiceResponseModel"}
+                }
+              }
+            }
+          },
+          "400": {
+            "content": {
+              "application/json": {
+                "schema": {"$ref": "#/components/schemas/ApiErrorResponseModel"}
+              }
+            }
+          },
+          "401": {
+            "content": {
+              "application/json": {
+                "schema": {"$ref": "#/components/schemas/ApiErrorResponseModel"}
+              }
+            }
+          },
+          "403": {
+            "content": {
+              "application/json": {
+                "schema": {"$ref": "#/components/schemas/ApiErrorResponseModel"}
+              }
+            }
+          },
+          "404": {
+            "content": {
+              "application/json": {
+                "schema": {"$ref": "#/components/schemas/ApiErrorResponseModel"}
+              }
+            }
+          },
+          "409": {
+            "content": {
+              "application/json": {
+                "schema": {"$ref": "#/components/schemas/ApiErrorResponseModel"}
+              }
+            }
+          },
+          "413": {
+            "content": {
+              "application/json": {
+                "schema": {"$ref": "#/components/schemas/ApiErrorResponseModel"}
+              }
+            }
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {"$ref": "#/components/schemas/ApiErrorResponseModel"}
+              }
+            }
+          },
+          "503": {
+            "content": {
+              "application/json": {
+                "schema": {"$ref": "#/components/schemas/ApiErrorResponseModel"}
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v1/catalog/engine-options": {
+      "get": {
+        "security": [{"HTTPBearer": []}],
+        "parameters": [
+          {
+            "name": "engine",
+            "in": "query",
+            "required": true,
+            "schema": {"type": "string"}
+          },
+          {
+            "name": "target",
+            "in": "query",
+            "required": false,
+            "schema": {"anyOf": [{"type": "string"}, {"type": "null"}]}
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "array",
+                  "items": {"$ref": "#/components/schemas/EngineOptionResponseModel"}
+                }
+              }
+            }
+          },
+          "400": {
+            "content": {
+              "application/json": {
+                "schema": {"$ref": "#/components/schemas/ApiErrorResponseModel"}
+              }
+            }
+          },
+          "401": {
+            "content": {
+              "application/json": {
+                "schema": {"$ref": "#/components/schemas/ApiErrorResponseModel"}
+              }
+            }
+          },
+          "403": {
+            "content": {
+              "application/json": {
+                "schema": {"$ref": "#/components/schemas/ApiErrorResponseModel"}
+              }
+            }
+          },
+          "404": {
+            "content": {
+              "application/json": {
+                "schema": {"$ref": "#/components/schemas/ApiErrorResponseModel"}
+              }
+            }
+          },
+          "409": {
+            "content": {
+              "application/json": {
+                "schema": {"$ref": "#/components/schemas/ApiErrorResponseModel"}
+              }
+            }
+          },
+          "413": {
+            "content": {
+              "application/json": {
+                "schema": {"$ref": "#/components/schemas/ApiErrorResponseModel"}
+              }
+            }
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {"$ref": "#/components/schemas/ApiErrorResponseModel"}
+              }
+            }
+          },
+          "503": {
+            "content": {
+              "application/json": {
+                "schema": {"$ref": "#/components/schemas/ApiErrorResponseModel"}
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v1/resources/spacy": {
+      "get": {
+        "security": [{"HTTPBearer": []}],
+        "parameters": [
+          {
+            "name": "language",
+            "in": "query",
+            "required": true,
+            "schema": {"type": "string"}
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "array",
+                  "items": {"$ref": "#/components/schemas/SpacyModelResponseModel"}
+                }
+              }
+            }
+          },
+          "400": {
+            "content": {
+              "application/json": {
+                "schema": {"$ref": "#/components/schemas/ApiErrorResponseModel"}
+              }
+            }
+          },
+          "401": {
+            "content": {
+              "application/json": {
+                "schema": {"$ref": "#/components/schemas/ApiErrorResponseModel"}
+              }
+            }
+          },
+          "403": {
+            "content": {
+              "application/json": {
+                "schema": {"$ref": "#/components/schemas/ApiErrorResponseModel"}
+              }
+            }
+          },
+          "404": {
+            "content": {
+              "application/json": {
+                "schema": {"$ref": "#/components/schemas/ApiErrorResponseModel"}
+              }
+            }
+          },
+          "409": {
+            "content": {
+              "application/json": {
+                "schema": {"$ref": "#/components/schemas/ApiErrorResponseModel"}
+              }
+            }
+          },
+          "413": {
+            "content": {
+              "application/json": {
+                "schema": {"$ref": "#/components/schemas/ApiErrorResponseModel"}
+              }
+            }
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {"$ref": "#/components/schemas/ApiErrorResponseModel"}
+              }
+            }
+          },
+          "503": {
+            "content": {
+              "application/json": {
+                "schema": {"$ref": "#/components/schemas/ApiErrorResponseModel"}
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v1/resources/spacy/ensure": {
+      "post": {
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {"$ref": "#/components/schemas/SpacyEnsureRequest"}
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {"$ref": "#/components/schemas/SpacyModelResponseModel"}
+              }
+            }
+          },
+          "400": {
+            "content": {
+              "application/json": {
+                "schema": {"$ref": "#/components/schemas/ApiErrorResponseModel"}
+              }
+            }
+          },
+          "401": {
+            "content": {
+              "application/json": {
+                "schema": {"$ref": "#/components/schemas/ApiErrorResponseModel"}
+              }
+            }
+          },
+          "403": {
+            "content": {
+              "application/json": {
+                "schema": {"$ref": "#/components/schemas/ApiErrorResponseModel"}
+              }
+            }
+          },
+          "404": {
+            "content": {
+              "application/json": {
+                "schema": {"$ref": "#/components/schemas/ApiErrorResponseModel"}
+              }
+            }
+          },
+          "409": {
+            "content": {
+              "application/json": {
+                "schema": {"$ref": "#/components/schemas/ApiErrorResponseModel"}
+              }
+            }
+          },
+          "413": {
+            "content": {
+              "application/json": {
+                "schema": {"$ref": "#/components/schemas/ApiErrorResponseModel"}
+              }
+            }
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {"$ref": "#/components/schemas/ApiErrorResponseModel"}
+              }
+            }
+          },
+          "503": {
+            "content": {
+              "application/json": {
+                "schema": {"$ref": "#/components/schemas/ApiErrorResponseModel"}
+              }
+            }
+          }
+        },
+        "security": [{"HTTPBearer": []}]
+      }
+    },
+    "/api/v1/resources/speech-profiles": {
+      "get": {
+        "security": [{"HTTPBearer": []}],
+        "parameters": [
+          {
+            "name": "directory",
+            "in": "query",
+            "required": true,
+            "schema": {"type": "string"}
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {"$ref": "#/components/schemas/SpeechProfilesResponseModel"}
+              }
+            }
+          },
+          "400": {
+            "content": {
+              "application/json": {
+                "schema": {"$ref": "#/components/schemas/ApiErrorResponseModel"}
+              }
+            }
+          },
+          "401": {
+            "content": {
+              "application/json": {
+                "schema": {"$ref": "#/components/schemas/ApiErrorResponseModel"}
+              }
+            }
+          },
+          "403": {
+            "content": {
+              "application/json": {
+                "schema": {"$ref": "#/components/schemas/ApiErrorResponseModel"}
+              }
+            }
+          },
+          "404": {
+            "content": {
+              "application/json": {
+                "schema": {"$ref": "#/components/schemas/ApiErrorResponseModel"}
+              }
+            }
+          },
+          "409": {
+            "content": {
+              "application/json": {
+                "schema": {"$ref": "#/components/schemas/ApiErrorResponseModel"}
+              }
+            }
+          },
+          "413": {
+            "content": {
+              "application/json": {
+                "schema": {"$ref": "#/components/schemas/ApiErrorResponseModel"}
+              }
+            }
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {"$ref": "#/components/schemas/ApiErrorResponseModel"}
+              }
+            }
+          },
+          "503": {
+            "content": {
+              "application/json": {
+                "schema": {"$ref": "#/components/schemas/ApiErrorResponseModel"}
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v1/resources/speech-profiles/inspect": {
+      "post": {
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {"$ref": "#/components/schemas/SpeechProfileInspectRequest"}
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/SpeechProfileInspectResponseModel"
+                }
+              }
+            }
+          },
+          "400": {
+            "content": {
+              "application/json": {
+                "schema": {"$ref": "#/components/schemas/ApiErrorResponseModel"}
+              }
+            }
+          },
+          "401": {
+            "content": {
+              "application/json": {
+                "schema": {"$ref": "#/components/schemas/ApiErrorResponseModel"}
+              }
+            }
+          },
+          "403": {
+            "content": {
+              "application/json": {
+                "schema": {"$ref": "#/components/schemas/ApiErrorResponseModel"}
+              }
+            }
+          },
+          "404": {
+            "content": {
+              "application/json": {
+                "schema": {"$ref": "#/components/schemas/ApiErrorResponseModel"}
+              }
+            }
+          },
+          "409": {
+            "content": {
+              "application/json": {
+                "schema": {"$ref": "#/components/schemas/ApiErrorResponseModel"}
+              }
+            }
+          },
+          "413": {
+            "content": {
+              "application/json": {
+                "schema": {"$ref": "#/components/schemas/ApiErrorResponseModel"}
+              }
+            }
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {"$ref": "#/components/schemas/ApiErrorResponseModel"}
+              }
+            }
+          },
+          "503": {
+            "content": {
+              "application/json": {
+                "schema": {"$ref": "#/components/schemas/ApiErrorResponseModel"}
+              }
+            }
+          }
+        },
+        "security": [{"HTTPBearer": []}]
+      }
+    },
+    "/api/v1/projects/status": {
+      "get": {
+        "security": [{"HTTPBearer": []}],
+        "parameters": [
+          {
+            "name": "project",
+            "in": "query",
+            "required": true,
+            "schema": {"type": "string"}
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {"$ref": "#/components/schemas/WorkflowPlanResponseModel"}
+              }
+            }
+          },
+          "400": {
+            "content": {
+              "application/json": {
+                "schema": {"$ref": "#/components/schemas/ApiErrorResponseModel"}
+              }
+            }
+          },
+          "401": {
+            "content": {
+              "application/json": {
+                "schema": {"$ref": "#/components/schemas/ApiErrorResponseModel"}
+              }
+            }
+          },
+          "403": {
+            "content": {
+              "application/json": {
+                "schema": {"$ref": "#/components/schemas/ApiErrorResponseModel"}
+              }
+            }
+          },
+          "404": {
+            "content": {
+              "application/json": {
+                "schema": {"$ref": "#/components/schemas/ApiErrorResponseModel"}
+              }
+            }
+          },
+          "409": {
+            "content": {
+              "application/json": {
+                "schema": {"$ref": "#/components/schemas/ApiErrorResponseModel"}
+              }
+            }
+          },
+          "413": {
+            "content": {
+              "application/json": {
+                "schema": {"$ref": "#/components/schemas/ApiErrorResponseModel"}
+              }
+            }
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {"$ref": "#/components/schemas/ApiErrorResponseModel"}
+              }
+            }
+          },
+          "503": {
+            "content": {
+              "application/json": {
+                "schema": {"$ref": "#/components/schemas/ApiErrorResponseModel"}
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v1/projects/variants": {
+      "get": {
+        "security": [{"HTTPBearer": []}],
+        "parameters": [
+          {
+            "name": "project",
+            "in": "query",
+            "required": true,
+            "schema": {"type": "string"}
+          },
+          {
+            "name": "source",
+            "in": "query",
+            "required": false,
+            "schema": {"anyOf": [{"type": "string"}, {"type": "null"}]}
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "array",
+                  "items": {"$ref": "#/components/schemas/ProjectVariantResponseModel"}
+                }
+              }
+            }
+          },
+          "400": {
+            "content": {
+              "application/json": {
+                "schema": {"$ref": "#/components/schemas/ApiErrorResponseModel"}
+              }
+            }
+          },
+          "401": {
+            "content": {
+              "application/json": {
+                "schema": {"$ref": "#/components/schemas/ApiErrorResponseModel"}
+              }
+            }
+          },
+          "403": {
+            "content": {
+              "application/json": {
+                "schema": {"$ref": "#/components/schemas/ApiErrorResponseModel"}
+              }
+            }
+          },
+          "404": {
+            "content": {
+              "application/json": {
+                "schema": {"$ref": "#/components/schemas/ApiErrorResponseModel"}
+              }
+            }
+          },
+          "409": {
+            "content": {
+              "application/json": {
+                "schema": {"$ref": "#/components/schemas/ApiErrorResponseModel"}
+              }
+            }
+          },
+          "413": {
+            "content": {
+              "application/json": {
+                "schema": {"$ref": "#/components/schemas/ApiErrorResponseModel"}
+              }
+            }
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {"$ref": "#/components/schemas/ApiErrorResponseModel"}
+              }
+            }
+          },
+          "503": {
+            "content": {
+              "application/json": {
+                "schema": {"$ref": "#/components/schemas/ApiErrorResponseModel"}
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v1/projects/setup": {
+      "get": {
+        "security": [{"HTTPBearer": []}],
+        "parameters": [
+          {
+            "name": "project",
+            "in": "query",
+            "required": true,
+            "schema": {"type": "string"}
+          },
+          {
+            "name": "variant",
+            "in": "query",
+            "required": false,
+            "schema": {"anyOf": [{"type": "string"}, {"type": "null"}]}
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {"$ref": "#/components/schemas/ProjectSetupResponseModel"}
+              }
+            }
+          },
+          "400": {
+            "content": {
+              "application/json": {
+                "schema": {"$ref": "#/components/schemas/ApiErrorResponseModel"}
+              }
+            }
+          },
+          "401": {
+            "content": {
+              "application/json": {
+                "schema": {"$ref": "#/components/schemas/ApiErrorResponseModel"}
+              }
+            }
+          },
+          "403": {
+            "content": {
+              "application/json": {
+                "schema": {"$ref": "#/components/schemas/ApiErrorResponseModel"}
+              }
+            }
+          },
+          "404": {
+            "content": {
+              "application/json": {
+                "schema": {"$ref": "#/components/schemas/ApiErrorResponseModel"}
+              }
+            }
+          },
+          "409": {
+            "content": {
+              "application/json": {
+                "schema": {"$ref": "#/components/schemas/ApiErrorResponseModel"}
+              }
+            }
+          },
+          "413": {
+            "content": {
+              "application/json": {
+                "schema": {"$ref": "#/components/schemas/ApiErrorResponseModel"}
+              }
+            }
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {"$ref": "#/components/schemas/ApiErrorResponseModel"}
+              }
+            }
+          },
+          "503": {
+            "content": {
+              "application/json": {
+                "schema": {"$ref": "#/components/schemas/ApiErrorResponseModel"}
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v1/projects/info": {
+      "get": {
+        "security": [{"HTTPBearer": []}],
+        "parameters": [
+          {
+            "name": "project",
+            "in": "query",
+            "required": true,
+            "schema": {"type": "string"}
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {"$ref": "#/components/schemas/ProjectInfoResponseModel"}
+              }
+            }
+          },
+          "400": {
+            "content": {
+              "application/json": {
+                "schema": {"$ref": "#/components/schemas/ApiErrorResponseModel"}
+              }
+            }
+          },
+          "401": {
+            "content": {
+              "application/json": {
+                "schema": {"$ref": "#/components/schemas/ApiErrorResponseModel"}
+              }
+            }
+          },
+          "403": {
+            "content": {
+              "application/json": {
+                "schema": {"$ref": "#/components/schemas/ApiErrorResponseModel"}
+              }
+            }
+          },
+          "404": {
+            "content": {
+              "application/json": {
+                "schema": {"$ref": "#/components/schemas/ApiErrorResponseModel"}
+              }
+            }
+          },
+          "409": {
+            "content": {
+              "application/json": {
+                "schema": {"$ref": "#/components/schemas/ApiErrorResponseModel"}
+              }
+            }
+          },
+          "413": {
+            "content": {
+              "application/json": {
+                "schema": {"$ref": "#/components/schemas/ApiErrorResponseModel"}
+              }
+            }
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {"$ref": "#/components/schemas/ApiErrorResponseModel"}
+              }
+            }
+          },
+          "503": {
+            "content": {
+              "application/json": {
+                "schema": {"$ref": "#/components/schemas/ApiErrorResponseModel"}
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v1/jobs": {
+      "post": {
+        "security": [{"HTTPBearer": []}],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {"$ref": "#/components/schemas/JobSubmissionModel"}
+            }
+          }
+        },
+        "responses": {
+          "202": {
+            "content": {
+              "application/json": {
+                "schema": {"$ref": "#/components/schemas/JobCreateResponseModel"}
+              }
+            }
+          },
+          "400": {
+            "content": {
+              "application/json": {
+                "schema": {"$ref": "#/components/schemas/ApiErrorResponseModel"}
+              }
+            }
+          },
+          "401": {
+            "content": {
+              "application/json": {
+                "schema": {"$ref": "#/components/schemas/ApiErrorResponseModel"}
+              }
+            }
+          },
+          "403": {
+            "content": {
+              "application/json": {
+                "schema": {"$ref": "#/components/schemas/ApiErrorResponseModel"}
+              }
+            }
+          },
+          "404": {
+            "content": {
+              "application/json": {
+                "schema": {"$ref": "#/components/schemas/ApiErrorResponseModel"}
+              }
+            }
+          },
+          "409": {
+            "content": {
+              "application/json": {
+                "schema": {"$ref": "#/components/schemas/ApiErrorResponseModel"}
+              }
+            }
+          },
+          "413": {
+            "content": {
+              "application/json": {
+                "schema": {"$ref": "#/components/schemas/ApiErrorResponseModel"}
+              }
+            }
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {"$ref": "#/components/schemas/ApiErrorResponseModel"}
+              }
+            }
+          },
+          "503": {
+            "content": {
+              "application/json": {
+                "schema": {"$ref": "#/components/schemas/ApiErrorResponseModel"}
+              }
+            }
+          }
+        }
+      },
+      "get": {
+        "security": [{"HTTPBearer": []}],
+        "parameters": [
+          {
+            "name": "state",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "enum": [
+                    "queued",
+                    "preparing",
+                    "running",
+                    "completed",
+                    "failed",
+                    "cancelled"
+                  ],
+                  "type": "string"
+                },
+                {"type": "null"}
+              ]
+            }
+          },
+          {
+            "name": "limit",
+            "in": "query",
+            "required": false,
+            "schema": {"type": "integer", "maximum": 100, "minimum": 1, "default": 50}
+          },
+          {
+            "name": "before",
+            "in": "query",
+            "required": false,
+            "schema": {"anyOf": [{"type": "string"}, {"type": "null"}]}
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {"$ref": "#/components/schemas/JobListResponseModel"}
+              }
+            }
+          },
+          "400": {
+            "content": {
+              "application/json": {
+                "schema": {"$ref": "#/components/schemas/ApiErrorResponseModel"}
+              }
+            }
+          },
+          "401": {
+            "content": {
+              "application/json": {
+                "schema": {"$ref": "#/components/schemas/ApiErrorResponseModel"}
+              }
+            }
+          },
+          "403": {
+            "content": {
+              "application/json": {
+                "schema": {"$ref": "#/components/schemas/ApiErrorResponseModel"}
+              }
+            }
+          },
+          "404": {
+            "content": {
+              "application/json": {
+                "schema": {"$ref": "#/components/schemas/ApiErrorResponseModel"}
+              }
+            }
+          },
+          "409": {
+            "content": {
+              "application/json": {
+                "schema": {"$ref": "#/components/schemas/ApiErrorResponseModel"}
+              }
+            }
+          },
+          "413": {
+            "content": {
+              "application/json": {
+                "schema": {"$ref": "#/components/schemas/ApiErrorResponseModel"}
+              }
+            }
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {"$ref": "#/components/schemas/ApiErrorResponseModel"}
+              }
+            }
+          },
+          "503": {
+            "content": {
+              "application/json": {
+                "schema": {"$ref": "#/components/schemas/ApiErrorResponseModel"}
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v1/jobs/{job_id}": {
+      "get": {
+        "security": [{"HTTPBearer": []}],
+        "parameters": [
+          {
+            "name": "job_id",
+            "in": "path",
+            "required": true,
+            "schema": {"type": "string"}
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {"$ref": "#/components/schemas/JobStatusResponseModel"}
+              }
+            }
+          },
+          "400": {
+            "content": {
+              "application/json": {
+                "schema": {"$ref": "#/components/schemas/ApiErrorResponseModel"}
+              }
+            }
+          },
+          "401": {
+            "content": {
+              "application/json": {
+                "schema": {"$ref": "#/components/schemas/ApiErrorResponseModel"}
+              }
+            }
+          },
+          "403": {
+            "content": {
+              "application/json": {
+                "schema": {"$ref": "#/components/schemas/ApiErrorResponseModel"}
+              }
+            }
+          },
+          "404": {
+            "content": {
+              "application/json": {
+                "schema": {"$ref": "#/components/schemas/ApiErrorResponseModel"}
+              }
+            }
+          },
+          "409": {
+            "content": {
+              "application/json": {
+                "schema": {"$ref": "#/components/schemas/ApiErrorResponseModel"}
+              }
+            }
+          },
+          "413": {
+            "content": {
+              "application/json": {
+                "schema": {"$ref": "#/components/schemas/ApiErrorResponseModel"}
+              }
+            }
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {"$ref": "#/components/schemas/ApiErrorResponseModel"}
+              }
+            }
+          },
+          "503": {
+            "content": {
+              "application/json": {
+                "schema": {"$ref": "#/components/schemas/ApiErrorResponseModel"}
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v1/jobs/{job_id}/events": {
+      "get": {
+        "security": [{"HTTPBearer": []}],
+        "parameters": [
+          {
+            "name": "job_id",
+            "in": "path",
+            "required": true,
+            "schema": {"type": "string"}
+          },
+          {
+            "name": "after",
+            "in": "query",
+            "required": false,
+            "schema": {"type": "integer", "minimum": 0, "default": 0}
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {"$ref": "#/components/schemas/JobEventsPageResponseModel"}
+              }
+            }
+          },
+          "400": {
+            "content": {
+              "application/json": {
+                "schema": {"$ref": "#/components/schemas/ApiErrorResponseModel"}
+              }
+            }
+          },
+          "401": {
+            "content": {
+              "application/json": {
+                "schema": {"$ref": "#/components/schemas/ApiErrorResponseModel"}
+              }
+            }
+          },
+          "403": {
+            "content": {
+              "application/json": {
+                "schema": {"$ref": "#/components/schemas/ApiErrorResponseModel"}
+              }
+            }
+          },
+          "404": {
+            "content": {
+              "application/json": {
+                "schema": {"$ref": "#/components/schemas/ApiErrorResponseModel"}
+              }
+            }
+          },
+          "409": {
+            "content": {
+              "application/json": {
+                "schema": {"$ref": "#/components/schemas/ApiErrorResponseModel"}
+              }
+            }
+          },
+          "413": {
+            "content": {
+              "application/json": {
+                "schema": {"$ref": "#/components/schemas/ApiErrorResponseModel"}
+              }
+            }
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {"$ref": "#/components/schemas/ApiErrorResponseModel"}
+              }
+            }
+          },
+          "503": {
+            "content": {
+              "application/json": {
+                "schema": {"$ref": "#/components/schemas/ApiErrorResponseModel"}
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v1/jobs/{job_id}/cancel": {
+      "post": {
+        "security": [{"HTTPBearer": []}],
+        "parameters": [
+          {
+            "name": "job_id",
+            "in": "path",
+            "required": true,
+            "schema": {"type": "string"}
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {"$ref": "#/components/schemas/JobStatusResponseModel"}
+              }
+            }
+          },
+          "400": {
+            "content": {
+              "application/json": {
+                "schema": {"$ref": "#/components/schemas/ApiErrorResponseModel"}
+              }
+            }
+          },
+          "401": {
+            "content": {
+              "application/json": {
+                "schema": {"$ref": "#/components/schemas/ApiErrorResponseModel"}
+              }
+            }
+          },
+          "403": {
+            "content": {
+              "application/json": {
+                "schema": {"$ref": "#/components/schemas/ApiErrorResponseModel"}
+              }
+            }
+          },
+          "404": {
+            "content": {
+              "application/json": {
+                "schema": {"$ref": "#/components/schemas/ApiErrorResponseModel"}
+              }
+            }
+          },
+          "409": {
+            "content": {
+              "application/json": {
+                "schema": {"$ref": "#/components/schemas/ApiErrorResponseModel"}
+              }
+            }
+          },
+          "413": {
+            "content": {
+              "application/json": {
+                "schema": {"$ref": "#/components/schemas/ApiErrorResponseModel"}
+              }
+            }
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {"$ref": "#/components/schemas/ApiErrorResponseModel"}
+              }
+            }
+          },
+          "503": {
+            "content": {
+              "application/json": {
+                "schema": {"$ref": "#/components/schemas/ApiErrorResponseModel"}
+              }
+            }
+          }
+        }
+      }
+    }
+  },
+  "components": {
+    "schemas": {
+      "ApiErrorModel": {
+        "properties": {
+          "type": {"type": "string"},
+          "message": {"type": "string"},
+          "category": {"anyOf": [{"type": "string"}, {"type": "null"}]},
+          "code": {"anyOf": [{"type": "string"}, {"type": "null"}]},
+          "stage": {"anyOf": [{"type": "string"}, {"type": "null"}]},
+          "package": {"anyOf": [{"type": "string"}, {"type": "null"}]},
+          "selector": {"anyOf": [{"type": "string"}, {"type": "null"}]},
+          "details": {
+            "additionalProperties": {"$ref": "#/components/schemas/JsonValue"},
+            "type": "object"
+          }
+        },
+        "additionalProperties": false,
+        "type": "object",
+        "required": [
+          "type",
+          "message",
+          "category",
+          "code",
+          "stage",
+          "package",
+          "selector"
+        ]
+      },
+      "ApiErrorResponseModel": {
+        "properties": {"error": {"$ref": "#/components/schemas/ApiErrorModel"}},
+        "additionalProperties": false,
+        "type": "object",
+        "required": ["error"]
+      },
+      "ApplicationEventResponseModel": {
+        "properties": {
+          "stage": {"type": "string"},
+          "kind": {"type": "string"},
+          "message": {"anyOf": [{"type": "string"}, {"type": "null"}]},
+          "package": {"anyOf": [{"type": "string"}, {"type": "null"}]},
+          "selector": {"anyOf": [{"type": "string"}, {"type": "null"}]},
+          "current": {"anyOf": [{"type": "integer"}, {"type": "null"}]},
+          "total": {"anyOf": [{"type": "integer"}, {"type": "null"}]},
+          "elapsed_seconds": {"anyOf": [{"type": "number"}, {"type": "null"}]},
+          "details": {
+            "additionalProperties": {"$ref": "#/components/schemas/JsonValue"},
+            "type": "object"
+          }
+        },
+        "additionalProperties": false,
+        "type": "object",
+        "required": [
+          "stage",
+          "kind",
+          "message",
+          "package",
+          "selector",
+          "current",
+          "total",
+          "elapsed_seconds",
+          "details"
+        ]
+      },
+      "AudioExportRuntimeResponseModel": {
+        "properties": {
+          "available": {"type": "boolean"},
+          "version": {"anyOf": [{"type": "string"}, {"type": "null"}]}
+        },
+        "additionalProperties": false,
+        "type": "object",
+        "required": ["available", "version"]
+      },
+      "AudioRuntimeResponseModel": {
+        "properties": {
+          "audioexport": {
+            "$ref": "#/components/schemas/AudioExportRuntimeResponseModel"
+          },
+          "ffmpeg": {"$ref": "#/components/schemas/RuntimeToolResponseModel"},
+          "ffprobe": {"$ref": "#/components/schemas/RuntimeToolResponseModel"}
+        },
+        "additionalProperties": false,
+        "type": "object",
+        "required": ["audioexport", "ffmpeg", "ffprobe"]
+      },
+      "AudiobookRequestModel": {
+        "properties": {
+          "source": {"type": "string"},
+          "project": {"anyOf": [{"type": "string"}, {"type": "null"}]},
+          "chapters": {"anyOf": [{"type": "string"}, {"type": "null"}]},
+          "output": {"anyOf": [{"type": "string"}, {"type": "null"}]},
+          "language": {"anyOf": [{"type": "string"}, {"type": "null"}]},
+          "engine": {"anyOf": [{"type": "string"}, {"type": "null"}]},
+          "target": {"anyOf": [{"type": "string"}, {"type": "null"}]},
+          "voice": {"anyOf": [{"type": "string"}, {"type": "null"}]},
+          "engine_options": {
+            "additionalProperties": {"$ref": "#/components/schemas/JsonValue"},
+            "type": "object"
+          },
+          "speed": {"anyOf": [{"type": "number"}, {"type": "null"}]},
+          "spacy": {
+            "anyOf": [
+              {"type": "string", "enum": ["off", "auto", "sm", "md", "lg", "trf"]},
+              {"type": "null"}
+            ]
+          },
+          "speech_profile": {"anyOf": [{"type": "string"}, {"type": "null"}]},
+          "pause_timing": {
+            "anyOf": [
+              {"type": "string", "enum": ["fixed", "natural", "engaging"]},
+              {"type": "null"}
+            ]
+          },
+          "bitrate": {
+            "anyOf": [{"type": "string"}, {"type": "integer"}, {"type": "null"}]
+          },
+          "target_lufs": {"anyOf": [{"type": "number"}, {"type": "null"}]},
+          "title": {"anyOf": [{"type": "string"}, {"type": "null"}]},
+          "author": {"anyOf": [{"type": "string"}, {"type": "null"}]},
+          "cover": {"anyOf": [{"type": "string"}, {"type": "null"}]},
+          "offline": {"type": "boolean", "default": false},
+          "refresh": {"type": "boolean", "default": false},
+          "rebuild_from": {"anyOf": [{"type": "string"}, {"type": "null"}]},
+          "replace_output": {"type": "boolean", "default": false},
+          "fresh": {"type": "boolean", "default": false},
+          "new_variant": {"type": "boolean", "default": false}
+        },
+        "additionalProperties": false,
+        "type": "object",
+        "required": ["source"]
+      },
+      "Body_import_source_api_v1_sources_import_post": {
+        "properties": {
+          "file": {"type": "string", "contentMediaType": "application/octet-stream"}
+        },
+        "type": "object",
+        "required": ["file"]
+      },
+      "BookChapterResponseModel": {
+        "properties": {
+          "number": {"type": "integer"},
+          "title": {"type": "string"},
+          "source_id": {"anyOf": [{"type": "string"}, {"type": "null"}]},
+          "char_count": {"anyOf": [{"type": "integer"}, {"type": "null"}]}
+        },
+        "additionalProperties": false,
+        "type": "object",
+        "required": ["number", "title", "source_id", "char_count"]
+      },
+      "BookInspectionResponseModel": {
+        "properties": {
+          "source": {"type": "string"},
+          "kind": {"type": "string"},
+          "title": {"anyOf": [{"type": "string"}, {"type": "null"}]},
+          "author": {"anyOf": [{"type": "string"}, {"type": "null"}]},
+          "language": {"anyOf": [{"type": "string"}, {"type": "null"}]},
+          "chapters": {
+            "items": {"$ref": "#/components/schemas/BookChapterResponseModel"},
+            "type": "array"
+          },
+          "cover": {"anyOf": [{"type": "string"}, {"type": "null"}]}
+        },
+        "additionalProperties": false,
+        "type": "object",
+        "required": [
+          "source",
+          "kind",
+          "title",
+          "author",
+          "language",
+          "chapters",
+          "cover"
+        ]
+      },
+      "ConversionResultResponseModel": {
+        "properties": {
+          "output": {"type": "string"},
+          "workspace": {"anyOf": [{"type": "string"}, {"type": "null"}]},
+          "workspace_mode": {"type": "string"},
+          "executed_stages": {"items": {"type": "string"}, "type": "array"},
+          "reused_stages": {"items": {"type": "string"}, "type": "array"},
+          "warnings": {"items": {"type": "string"}, "type": "array"},
+          "variant": {"anyOf": [{"type": "string"}, {"type": "null"}]}
+        },
+        "additionalProperties": false,
+        "type": "object",
+        "required": [
+          "output",
+          "workspace",
+          "workspace_mode",
+          "executed_stages",
+          "reused_stages",
+          "warnings",
+          "variant"
+        ]
+      },
+      "DeleteSourceImportResponseModel": {
+        "properties": {"source_id": {"type": "string"}, "deleted": {"type": "boolean"}},
+        "additionalProperties": false,
+        "type": "object",
+        "required": ["source_id", "deleted"]
+      },
+      "EngineChoiceResponseModel": {
+        "properties": {
+          "id": {"type": "string"},
+          "version": {"anyOf": [{"type": "string"}, {"type": "null"}]},
+          "installed": {"type": "boolean"},
+          "runnable": {"type": "boolean"},
+          "features": {"items": {"type": "string"}, "type": "array"},
+          "reason": {"anyOf": [{"type": "string"}, {"type": "null"}]}
+        },
+        "additionalProperties": false,
+        "type": "object",
+        "required": ["id", "version", "installed", "runnable", "features", "reason"]
+      },
+      "EngineOptionResponseModel": {
+        "properties": {
+          "name": {"type": "string"},
+          "value_type": {"anyOf": [{"type": "string"}, {"type": "null"}]},
+          "required": {"type": "boolean"},
+          "default": {"$ref": "#/components/schemas/JsonValue"},
+          "choices": {
+            "items": {"$ref": "#/components/schemas/JsonValue"},
+            "type": "array"
+          },
+          "minimum": {
+            "anyOf": [{"type": "integer"}, {"type": "number"}, {"type": "null"}]
+          },
+          "maximum": {
+            "anyOf": [{"type": "integer"}, {"type": "number"}, {"type": "null"}]
+          },
+          "description": {"type": "string"},
+          "identity_affecting": {"type": "boolean"},
+          "runtime_only": {"type": "boolean"}
+        },
+        "additionalProperties": false,
+        "type": "object",
+        "required": [
+          "name",
+          "value_type",
+          "required",
+          "default",
+          "choices",
+          "minimum",
+          "maximum",
+          "description",
+          "identity_affecting",
+          "runtime_only"
+        ]
+      },
+      "HealthResponseModel": {
+        "properties": {"ok": {"type": "boolean"}},
+        "additionalProperties": false,
+        "type": "object",
+        "required": ["ok"]
+      },
+      "JobCreateResponseModel": {
+        "properties": {
+          "id": {"type": "string"},
+          "state": {
+            "type": "string",
+            "enum": [
+              "queued",
+              "preparing",
+              "running",
+              "completed",
+              "failed",
+              "cancelled"
+            ]
+          }
+        },
+        "additionalProperties": false,
+        "type": "object",
+        "required": ["id", "state"]
+      },
+      "JobEventResponseModel": {
+        "properties": {
+          "seq": {"type": "integer"},
+          "timestamp": {"type": "string"},
+          "event": {
+            "oneOf": [
+              {"$ref": "#/components/schemas/JobStateEventResponseModel"},
+              {"$ref": "#/components/schemas/JobPreparedEventResponseModel"},
+              {"$ref": "#/components/schemas/JobWorkflowEventResponseModel"}
+            ],
+            "discriminator": {
+              "propertyName": "type",
+              "mapping": {
+                "job.prepared": "#/components/schemas/JobPreparedEventResponseModel",
+                "job.state": "#/components/schemas/JobStateEventResponseModel",
+                "workflow.event": "#/components/schemas/JobWorkflowEventResponseModel"
+              }
+            }
+          }
+        },
+        "additionalProperties": false,
+        "type": "object",
+        "required": ["seq", "timestamp", "event"]
+      },
+      "JobEventsPageResponseModel": {
+        "properties": {
+          "first": {"type": "integer"},
+          "next": {"type": "integer"},
+          "truncated": {"type": "boolean"},
+          "events": {
+            "items": {"$ref": "#/components/schemas/JobEventResponseModel"},
+            "type": "array"
+          }
+        },
+        "additionalProperties": false,
+        "type": "object",
+        "required": ["first", "next", "truncated", "events"]
+      },
+      "JobListResponseModel": {
+        "properties": {
+          "jobs": {
+            "items": {"$ref": "#/components/schemas/JobSummaryResponseModel"},
+            "type": "array"
+          }
+        },
+        "additionalProperties": false,
+        "type": "object",
+        "required": ["jobs"]
+      },
+      "JobPreparedEventResponseModel": {
+        "properties": {
+          "type": {"type": "string", "const": "job.prepared"},
+          "project": {"type": "string"},
+          "output": {"type": "string"}
+        },
+        "additionalProperties": false,
+        "type": "object",
+        "required": ["type", "project", "output"]
+      },
+      "JobStateEventResponseModel": {
+        "properties": {
+          "type": {"type": "string", "const": "job.state"},
+          "state": {
+            "type": "string",
+            "enum": [
+              "queued",
+              "preparing",
+              "running",
+              "completed",
+              "failed",
+              "cancelled"
+            ]
+          }
+        },
+        "additionalProperties": false,
+        "type": "object",
+        "required": ["type", "state"]
+      },
+      "JobStatusResponseModel": {
+        "properties": {
+          "id": {"type": "string"},
+          "state": {
+            "type": "string",
+            "enum": [
+              "queued",
+              "preparing",
+              "running",
+              "completed",
+              "failed",
+              "cancelled"
+            ]
+          },
+          "created_at": {"type": "string"},
+          "started_at": {"anyOf": [{"type": "string"}, {"type": "null"}]},
+          "finished_at": {"anyOf": [{"type": "string"}, {"type": "null"}]},
+          "project": {"anyOf": [{"type": "string"}, {"type": "null"}]},
+          "output": {"anyOf": [{"type": "string"}, {"type": "null"}]},
+          "event_sequence": {"type": "integer"},
+          "progress": {
+            "anyOf": [
+              {"$ref": "#/components/schemas/ApplicationEventResponseModel"},
+              {"type": "null"}
+            ]
+          },
+          "result": {
+            "anyOf": [
+              {"$ref": "#/components/schemas/ConversionResultResponseModel"},
+              {"type": "null"}
+            ]
+          },
+          "error": {
+            "anyOf": [{"$ref": "#/components/schemas/ApiErrorModel"}, {"type": "null"}]
+          }
+        },
+        "additionalProperties": false,
+        "type": "object",
+        "required": [
+          "id",
+          "state",
+          "created_at",
+          "started_at",
+          "finished_at",
+          "project",
+          "output",
+          "event_sequence",
+          "progress",
+          "result",
+          "error"
+        ]
+      },
+      "JobSubmissionModel": {
+        "properties": {
+          "request": {"$ref": "#/components/schemas/AudiobookRequestModel"},
+          "explicit_fields": {"items": {"type": "string"}, "type": "array"}
+        },
+        "additionalProperties": false,
+        "type": "object",
+        "required": ["request"]
+      },
+      "JobSummaryResponseModel": {
+        "properties": {
+          "id": {"type": "string"},
+          "state": {
+            "type": "string",
+            "enum": [
+              "queued",
+              "preparing",
+              "running",
+              "completed",
+              "failed",
+              "cancelled"
+            ]
+          },
+          "created_at": {"type": "string"},
+          "started_at": {"anyOf": [{"type": "string"}, {"type": "null"}]},
+          "finished_at": {"anyOf": [{"type": "string"}, {"type": "null"}]},
+          "project": {"anyOf": [{"type": "string"}, {"type": "null"}]},
+          "output": {"anyOf": [{"type": "string"}, {"type": "null"}]},
+          "event_sequence": {"type": "integer"}
+        },
+        "additionalProperties": false,
+        "type": "object",
+        "required": [
+          "id",
+          "state",
+          "created_at",
+          "started_at",
+          "finished_at",
+          "project",
+          "output",
+          "event_sequence"
+        ]
+      },
+      "JobWorkflowEventResponseModel": {
+        "properties": {
+          "type": {"type": "string", "const": "workflow.event"},
+          "event": {"$ref": "#/components/schemas/ApplicationEventResponseModel"}
+        },
+        "additionalProperties": false,
+        "type": "object",
+        "required": ["type", "event"]
+      },
+      "JsonValue": {},
+      "PackageRuntimeResponseModel": {
+        "properties": {
+          "ttsforge": {"anyOf": [{"type": "string"}, {"type": "null"}]},
+          "readio": {"anyOf": [{"type": "string"}, {"type": "null"}]}
+        },
+        "additionalProperties": false,
+        "type": "object",
+        "required": ["ttsforge", "readio"]
+      },
+      "PreflightResponseModel": {
+        "properties": {
+          "project": {"type": "string"},
+          "configuration_variant": {"anyOf": [{"type": "string"}, {"type": "null"}]},
+          "reused_setup": {"type": "boolean"},
+          "spacy_model": {
+            "anyOf": [
+              {"$ref": "#/components/schemas/SpacyModelResponseModel"},
+              {"type": "null"}
+            ]
+          },
+          "request": {"$ref": "#/components/schemas/AudiobookRequestModel"},
+          "workflow": {"$ref": "#/components/schemas/WorkflowPlanResponseModel"}
+        },
+        "additionalProperties": false,
+        "type": "object",
+        "required": [
+          "project",
+          "configuration_variant",
+          "reused_setup",
+          "spacy_model",
+          "request",
+          "workflow"
+        ]
+      },
+      "ProjectInfoResponseModel": {
+        "properties": {
+          "project": {"type": "string"},
+          "saved_setup": {
+            "anyOf": [
+              {"$ref": "#/components/schemas/AudiobookRequestModel"},
+              {"type": "null"}
+            ]
+          },
+          "workflow": {
+            "anyOf": [
+              {"$ref": "#/components/schemas/WorkflowPlanResponseModel"},
+              {"type": "null"}
+            ]
+          },
+          "variants": {
+            "items": {"$ref": "#/components/schemas/ProjectVariantResponseModel"},
+            "type": "array"
+          }
+        },
+        "additionalProperties": false,
+        "type": "object",
+        "required": ["project", "saved_setup", "workflow", "variants"]
+      },
+      "ProjectSetupResponseModel": {
+        "properties": {
+          "project": {"type": "string"},
+          "variant": {"anyOf": [{"type": "string"}, {"type": "null"}]},
+          "saved_setup": {
+            "anyOf": [
+              {"$ref": "#/components/schemas/AudiobookRequestModel"},
+              {"type": "null"}
+            ]
+          }
+        },
+        "additionalProperties": false,
+        "type": "object",
+        "required": ["project", "variant", "saved_setup"]
+      },
+      "ProjectVariantResponseModel": {
+        "properties": {
+          "variant_key": {"type": "string"},
+          "output": {"anyOf": [{"type": "string"}, {"type": "null"}]},
+          "engine": {"anyOf": [{"type": "string"}, {"type": "null"}]},
+          "target": {"anyOf": [{"type": "string"}, {"type": "null"}]},
+          "voice": {"anyOf": [{"type": "string"}, {"type": "null"}]},
+          "error": {"anyOf": [{"type": "string"}, {"type": "null"}]}
+        },
+        "additionalProperties": false,
+        "type": "object",
+        "required": ["variant_key", "output", "engine", "target", "voice", "error"]
+      },
+      "PythonRuntimeResponseModel": {
+        "properties": {"version": {"type": "string"}, "executable": {"type": "string"}},
+        "additionalProperties": false,
+        "type": "object",
+        "required": ["version", "executable"]
+      },
+      "RuntimeProblemResponseModel": {
+        "properties": {
+          "code": {
+            "type": "string",
+            "enum": [
+              "ffmpeg_missing",
+              "ffprobe_missing",
+              "audioexport_missing",
+              "readio_missing"
+            ]
+          },
+          "message": {"type": "string"}
+        },
+        "additionalProperties": false,
+        "type": "object",
+        "required": ["code", "message"]
+      },
+      "RuntimeStatusResponseModel": {
+        "properties": {
+          "python": {"$ref": "#/components/schemas/PythonRuntimeResponseModel"},
+          "packages": {"$ref": "#/components/schemas/PackageRuntimeResponseModel"},
+          "audio": {"$ref": "#/components/schemas/AudioRuntimeResponseModel"},
+          "ready": {"type": "boolean"},
+          "problems": {
+            "items": {"$ref": "#/components/schemas/RuntimeProblemResponseModel"},
+            "type": "array"
+          }
+        },
+        "additionalProperties": false,
+        "type": "object",
+        "required": ["python", "packages", "audio", "ready", "problems"]
+      },
+      "RuntimeToolResponseModel": {
+        "properties": {
+          "available": {"type": "boolean"},
+          "path": {"anyOf": [{"type": "string"}, {"type": "null"}]}
+        },
+        "additionalProperties": false,
+        "type": "object",
+        "required": ["available", "path"]
+      },
+      "SetupOriginsResponseModel": {
+        "properties": {
+          "explicit": {"items": {"type": "string"}, "type": "array"},
+          "project": {"items": {"type": "string"}, "type": "array"},
+          "derived": {"items": {"type": "string"}, "type": "array"}
+        },
+        "additionalProperties": false,
+        "type": "object",
+        "required": ["explicit", "project", "derived"]
+      },
+      "SetupResolutionResponseModel": {
+        "properties": {
+          "project": {"type": "string"},
+          "configuration_variant": {"anyOf": [{"type": "string"}, {"type": "null"}]},
+          "reused_setup": {"type": "boolean"},
+          "inspection": {"$ref": "#/components/schemas/BookInspectionResponseModel"},
+          "request": {"$ref": "#/components/schemas/AudiobookRequestModel"},
+          "origins": {"$ref": "#/components/schemas/SetupOriginsResponseModel"}
+        },
+        "additionalProperties": false,
+        "type": "object",
+        "required": [
+          "project",
+          "configuration_variant",
+          "reused_setup",
+          "inspection",
+          "request",
+          "origins"
+        ]
+      },
+      "SourceImportResponseModel": {
+        "properties": {
+          "source_id": {"type": "string"},
+          "path": {"type": "string"},
+          "managed": {"type": "boolean"},
+          "temporary": {"type": "boolean"},
+          "retention_days": {"type": "integer"},
+          "claimed": {"type": "boolean"},
+          "created_at": {"type": "string"},
+          "last_used_at": {"anyOf": [{"type": "string"}, {"type": "null"}]},
+          "inspection": {"$ref": "#/components/schemas/BookInspectionResponseModel"}
+        },
+        "additionalProperties": false,
+        "type": "object",
+        "required": [
+          "source_id",
+          "path",
+          "managed",
+          "temporary",
+          "retention_days",
+          "claimed",
+          "created_at",
+          "last_used_at",
+          "inspection"
+        ]
+      },
+      "SourceImportStatusResponseModel": {
+        "properties": {
+          "source_id": {"type": "string"},
+          "path": {"type": "string"},
+          "managed": {"type": "boolean"},
+          "temporary": {"type": "boolean"},
+          "retention_days": {"type": "integer"},
+          "claimed": {"type": "boolean"},
+          "created_at": {"type": "string"},
+          "last_used_at": {"anyOf": [{"type": "string"}, {"type": "null"}]}
+        },
+        "additionalProperties": false,
+        "type": "object",
+        "required": [
+          "source_id",
+          "path",
+          "managed",
+          "temporary",
+          "retention_days",
+          "claimed",
+          "created_at",
+          "last_used_at"
+        ]
+      },
+      "SourceInspectRequest": {
+        "properties": {"path": {"type": "string"}},
+        "additionalProperties": false,
+        "type": "object",
+        "required": ["path"]
+      },
+      "SpacyEnsureRequest": {
+        "properties": {
+          "language": {"type": "string"},
+          "tier": {"type": "string", "enum": ["sm", "md", "lg", "trf"]},
+          "offline": {"type": "boolean", "default": false}
+        },
+        "additionalProperties": false,
+        "type": "object",
+        "required": ["language", "tier"]
+      },
+      "SpacyModelResponseModel": {
+        "properties": {
+          "language": {"type": "string"},
+          "tier": {"type": "string"},
+          "model": {"type": "string"},
+          "installed": {"type": "boolean"},
+          "spacy_version": {"anyOf": [{"type": "string"}, {"type": "null"}]},
+          "model_version": {"anyOf": [{"type": "string"}, {"type": "null"}]}
+        },
+        "additionalProperties": false,
+        "type": "object",
+        "required": [
+          "language",
+          "tier",
+          "model",
+          "installed",
+          "spacy_version",
+          "model_version"
+        ]
+      },
+      "SpeechProfileChoiceResponseModel": {
+        "properties": {"path": {"type": "string"}, "name": {"type": "string"}},
+        "additionalProperties": false,
+        "type": "object",
+        "required": ["path", "name"]
+      },
+      "SpeechProfileInspectRequest": {
+        "properties": {"path": {"type": "string"}},
+        "additionalProperties": false,
+        "type": "object",
+        "required": ["path"]
+      },
+      "SpeechProfileInspectResponseModel": {
+        "properties": {"path": {"type": "string"}, "valid": {"type": "boolean"}},
+        "additionalProperties": false,
+        "type": "object",
+        "required": ["path", "valid"]
+      },
+      "SpeechProfilesResponseModel": {
+        "properties": {
+          "directory": {"type": "string"},
+          "profiles": {
+            "items": {"$ref": "#/components/schemas/SpeechProfileChoiceResponseModel"},
+            "type": "array"
+          }
+        },
+        "additionalProperties": false,
+        "type": "object",
+        "required": ["directory", "profiles"]
+      },
+      "SystemResponseModel": {
+        "properties": {
+          "api_version": {"type": "integer"},
+          "ttsforge_version": {"anyOf": [{"type": "string"}, {"type": "null"}]},
+          "python_version": {"type": "string"},
+          "capabilities": {
+            "additionalProperties": {"type": "boolean"},
+            "type": "object"
+          }
+        },
+        "additionalProperties": false,
+        "type": "object",
+        "required": [
+          "api_version",
+          "ttsforge_version",
+          "python_version",
+          "capabilities"
+        ]
+      },
+      "TargetChoiceResponseModel": {
+        "properties": {
+          "id": {"type": "string"},
+          "languages": {"items": {"type": "string"}, "type": "array"},
+          "status": {"type": "string"},
+          "runtime_available": {"type": "boolean"},
+          "default_voice": {"anyOf": [{"type": "string"}, {"type": "null"}]},
+          "voice_count": {"type": "integer"},
+          "qualities": {"items": {"type": "string"}, "type": "array"},
+          "voice_mode": {"anyOf": [{"type": "string"}, {"type": "null"}]},
+          "sample_rate": {"anyOf": [{"type": "integer"}, {"type": "null"}]},
+          "features": {"items": {"type": "string"}, "type": "array"},
+          "reference_only": {"type": "boolean"}
+        },
+        "additionalProperties": false,
+        "type": "object",
+        "required": [
+          "id",
+          "languages",
+          "status",
+          "runtime_available",
+          "default_voice",
+          "voice_count",
+          "qualities",
+          "voice_mode",
+          "sample_rate",
+          "features",
+          "reference_only"
+        ]
+      },
+      "VoiceChoiceResponseModel": {
+        "properties": {
+          "id": {"type": "string"},
+          "language": {"anyOf": [{"type": "string"}, {"type": "null"}]},
+          "locale": {"anyOf": [{"type": "string"}, {"type": "null"}]},
+          "language_label": {"anyOf": [{"type": "string"}, {"type": "null"}]},
+          "gender": {"type": "string"},
+          "default": {"type": "boolean"},
+          "runtime_available": {"type": "boolean"}
+        },
+        "additionalProperties": false,
+        "type": "object",
+        "required": [
+          "id",
+          "language",
+          "locale",
+          "language_label",
+          "gender",
+          "default",
+          "runtime_available"
+        ]
+      },
+      "WorkflowPlanResponseModel": {
+        "properties": {
+          "source": {"type": "string"},
+          "workspace": {"anyOf": [{"type": "string"}, {"type": "null"}]},
+          "workspace_mode": {"type": "string"},
+          "output": {"anyOf": [{"type": "string"}, {"type": "null"}]},
+          "steps": {
+            "items": {"$ref": "#/components/schemas/WorkflowStepResponseModel"},
+            "type": "array"
+          },
+          "warnings": {"items": {"type": "string"}, "type": "array"},
+          "variant": {"anyOf": [{"type": "string"}, {"type": "null"}]}
+        },
+        "additionalProperties": false,
+        "type": "object",
+        "required": [
+          "source",
+          "workspace",
+          "workspace_mode",
+          "output",
+          "steps",
+          "warnings",
+          "variant"
+        ]
+      },
+      "WorkflowStepResponseModel": {
+        "properties": {
+          "stage": {"type": "string"},
+          "package": {"type": "string"},
+          "action": {"type": "string"},
+          "selector": {"anyOf": [{"type": "string"}, {"type": "null"}]},
+          "reason": {"type": "string"},
+          "state": {"type": "string"}
+        },
+        "additionalProperties": false,
+        "type": "object",
+        "required": ["stage", "package", "action", "selector", "reason", "state"]
+      }
+    },
+    "securitySchemes": {"HTTPBearer": {"type": "http", "scheme": "bearer"}}
+  }
+}

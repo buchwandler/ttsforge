@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import importlib.metadata
+import json
 import logging
 import os
 import platform
@@ -12,7 +13,7 @@ import sys
 import uuid
 from collections.abc import AsyncIterator, Callable, Sequence
 from contextlib import AbstractAsyncContextManager, asynccontextmanager
-from dataclasses import dataclass
+from dataclasses import dataclass, replace
 from datetime import datetime, timedelta, timezone
 from pathlib import Path, PurePosixPath
 from typing import Annotated
@@ -27,9 +28,11 @@ from fastapi import (
     Request,
     UploadFile,
 )
+from fastapi.exceptions import RequestValidationError
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import JSONResponse
 from starlette.concurrency import run_in_threadpool
+from starlette.exceptions import HTTPException as StarletteHTTPException
 from starlette.middleware.base import (
     BaseHTTPMiddleware,
     RequestResponseEndpoint,
@@ -39,6 +42,7 @@ from starlette.types import ASGIApp
 
 from ..application import (
     AudiobookApplicationService,
+    AudiobookRequest,
     BlockedWorkflowError,
     CatalogApplicationService,
     CatalogSelectionError,
@@ -50,14 +54,45 @@ from ..application import (
     error_view,
     json_value,
 )
+from ..application.speech_profiles import (
+    discover_speech_replacement_profiles,
+    is_speech_replacement_profile,
+)
 from .auth import require_bearer_token
-from .jobs import JobManager, JobRecord
+from .jobs import JobManager, JobRecord, JobState
 from .models import (
+    ApiErrorResponseModel,
+    BookInspectionResponseModel,
+    DeleteSourceImportResponseModel,
+    EngineChoiceResponseModel,
+    EngineOptionResponseModel,
+    HealthResponseModel,
+    JobCreateResponseModel,
+    JobEventsPageResponseModel,
+    JobListResponseModel,
+    JobStateLiteral,
+    JobStatusResponseModel,
     JobSubmissionModel,
+    PreflightResponseModel,
+    ProjectInfoResponseModel,
+    ProjectSetupResponseModel,
+    ProjectVariantResponseModel,
+    RuntimeStatusResponseModel,
+    SetupResolutionResponseModel,
+    SourceImportResponseModel,
+    SourceImportStatusResponseModel,
     SourceInspectRequest,
     SpacyEnsureRequest,
+    SpacyModelResponseModel,
+    SpeechProfileInspectRequest,
+    SpeechProfileInspectResponseModel,
+    SpeechProfilesResponseModel,
+    SystemResponseModel,
+    TargetChoiceResponseModel,
+    VoiceChoiceResponseModel,
+    WorkflowPlanResponseModel,
 )
-from .requests import application_overrides, application_request
+from .requests import application_overrides, application_request, request_path
 
 _LOG = logging.getLogger(__name__)
 _API_VERSION = 1
@@ -85,15 +120,7 @@ class OriginPolicyMiddleware(BaseHTTPMiddleware):
     ) -> Response:
         origin = request.headers.get("origin")
         if origin and not self._allowed(request, origin):
-            return JSONResponse(
-                status_code=403,
-                content={
-                    "error": {
-                        "type": "OriginDeniedError",
-                        "message": "Origin is not allowed.",
-                    }
-                },
-            )
+            return _http_error_response(403)
         return await call_next(request)
 
     def _allowed(self, request: Request, origin: str) -> bool:
@@ -159,7 +186,7 @@ def create_app(  # noqa: C901
     app.add_middleware(
         CORSMiddleware,
         allow_origins=list(origins),
-        allow_methods=["GET", "POST"],
+        allow_methods=["GET", "POST", "DELETE"],
         allow_headers=["Authorization", "Content-Type"],
         allow_credentials=False,
     )
@@ -178,6 +205,34 @@ def create_app(  # noqa: C901
             status_code=500,
             content={"error": json_value(error_view(error))},
         )
+
+    @app.exception_handler(RequestValidationError)
+    async def handle_request_validation_error(
+        request: Request, error: RequestValidationError
+    ) -> JSONResponse:
+        del request
+        issues = [
+            {
+                "location": list(issue.get("loc", ())),
+                "type": issue.get("type", "validation_error"),
+                "message": issue.get("msg", "Invalid value."),
+            }
+            for issue in error.errors()
+        ]
+        return _api_error_response(
+            status=400,
+            error_type="RequestValidationError",
+            message="The request is invalid.",
+            code="invalid_request",
+            details={"issues": issues},
+        )
+
+    @app.exception_handler(StarletteHTTPException)
+    async def handle_http_error(
+        request: Request, error: StarletteHTTPException
+    ) -> JSONResponse:
+        del request
+        return _http_error_response(error.status_code)
 
     @app.exception_handler(InputValidationError)
     @app.exception_handler(CatalogSelectionError)
@@ -209,28 +264,51 @@ def create_app(  # noqa: C901
         )
         return _error_response(error, status)
 
-    @app.get("/api/v1/health")
+    @app.get("/api/v1/health", response_model=HealthResponseModel)
     async def health() -> dict[str, bool]:
         return {"ok": True}
 
-    router = APIRouter(prefix="/api/v1", dependencies=[Depends(require_bearer_token)])
+    router = APIRouter(
+        prefix="/api/v1",
+        dependencies=[Depends(require_bearer_token)],
+        responses={
+            400: {"model": ApiErrorResponseModel},
+            401: {"model": ApiErrorResponseModel},
+            403: {"model": ApiErrorResponseModel},
+            404: {"model": ApiErrorResponseModel},
+            409: {"model": ApiErrorResponseModel},
+            413: {"model": ApiErrorResponseModel},
+            422: {"model": ApiErrorResponseModel},
+            503: {"model": ApiErrorResponseModel},
+        },
+    )
 
-    @router.get("/system")
+    @router.get("/system", response_model=SystemResponseModel)
     def system() -> dict[str, object]:
         return {
             "api_version": _API_VERSION,
             "ttsforge_version": _distribution_version("ttsforge"),
             "python_version": platform.python_version(),
-            "capabilities": {"jobs": True, "cancel": True, "source_upload": True},
+            "capabilities": {
+                "jobs": True,
+                "job_events": True,
+                "cancel": True,
+                "source_upload": True,
+                "setup_resolve": True,
+                "preflight": True,
+                "project_setup": True,
+                "spacy_ensure": True,
+                "speech_profiles": True,
+            },
         }
 
-    @router.get("/system/runtime")
+    @router.get("/system/runtime", response_model=RuntimeStatusResponseModel)
     def system_runtime() -> dict[str, object]:
         return runtime_status()
 
-    @router.post("/sources/inspect")
+    @router.post("/sources/inspect", response_model=BookInspectionResponseModel)
     def inspect_source(body: SourceInspectRequest) -> object:
-        path = Path(body.path).expanduser()
+        path = request_path(body.path)
         if not path.is_file() or not os.access(path, os.R_OK):
             raise InputValidationError(f"Source must be a readable file: {path}.")
         inspection = app_services.audiobook.inspect_book(path)
@@ -238,20 +316,86 @@ def create_app(  # noqa: C901
             raise InputValidationError("Source is not a supported audiobook book.")
         return json_value(inspection)
 
-    @router.post("/sources/import")
+    @router.post("/sources/import", response_model=SourceImportResponseModel)
     async def import_source(file: Annotated[UploadFile, File()]) -> dict[str, object]:
         return await _import_source(
             file,
             app_services,
             imports_dir,
             max_upload_bytes=max_upload_bytes,
+            retention_days=import_retention_days,
         )
 
-    @router.get("/catalog/engines")
+    @router.get(
+        "/sources/imports/{source_id}", response_model=SourceImportStatusResponseModel
+    )
+    def source_import_status(source_id: str) -> dict[str, object]:
+        record = _source_import_record(source_id, imports_dir)
+        if record is None:
+            raise HTTPException(status_code=404, detail="Imported source not found.")
+        directory, metadata = record
+        return _source_import_view(directory, metadata, import_retention_days)
+
+    @router.delete(
+        "/sources/imports/{source_id}", response_model=DeleteSourceImportResponseModel
+    )
+    def delete_source_import(source_id: str) -> dict[str, object]:
+        record = _source_import_record(source_id, imports_dir)
+        if record is None:
+            raise HTTPException(status_code=404, detail="Imported source not found.")
+        directory, _ = record
+        shutil.rmtree(directory)
+        return {"source_id": source_id, "deleted": True}
+
+    @router.post("/setup/resolve", response_model=SetupResolutionResponseModel)
+    def resolve_setup(body: JobSubmissionModel) -> dict[str, object]:
+        request = _request_for_import(
+            application_request(body.request), imports_dir, state
+        )
+        overrides = application_overrides(body.explicit_fields)
+        preparation = app_services.audiobook.prepare_setup(
+            request, overrides, interactive=False
+        )
+        origins = preparation.origins
+        return {
+            "project": str(preparation.paths.root),
+            "configuration_variant": preparation.paths.variant_key,
+            "reused_setup": preparation.reused,
+            "inspection": json_value(preparation.inspection),
+            "request": json_value(preparation.request),
+            "origins": {
+                "explicit": sorted(origins.explicit),
+                "project": sorted(origins.project),
+                "derived": sorted(origins.derived),
+            },
+        }
+
+    @router.post("/conversions/preflight", response_model=PreflightResponseModel)
+    def conversion_preflight(body: JobSubmissionModel) -> dict[str, object]:
+        request = _request_for_import(
+            application_request(body.request),
+            imports_dir,
+            state,
+            claim=True,
+            create_output_parent=True,
+        )
+        overrides = application_overrides(body.explicit_fields)
+        prepared = app_services.conversion.prepare(request, overrides)
+        setup = prepared.resolved.preparation
+        return {
+            "project": str(setup.paths.root),
+            "configuration_variant": setup.paths.variant_key,
+            "reused_setup": setup.reused,
+            "spacy_model": json_value(prepared.spacy_model),
+            "request": json_value(prepared.resolved.request),
+            "workflow": json_value(prepared.preflight.workflow),
+        }
+
+    @router.get("/catalog/engines", response_model=list[EngineChoiceResponseModel])
     def engines() -> object:
         return json_value(app_services.catalog.engines())
 
-    @router.get("/catalog/targets")
+    @router.get("/catalog/targets", response_model=list[TargetChoiceResponseModel])
     def targets(
         engine: str,
         language: str | None = None,
@@ -267,7 +411,7 @@ def create_app(  # noqa: C901
             )
         )
 
-    @router.get("/catalog/voices")
+    @router.get("/catalog/voices", response_model=list[VoiceChoiceResponseModel])
     def voices(
         engine: str,
         target: str,
@@ -297,15 +441,17 @@ def create_app(  # noqa: C901
             )
         )
 
-    @router.get("/catalog/engine-options")
+    @router.get(
+        "/catalog/engine-options", response_model=list[EngineOptionResponseModel]
+    )
     def engine_options(engine: str, target: str | None = None) -> object:
         return json_value(app_services.catalog.engine_options(engine, target=target))
 
-    @router.get("/resources/spacy")
+    @router.get("/resources/spacy", response_model=list[SpacyModelResponseModel])
     def spacy_models(language: str) -> object:
         return json_value(app_services.catalog.spacy_models(language))
 
-    @router.post("/resources/spacy/ensure")
+    @router.post("/resources/spacy/ensure", response_model=SpacyModelResponseModel)
     def ensure_spacy_model(body: SpacyEnsureRequest) -> object:
         return json_value(
             app_services.catalog.ensure_spacy_model(
@@ -313,40 +459,114 @@ def create_app(  # noqa: C901
             )
         )
 
-    @router.get("/projects/status")
+    @router.get(
+        "/resources/speech-profiles", response_model=SpeechProfilesResponseModel
+    )
+    def speech_profiles(directory: str) -> dict[str, object]:
+        path = request_path(directory)
+        profiles = discover_speech_replacement_profiles(path)
+        return {
+            "directory": str(path),
+            "profiles": [
+                {"path": str(profile), "name": profile.name} for profile in profiles
+            ],
+        }
+
+    @router.post(
+        "/resources/speech-profiles/inspect",
+        response_model=SpeechProfileInspectResponseModel,
+    )
+    def inspect_speech_profile(
+        body: SpeechProfileInspectRequest,
+    ) -> dict[str, object]:
+        path = request_path(body.path)
+        return {"path": str(path), "valid": is_speech_replacement_profile(path)}
+
+    @router.get("/projects/status", response_model=WorkflowPlanResponseModel)
     def project_status(project: str) -> object:
         return json_value(
-            app_services.audiobook.status(ProjectPaths.for_root(Path(project)))
+            app_services.audiobook.status(ProjectPaths.for_root(request_path(project)))
         )
 
-    @router.get("/projects/variants")
+    @router.get("/projects/variants", response_model=list[ProjectVariantResponseModel])
     def project_variants(project: str, source: str | None = None) -> object:
         return json_value(
             app_services.audiobook.list_variants(
-                ProjectPaths.for_root(Path(project)),
-                source=Path(source) if source is not None else None,
+                ProjectPaths.for_root(request_path(project)),
+                source=request_path(source) if source is not None else None,
             )
         )
 
-    @router.post("/jobs", status_code=202)
+    @router.get("/projects/setup", response_model=ProjectSetupResponseModel)
+    def project_setup(project: str, variant: str | None = None) -> dict[str, object]:
+        paths = _project_paths(project, variant)
+        saved = app_services.audiobook.load_saved_setup(paths)
+        return {
+            "project": str(paths.root),
+            "variant": variant,
+            "saved_setup": json_value(saved),
+        }
+
+    @router.get("/projects/info", response_model=ProjectInfoResponseModel)
+    def project_info(project: str) -> dict[str, object]:
+        paths = _project_paths(project)
+        saved = app_services.audiobook.load_saved_setup(paths)
+        workflow = app_services.audiobook.status(paths) if saved is not None else None
+        variants = app_services.audiobook.list_variants(
+            paths, source=saved.source if saved is not None else None
+        )
+        return {
+            "project": str(paths.root),
+            "saved_setup": json_value(saved),
+            "workflow": json_value(workflow),
+            "variants": json_value(variants),
+        }
+
+    @router.post("/jobs", status_code=202, response_model=JobCreateResponseModel)
     def create_job(body: JobSubmissionModel) -> dict[str, str]:
-        request = application_request(body.request)
+        request = _request_for_import(
+            application_request(body.request),
+            imports_dir,
+            state,
+            claim=True,
+            create_output_parent=True,
+        )
         overrides = application_overrides(body.explicit_fields)
         record = jobs.submit(request, overrides)
         return {"id": record.id, "state": record.state.value}
 
-    @router.get("/jobs/{job_id}")
+    @router.get("/jobs", response_model=JobListResponseModel)
+    def list_jobs(
+        state: JobStateLiteral | None = None,
+        limit: Annotated[int, Query(ge=1, le=100)] = 50,
+        before: str | None = None,
+    ) -> dict[str, object]:
+        try:
+            records = jobs.list_jobs(
+                state=JobState(state) if state is not None else None,
+                limit=limit,
+                before=before,
+            )
+        except KeyError:
+            raise HTTPException(
+                status_code=404, detail="Job cursor not found."
+            ) from None
+        return {"jobs": [_job_summary_view(record) for record in records]}
+
+    @router.get("/jobs/{job_id}", response_model=JobStatusResponseModel)
     def job_status(job_id: str) -> dict[str, object]:
         return _job_status_view(_get_job_record(jobs, job_id))
 
-    @router.get("/jobs/{job_id}/events")
+    @router.get("/jobs/{job_id}/events", response_model=JobEventsPageResponseModel)
     def job_events(
         job_id: str,
         after: Annotated[int, Query(ge=0)] = 0,
     ) -> dict[str, object]:
         page = jobs.events(job_id, after=after)
         return {
+            "first": page.first,
             "next": page.next,
+            "truncated": page.truncated,
             "events": [
                 {
                     "seq": event.sequence,
@@ -357,7 +577,7 @@ def create_app(  # noqa: C901
             ],
         }
 
-    @router.post("/jobs/{job_id}/cancel")
+    @router.post("/jobs/{job_id}/cancel", response_model=JobStatusResponseModel)
     def cancel_job(job_id: str) -> dict[str, object]:
         try:
             record = jobs.cancel(job_id)
@@ -367,6 +587,15 @@ def create_app(  # noqa: C901
 
     app.include_router(router)
     return app
+
+
+def _project_paths(project: str, variant: str | None = None) -> ProjectPaths:
+    root = request_path(project)
+    if variant is None:
+        return ProjectPaths.for_root(root)
+    if variant in {"", ".", ".."} or "/" in variant or "\\" in variant:
+        raise InputValidationError("Variant must be a single project variant key.")
+    return ProjectPaths.for_variant(root, variant)
 
 
 def _application_services() -> ApplicationServices:
@@ -387,7 +616,7 @@ def _get_job_record(job_manager: JobManager, job_id: str) -> JobRecord:
         raise HTTPException(status_code=404, detail="Job not found.") from None
 
 
-def _job_status_view(record: JobRecord) -> dict[str, object]:
+def _job_summary_view(record: JobRecord) -> dict[str, object]:
     return {
         "id": record.id,
         "state": record.state.value,
@@ -400,17 +629,82 @@ def _job_status_view(record: JobRecord) -> dict[str, object]:
         ),
         "project": str(record.project) if record.project is not None else None,
         "output": str(record.output) if record.output is not None else None,
-        "progress": json_value(record.progress),
-        "result": json_value(record.result),
-        "error": json_value(record.error),
         "event_sequence": record.event_sequence,
     }
 
 
-def _error_response(error: Exception, status: int) -> JSONResponse:
+def _job_status_view(record: JobRecord) -> dict[str, object]:
+    return {
+        **_job_summary_view(record),
+        "progress": json_value(record.progress),
+        "result": json_value(record.result),
+        "error": json_value(record.error),
+    }
+
+
+def _api_error_response(
+    *,
+    status: int,
+    error_type: str,
+    message: str,
+    code: str,
+    details: dict[str, object] | None = None,
+    headers: dict[str, str] | None = None,
+) -> JSONResponse:
     return JSONResponse(
-        status_code=status, content={"error": json_value(error_view(error))}
+        status_code=status,
+        headers=headers,
+        content={
+            "error": {
+                "type": error_type,
+                "message": message,
+                "category": "request",
+                "code": code,
+                "stage": None,
+                "package": None,
+                "selector": None,
+                "details": details or {},
+            }
+        },
     )
+
+
+def _http_error_response(status: int) -> JSONResponse:
+    errors = {
+        401: (
+            "AuthenticationError",
+            "A valid bearer token is required.",
+            "unauthorized",
+        ),
+        403: ("OriginDeniedError", "Origin is not allowed.", "origin_denied"),
+        404: ("NotFoundError", "The requested resource was not found.", "not_found"),
+        413: (
+            "UploadTooLargeError",
+            "Uploaded source exceeds the size limit.",
+            "upload_too_large",
+        ),
+    }
+    error_type, message, code = errors.get(
+        status, ("HttpError", "The request could not be completed.", f"http_{status}")
+    )
+    headers = {"WWW-Authenticate": "Bearer"} if status == 401 else None
+    return _api_error_response(
+        status=status,
+        error_type=error_type,
+        message=message,
+        code=code,
+        details={"status_code": status} if status not in errors else {},
+        headers=headers,
+    )
+
+
+def _error_response(error: Exception, status: int) -> JSONResponse:
+    error_data = error_view(error).to_dict()
+    if error_data["category"] is None:
+        error_data["category"] = "request"
+    if error_data["code"] is None and status == 400:
+        error_data["code"] = "invalid_request"
+    return JSONResponse(status_code=status, content={"error": error_data})
 
 
 def _distribution_version(name: str) -> str | None:
@@ -422,16 +716,41 @@ def _distribution_version(name: str) -> str | None:
 
 def runtime_status() -> dict[str, object]:
     audioexport_version = _distribution_version("audioexport")
+    packages = {
+        "ttsforge": _distribution_version("ttsforge"),
+        "readio": _distribution_version("readio"),
+    }
     tools: dict[str, object] = {}
+    problems: list[dict[str, str]] = []
     for name in ("ffmpeg", "ffprobe"):
         path = shutil.which(name)
         tools[name] = {"available": path is not None, "path": path}
+        if path is None:
+            problems.append(
+                {
+                    "code": f"{name}_missing",
+                    "message": f"{name} is not installed or not on PATH.",
+                }
+            )
+
+    if audioexport_version is None:
+        problems.append(
+            {
+                "code": "audioexport_missing",
+                "message": "The audioexport package is not installed.",
+            }
+        )
+    if packages["readio"] is None:
+        problems.append(
+            {
+                "code": "readio_missing",
+                "message": "The Readio package is not installed.",
+            }
+        )
+
     return {
         "python": {"version": platform.python_version(), "executable": sys.executable},
-        "packages": {
-            "ttsforge": _distribution_version("ttsforge"),
-            "readio": _distribution_version("readio"),
-        },
+        "packages": packages,
         "audio": {
             "audioexport": {
                 "available": audioexport_version is not None,
@@ -439,6 +758,8 @@ def runtime_status() -> dict[str, object]:
             },
             **tools,
         },
+        "ready": not problems,
+        "problems": problems,
     }
 
 
@@ -449,9 +770,173 @@ def cleanup_imports(
     for directory in imports_dir.iterdir():
         if directory.is_symlink() or not directory.is_dir():
             continue
-        modified = datetime.fromtimestamp(directory.stat().st_mtime, timezone.utc)
-        if modified < cutoff:
+        metadata = _read_source_metadata(directory)
+        if metadata is None or metadata["claimed"] is True:
+            continue
+        created_at = _metadata_created_at(metadata)
+        if created_at is not None and created_at < cutoff:
             shutil.rmtree(directory)
+
+
+def _read_source_metadata(directory: Path) -> dict[str, object] | None:
+    try:
+        metadata = json.loads((directory / "source.json").read_text(encoding="utf-8"))
+    except (OSError, json.JSONDecodeError):
+        return None
+    if not isinstance(metadata, dict):
+        return None
+    if metadata.get("source_id") != directory.name:
+        return None
+    if not isinstance(metadata.get("filename"), str):
+        return None
+    if not isinstance(metadata.get("created_at"), str):
+        return None
+    if not isinstance(metadata.get("claimed"), bool):
+        return None
+    if metadata.get("last_used_at") is not None and not isinstance(
+        metadata.get("last_used_at"), str
+    ):
+        return None
+    return metadata
+
+
+def _metadata_created_at(metadata: dict[str, object]) -> datetime | None:
+    value = metadata.get("created_at")
+    if not isinstance(value, str):
+        return None
+    try:
+        created_at = datetime.fromisoformat(value)
+    except ValueError:
+        return None
+    if created_at.tzinfo is None:
+        return None
+    return created_at.astimezone(timezone.utc)
+
+
+def _write_source_metadata(directory: Path, metadata: dict[str, object]) -> None:
+    path = directory / "source.json"
+    temporary = directory / f".source.{uuid.uuid4().hex}.tmp"
+    temporary.write_text(
+        json.dumps(metadata, ensure_ascii=False, separators=(",", ":")) + "\n",
+        encoding="utf-8",
+    )
+    temporary.replace(path)
+
+
+def _source_import_directory(source: Path, imports_dir: Path) -> Path | None:
+    try:
+        parts = source.resolve().relative_to(imports_dir.resolve()).parts
+    except (OSError, ValueError):
+        return None
+    if len(parts) != 2:
+        return None
+    source_id, filename = parts
+    try:
+        if str(uuid.UUID(source_id)) != source_id:
+            return None
+    except ValueError:
+        return None
+    directory = imports_dir / source_id
+    if directory.is_symlink() or not directory.is_dir():
+        return None
+    metadata_path = directory / "source.json"
+    if metadata_path.exists():
+        metadata = _read_source_metadata(directory)
+        if metadata is None or metadata["filename"] != filename:
+            return None
+    return directory
+
+
+def _claim_source_import(source: Path, imports_dir: Path) -> None:
+    directory = _source_import_directory(source, imports_dir)
+    if directory is None:
+        return
+    metadata_path = directory / "source.json"
+    metadata = _read_source_metadata(directory)
+    if metadata is None:
+        if metadata_path.exists():
+            return
+        now = datetime.now(timezone.utc).isoformat()
+        metadata = {
+            "source_id": directory.name,
+            "filename": source.name,
+            "created_at": now,
+            "claimed": False,
+            "last_used_at": None,
+        }
+    elif metadata["filename"] != source.name:
+        return
+    metadata["claimed"] = True
+    metadata["last_used_at"] = datetime.now(timezone.utc).isoformat()
+    _write_source_metadata(directory, metadata)
+
+
+def _source_import_record(
+    source_id: str, imports_dir: Path
+) -> tuple[Path, dict[str, object]] | None:
+    try:
+        if str(uuid.UUID(source_id)) != source_id:
+            return None
+    except ValueError:
+        return None
+    directory = imports_dir / source_id
+    if directory.is_symlink() or not directory.is_dir():
+        return None
+    metadata = _read_source_metadata(directory)
+    if metadata is None:
+        return None
+    filename = metadata["filename"]
+    if not isinstance(filename, str) or not filename or "\\" in filename:
+        return None
+    if PurePosixPath(filename).name != filename:
+        return None
+    if _metadata_created_at(metadata) is None:
+        return None
+    return directory, metadata
+
+
+def _source_import_view(
+    directory: Path, metadata: dict[str, object], retention_days: int
+) -> dict[str, object]:
+    claimed = bool(metadata["claimed"])
+    return {
+        "source_id": metadata["source_id"],
+        "path": str(directory / str(metadata["filename"])),
+        "managed": True,
+        "temporary": not claimed,
+        "retention_days": retention_days,
+        "claimed": claimed,
+        "created_at": metadata["created_at"],
+        "last_used_at": metadata["last_used_at"],
+    }
+
+
+def _request_for_import(
+    request: AudiobookRequest,
+    imports_dir: Path,
+    state_dir: Path,
+    *,
+    claim: bool = False,
+    create_output_parent: bool = False,
+) -> AudiobookRequest:
+    directory = _source_import_directory(request.source, imports_dir)
+    if directory is None:
+        return request
+    source_id = directory.name
+    default_output = request.output is None
+    output = request.output or (
+        state_dir / "outputs" / source_id / request.source.with_suffix(".m4b").name
+    )
+    selected = replace(
+        request,
+        project=request.project or state_dir / "projects" / source_id,
+        output=output,
+    )
+    if claim:
+        _claim_source_import(request.source, imports_dir)
+    if create_output_parent and default_output:
+        output.parent.mkdir(parents=True, exist_ok=True)
+    return selected
 
 
 async def _import_source(
@@ -460,12 +945,22 @@ async def _import_source(
     imports_dir: Path,
     *,
     max_upload_bytes: int,
+    retention_days: int,
 ) -> dict[str, object]:
     source_id = str(uuid.uuid4())
     directory = imports_dir / source_id
     directory.mkdir(mode=0o700)
     filename = _safe_filename(upload.filename)
     path = directory / filename
+    created_at = datetime.now(timezone.utc).isoformat()
+    metadata: dict[str, object] = {
+        "source_id": source_id,
+        "filename": filename,
+        "created_at": created_at,
+        "claimed": False,
+        "last_used_at": None,
+    }
+    _write_source_metadata(directory, metadata)
     size = 0
     try:
         with path.open("xb") as target:
@@ -483,8 +978,7 @@ async def _import_source(
                 "Uploaded source is not a supported audiobook book."
             )
         return {
-            "source_id": source_id,
-            "path": str(path),
+            **_source_import_view(directory, metadata, retention_days),
             "inspection": json_value(inspection),
         }
     except Exception:

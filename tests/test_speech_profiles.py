@@ -3,7 +3,7 @@ from __future__ import annotations
 from collections.abc import Iterator
 from pathlib import Path
 
-from ttsforge.cli.speech_profiles import (
+from ttsforge.application.speech_profiles import (
     discover_speech_replacement_profiles,
     is_speech_replacement_profile,
 )
@@ -68,7 +68,8 @@ def test_discover_speech_profiles_sorts_case_insensitively_with_stable_ties(
 
     monkeypatch.setattr(Path, "iterdir", iterdir)
     monkeypatch.setattr(
-        "ttsforge.cli.speech_profiles.is_speech_replacement_profile", lambda _: True
+        "ttsforge.application.speech_profiles.is_speech_replacement_profile",
+        lambda _: True,
     )
 
     assert discover_speech_replacement_profiles(tmp_path) == (

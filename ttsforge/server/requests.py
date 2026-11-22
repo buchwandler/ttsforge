@@ -11,7 +11,7 @@ from .models import AudiobookRequestModel
 
 def application_request(model: AudiobookRequestModel) -> AudiobookRequest:
     return AudiobookRequest(
-        source=Path(model.source).expanduser(),
+        source=request_path(model.source),
         project=_path(model.project),
         chapters=model.chapters,
         output=_path(model.output),
@@ -50,5 +50,9 @@ def application_overrides(explicit_fields: list[str]) -> InputOverrides:
     return InputOverrides(frozenset(explicit_fields))
 
 
+def request_path(value: str) -> Path:
+    return Path(value).expanduser()
+
+
 def _path(value: str | None) -> Path | None:
-    return Path(value).expanduser() if value is not None else None
+    return request_path(value) if value is not None else None

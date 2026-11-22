@@ -46,9 +46,17 @@ def _request(tmp_path: Path) -> AudiobookRequest:
     return AudiobookRequest(source=tmp_path / "book.epub")
 
 
-def _manager(worker_script: str, *, event_history_limit: int = 1000) -> JobManager:
+def _manager(
+    worker_script: str,
+    *,
+    event_history_limit: int = 1000,
+    max_terminal_jobs: int = 100,
+    max_active_jobs: int = 1,
+) -> JobManager:
     return JobManager(
         event_history_limit=event_history_limit,
+        max_terminal_jobs=max_terminal_jobs,
+        max_active_jobs=max_active_jobs,
         cancel_grace_seconds=0.2,
         worker_command=(sys.executable, "-u", "-c", worker_script),
     )
@@ -100,7 +108,60 @@ def test_worker_lifecycle_progress_and_bounded_event_sequence(tmp_path: Path) ->
             record.event_sequence,
         ]
         assert page.next == record.event_sequence
+        assert page.first == record.event_sequence - 2
+        assert page.truncated is True
+        assert later.first == page.first
+        assert later.truncated is False
         assert [event.sequence for event in later.events] == [record.event_sequence]
+    finally:
+        manager.shutdown()
+
+
+def test_terminal_job_retention_and_list_pagination_preserve_active_jobs(
+    tmp_path: Path,
+) -> None:
+    script = r"""
+import json, sys, time
+payload = json.loads(sys.stdin.read())
+messages = [
+    {"type": "job.state", "state": "preparing"},
+    {"type": "job.prepared", "project": "/projects/job", "output": "/out.m4b"},
+    {"type": "job.state", "state": "running"},
+]
+for message in messages:
+    print(json.dumps(message), flush=True)
+if payload["request"]["source"].endswith("active.epub"):
+    time.sleep(30)
+else:
+    print(json.dumps({"type": "job.result", "result": {
+        "output": "/out.m4b", "workspace": "/projects/job",
+        "workspace_mode": "modern", "executed_stages": [],
+        "reused_stages": [], "warnings": [], "variant": None
+    }}), flush=True)
+"""
+    manager = _manager(script, max_terminal_jobs=2, max_active_jobs=2)
+    try:
+        active = manager.submit(AudiobookRequest(source=tmp_path / "active.epub"))
+        _wait_for_state(manager, active.id, JobState.RUNNING)
+        completed = []
+        for index in range(4):
+            record = manager.submit(
+                AudiobookRequest(source=tmp_path / f"complete-{index}.epub")
+            )
+            completed.append(record.id)
+            _wait_for_state(manager, record.id, JobState.COMPLETED)
+
+        listed = manager.list_jobs(state=JobState.COMPLETED, limit=10)
+        older_page = manager.list_jobs(
+            state=JobState.COMPLETED, limit=1, before=listed[0].id
+        )
+        all_jobs = manager.list_jobs(limit=10)
+
+        assert [record.id for record in listed] == completed[-2:][::-1]
+        assert [record.id for record in older_page] == [listed[1].id]
+        assert active.id in {record.id for record in all_jobs}
+        assert len(listed) == 2
+        assert manager.get(active.id).state is JobState.RUNNING
     finally:
         manager.shutdown()
 

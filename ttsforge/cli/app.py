@@ -33,6 +33,7 @@ from ..application.models import (
     WorkflowPlanView,
 )
 from ..application.service import AudiobookApplicationService
+from ..application.speech_profiles import discover_speech_replacement_profiles
 from .catalog import (
     CatalogChoiceView,
     TargetChoiceView,
@@ -52,7 +53,6 @@ from .presenters import (
     render_workflow,
 )
 from .progress import LineReadioProgress, LiveReadioProgress, NullReadioProgress
-from .speech_profiles import discover_speech_replacement_profiles
 
 _output = Console(stderr=False, highlight=False, markup=False)
 

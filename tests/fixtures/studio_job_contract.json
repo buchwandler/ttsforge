@@ -53,6 +53,6 @@
     "error",
     "event_sequence"
   ],
-  "event_page_required_fields": ["next", "events"],
+  "event_page_required_fields": ["first", "next", "truncated", "events"],
   "event_required_fields": ["seq", "timestamp", "event"]
 }

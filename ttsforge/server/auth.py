@@ -4,7 +4,10 @@ from __future__ import annotations
 
 import hmac
 
-from fastapi import HTTPException, Request
+from fastapi import Depends, HTTPException, Request
+from fastapi.security import HTTPAuthorizationCredentials, HTTPBearer
+
+_bearer_scheme = HTTPBearer(auto_error=False)
 
 
 def valid_bearer_token(authorization: str | None, expected: str) -> bool:
@@ -19,7 +22,10 @@ def valid_bearer_token(authorization: str | None, expected: str) -> bool:
     )
 
 
-def require_bearer_token(request: Request) -> None:
+def require_bearer_token(
+    request: Request,
+    _credentials: HTTPAuthorizationCredentials | None = Depends(_bearer_scheme),
+) -> None:
     expected = request.app.state.token
     if not valid_bearer_token(request.headers.get("authorization"), expected):
         raise HTTPException(status_code=401, detail="A valid bearer token is required.")

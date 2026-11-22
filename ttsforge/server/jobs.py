@@ -53,7 +53,9 @@ class JobEventRecord:
 
 @dataclass(frozen=True, slots=True)
 class JobEventPage:
+    truncated: bool
     next: int
+    first: int
     events: tuple[JobEventRecord, ...]
 
 
@@ -105,17 +107,24 @@ class JobManager:
         *,
         max_active_jobs: int = 1,
         event_history_limit: int = 1000,
+        max_terminal_jobs: int = 100,
         cancel_grace_seconds: float = 2.0,
         debug: bool = False,
         worker_command: Sequence[str] | None = None,
     ) -> None:
-        if max_active_jobs < 1 or event_history_limit < 1 or cancel_grace_seconds < 0:
+        if (
+            max_active_jobs < 1
+            or event_history_limit < 1
+            or max_terminal_jobs < 1
+            or cancel_grace_seconds < 0
+        ):
             raise ValueError("Job manager limits must be positive.")
         if worker_command is not None and not worker_command:
             raise ValueError("Worker command cannot be empty.")
 
         self._max_active_jobs = max_active_jobs
         self._event_history_limit = event_history_limit
+        self._max_terminal_jobs = max_terminal_jobs
         self._cancel_grace_seconds = cancel_grace_seconds
         self._debug = debug
         self._worker_command = tuple(
@@ -181,6 +190,34 @@ class JobManager:
         with self._condition:
             return self._snapshot(self._require_job(job_id))
 
+    def list_jobs(
+        self,
+        *,
+        state: JobState | None = None,
+        limit: int = 50,
+        before: str | None = None,
+    ) -> tuple[JobRecord, ...]:
+        if limit < 1:
+            raise ValueError("Job list limit must be positive.")
+        with self._condition:
+            records = list(self._jobs.values())
+            if before is not None:
+                cursor_index = next(
+                    (
+                        index
+                        for index, record in enumerate(records)
+                        if record.id == before
+                    ),
+                    None,
+                )
+                if cursor_index is None:
+                    raise KeyError(f"Unknown job id: {before}") from None
+                records = records[:cursor_index]
+            records.reverse()
+            if state is not None:
+                records = [record for record in records if record.state is state]
+            return tuple(self._snapshot(record) for record in records[:limit])
+
     def events(self, job_id: str, *, after: int = 0) -> JobEventPage:
         if after < 0:
             raise ValueError("Event cursor must be non-negative.")
@@ -189,7 +226,13 @@ class JobManager:
             events = tuple(
                 item for item in record.event_history if item.sequence > after
             )
-            return JobEventPage(record.event_sequence, events)
+            first = record.event_history[0].sequence
+            return JobEventPage(
+                first=first,
+                next=record.event_sequence,
+                truncated=after < first - 1,
+                events=events,
+            )
 
     def cancel(self, job_id: str) -> JobRecord:
         process: subprocess.Popen[str] | None = None
@@ -483,6 +526,19 @@ class JobManager:
         if state in _TERMINAL_STATES:
             record.finished_at = now
         self._append_event(record, {"type": "job.state", "state": state.value})
+        if state in _TERMINAL_STATES:
+            self._prune_terminal_jobs()
+
+    def _prune_terminal_jobs(self) -> None:
+        terminal = [
+            record for record in self._jobs.values() if record.state in _TERMINAL_STATES
+        ]
+        excess = len(terminal) - self._max_terminal_jobs
+        if excess <= 0:
+            return
+        terminal.sort(key=lambda record: record.finished_at or record.created_at)
+        for record in terminal[:excess]:
+            self._jobs.pop(record.id)
 
     def _require_job(self, job_id: str) -> _MutableJobRecord:
         try:

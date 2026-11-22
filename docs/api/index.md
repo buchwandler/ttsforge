@@ -1,8 +1,12 @@
 # Python API boundary
 
-TTSForge's supported product interface is its command line. The application adapter and
-application models are implementation details, not a second public project or synthesis
-API.
+TTSForge supports the command line and the local HTTP API used by TTSForge Studio as
+product interfaces. Its application services, adapter, and models are implementation
+details, not a separate supported Python project or synthesis API.
+
+The versioned Studio contract is documented in the
+[Studio API reference](../studio-api.md); the [OpenAPI 3.1 schema](openapi-v1.json) is
+checked in with the source documentation.
 
 Python integrations should use Readio's public `readio.api` workflow gateway. TTSForge
 requires Readio `>=0.6.7,<0.7` and uses its typed source-inspection, render-intent,

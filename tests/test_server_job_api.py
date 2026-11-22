@@ -62,8 +62,18 @@ for message in messages:
 """
 
 
-def _app(tmp_path: Path, script: str) -> tuple[object, JobManager]:
+def _app(
+    tmp_path: Path,
+    script: str,
+    *,
+    event_history_limit: int = 1000,
+    max_terminal_jobs: int = 100,
+    max_active_jobs: int = 1,
+) -> tuple[object, JobManager]:
     manager = JobManager(
+        event_history_limit=event_history_limit,
+        max_terminal_jobs=max_terminal_jobs,
+        max_active_jobs=max_active_jobs,
         cancel_grace_seconds=0.2,
         worker_command=(sys.executable, "-u", "-c", script),
     )
@@ -110,7 +120,7 @@ def test_job_api_create_poll_events_cancel_and_golden_contract(
     tmp_path: Path,
 ) -> None:
     contract = json.loads(_FIXTURE.read_text(encoding="utf-8"))
-    app, _ = _app(tmp_path, _BLOCKING_WORKER)
+    app, _ = _app(tmp_path, _BLOCKING_WORKER, event_history_limit=3)
 
     with TestClient(app) as client:
         created = client.post(
@@ -136,6 +146,8 @@ def test_job_api_create_poll_events_cancel_and_golden_contract(
         ).json()
         assert set(contract["event_page_required_fields"]) <= events.keys()
         assert events["next"] == status["event_sequence"]
+        assert events["first"] > 1
+        assert events["truncated"] is True
         assert events["events"]
         assert set(contract["event_required_fields"]) <= events["events"][-1].keys()
         assert [item["seq"] for item in events["events"]] == sorted(
@@ -162,6 +174,49 @@ def test_job_api_create_poll_events_cancel_and_golden_contract(
             ).status_code
             == 404
         )
+
+
+def test_job_listing_filters_and_paginates_without_event_histories(
+    tmp_path: Path,
+) -> None:
+    app, _ = _app(tmp_path, _SUCCESS_WORKER)
+
+    with TestClient(app) as client:
+        submitted_ids = []
+        for index in range(3):
+            created = client.post(
+                "/api/v1/jobs",
+                headers=_AUTH_HEADERS,
+                json=_submission(tmp_path / f"book-{index}.epub"),
+            )
+            submitted_ids.append(created.json()["id"])
+            _wait_for_state(client, submitted_ids[-1], "completed")
+
+        latest = client.get(
+            "/api/v1/jobs?limit=2&state=completed", headers=_AUTH_HEADERS
+        ).json()["jobs"]
+        older = client.get(
+            "/api/v1/jobs",
+            params={"limit": 2, "state": "completed", "before": latest[-1]["id"]},
+            headers=_AUTH_HEADERS,
+        ).json()["jobs"]
+        failed = client.get("/api/v1/jobs?state=failed", headers=_AUTH_HEADERS).json()[
+            "jobs"
+        ]
+
+    assert [job["id"] for job in latest] == submitted_ids[-2:][::-1]
+    assert [job["id"] for job in older] == [submitted_ids[0]]
+    assert not failed
+    assert set(latest[0]) == {
+        "id",
+        "state",
+        "created_at",
+        "started_at",
+        "finished_at",
+        "project",
+        "output",
+        "event_sequence",
+    }
 
 
 def test_job_status_serializes_successful_conversion_result(tmp_path: Path) -> None:

@@ -21,6 +21,22 @@ def _is_loopback_host(host: str) -> bool:
         return False
 
 
+def _create_listener(host: str, port: int) -> socket.socket:
+    if host.casefold() == "localhost":
+        addresses = socket.getaddrinfo(host, port, type=socket.SOCK_STREAM)
+        for family, _, _, _, address in addresses:
+            if family not in {socket.AF_INET, socket.AF_INET6}:
+                continue
+            if ipaddress.ip_address(address[0]).is_loopback:
+                return socket.create_server(address, family=family, backlog=2048)
+        raise OSError("localhost did not resolve to a loopback address.")
+
+    address = ipaddress.ip_address(host)
+    family = socket.AF_INET6 if address.version == 6 else socket.AF_INET
+    sockaddr = (host, port, 0, 0) if family == socket.AF_INET6 else (host, port)
+    return socket.create_server(sockaddr, family=family, backlog=2048)
+
+
 def run_server(
     *,
     host: str = "127.0.0.1",
@@ -61,7 +77,7 @@ def run_server(
             allowed_origins=allowed_origins,
             debug=debug,
         )
-        listener = socket.create_server((host, port), backlog=2048)
+        listener = _create_listener(host, port)
         ready = {
             "type": "server.ready",
             "host": host,
