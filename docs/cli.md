@@ -111,10 +111,30 @@ runnable targets. `voices` lists voices available for the optional
 engine/target/language filters. Discovery results depend on the installed Readio
 integrations and local environment. All three commands support `--json` and `--debug`.
 
+## `serve`
+
+Run the optional local HTTP API used by TTSForge Studio:
+
+```bash
+ttsforge serve --port 8765 --token "$TTSFORGE_TOKEN" \
+  --state-dir ~/.local/state/ttsforge
+```
+
+The server extra is required. The default host is `127.0.0.1`; non-loopback bind
+addresses are rejected. Use `--port 0` to request an ephemeral port. Startup writes one
+JSON `server.ready` record to stdout with the actual port and API version. Normal
+diagnostics go to stderr. The bearer token can be provided through `TTSFORGE_TOKEN`
+instead of `--token`.
+
+Use repeatable `--allow-origin ORIGIN` options only for trusted browser origins.
+Wildcard origins are rejected. The command also accepts `--state-dir`, `--log-level`,
+and `--debug`. `python -m ttsforge.server` provides the same options and launcher. See
+the [server guide](server.md) and [Studio API reference](studio-api.md).
+
 ## Removed commands
 
 The TTSForge 0.5 CLI focuses on `convert`, `list`, `info`, `status`, `engines`,
-`targets`, and `voices`. Earlier commands such as `preview`, `plan`, `config`, `models`,
-`formats`, `doctor`, and `ssmd` are not registered in this workflow. The former
-backend-specific `read`, `sample`, `demo`, `download`, and `phonemes` commands are also
-removed. See the [migration guide](migration-readio.md).
+`targets`, `voices`, and optional `serve`. Earlier commands such as `preview`, `plan`,
+`config`, `models`, `formats`, `doctor`, and `ssmd` are not registered in this workflow.
+The former backend-specific `read`, `sample`, `demo`, `download`, and `phonemes`
+commands are also removed. See the [migration guide](migration-readio.md).

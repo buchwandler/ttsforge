@@ -83,6 +83,8 @@ def test_production_imports_only_the_readio_public_api() -> None:
 
 def test_application_modules_do_not_import_frontend_or_readio_modules() -> None:
     forbidden = {
+        "fastapi",
+        "uvicorn",
         "typer",
         "rich",
         "readio",
@@ -104,6 +106,17 @@ def test_application_modules_do_not_import_frontend_or_readio_modules() -> None:
     assert not violations, "Frontend dependencies in application:\n" + "\n".join(
         violations
     )
+
+
+def test_cli_and_application_imports_do_not_load_optional_server_stack() -> None:
+    result = _run_python(
+        "-c",
+        "import sys; import ttsforge.cli; import ttsforge.application; "
+        "assert 'fastapi' not in sys.modules; "
+        "assert 'uvicorn' not in sys.modules; "
+        "assert 'multipart' not in sys.modules",
+    )
+    assert result.returncode == 0, result.stderr
 
 
 def test_cli_modules_do_not_import_readio() -> None:

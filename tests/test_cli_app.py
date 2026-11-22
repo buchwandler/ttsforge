@@ -119,7 +119,10 @@ class _Backend:
 
     def list_voices(self, **kwargs: object) -> tuple[object, ...]:
         self.calls.append(("voices", kwargs))
-        return ({"id": "voice-a", "engine": "engine-a", "language": "en-US"},)
+        return (
+            {"id": "voice-a", "engine": "engine-a", "language": "en-US"},
+            {"id": "voice-b", "engine": "engine-a", "language": "en-US"},
+        )
 
     def list_spacy_models(self, language: str) -> tuple[SpacyModelView, ...]:
         self.calls.append(("spacy_list", language))
@@ -1319,15 +1322,14 @@ def test_interactive_voice_picker_uses_named_results_and_persists_selection(
     assert "AV_ariala" in rendered and "[default]" in rendered
     assert "AV_brody" in rendered
     assert "kokoro:akinvox-multispeaker-v1" not in rendered
-    assert voice_calls == [
-        {
-            "engine": "kokoro",
-            "target": "akinvox-multispeaker-v1",
-            "language": "en-US",
-            "offline": False,
-            "refresh": False,
-        }
-    ]
+    voice_call = {
+        "engine": "kokoro",
+        "target": "akinvox-multispeaker-v1",
+        "language": "en-US",
+        "offline": False,
+        "refresh": False,
+    }
+    assert voice_calls == [voice_call] * (2 if expected_voice is not None else 1)
     saved = next(iter(backend.saved.values()))
     assert saved.voice == expected_voice
     assert backend.render_request is not None

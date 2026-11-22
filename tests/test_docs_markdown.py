@@ -29,6 +29,8 @@ def test_installation_and_migration_docs_are_present() -> None:
         DOCS / "installation.md",
         DOCS / "migration-readio.md",
         DOCS / "testing.md",
+        DOCS / "server.md",
+        DOCS / "studio-api.md",
     ):
         assert path.is_file()
         assert path.read_text(encoding="utf-8").strip()

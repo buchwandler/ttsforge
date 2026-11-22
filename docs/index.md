@@ -4,6 +4,10 @@ TTSForge is an audiobook-oriented command-line frontend for Readio. It inspects 
 saves audiobook setup in a TTSForge project directory, and delegates workflow planning
 and M4B rendering to Readio.
 
+An optional local HTTP API powers TTSForge Studio. It is installed separately and does
+not change the CLI workflow. See the [server guide](server.md) and
+[Studio API reference](studio-api.md).
+
 TTSForge requires Readio `>=0.6.7,<0.7`. The base installation remains provider-neutral;
 engine integrations are installed separately. See [Installation](installation.md).
 
@@ -16,6 +20,7 @@ migration-readio
 Historical migration notes <migration-v0.4>
 quickstart
 cli
+server
 projects
 configuration
 voices
@@ -32,6 +37,7 @@ Documentation sources <README>
 :caption: API Reference
 
 api/index
+studio-api
 ```
 
 ## Workflow overview

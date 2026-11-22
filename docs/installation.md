@@ -24,6 +24,29 @@ separately when speech synthesis is needed. Consult the
 for the supported integrations and their platform requirements. TTSForge does not guess
 or provide a parallel set of engine extras.
 
+## Optional Studio server
+
+The HTTP API is optional and does not install a frontend. Install its dependencies with:
+
+```bash
+python -m pip install "ttsforge[server]"
+```
+
+The `studio` extra additionally installs the Readio engine integrations used by the
+managed Studio environment. See the [server guide](server.md) for startup, token, and
+origin policy options, and the [Studio API reference](studio-api.md) for the HTTP
+contract.
+
+Set `TTSFORGE_TOKEN` and start the local server with an ephemeral port:
+
+```bash
+export TTSFORGE_TOKEN="$(python -c 'import secrets; print(secrets.token_urlsafe(32))')"
+ttsforge serve --port 0
+```
+
+The default host is loopback. The launcher prints one JSON readiness record to stdout
+with the selected port; server diagnostics go to stderr.
+
 ## Development installation
 
 For local development, check out TTSForge beside a Readio checkout that provides the

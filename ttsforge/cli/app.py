@@ -12,6 +12,8 @@ from typing import Annotated, Any, Literal, TypeVar, cast
 import typer
 from rich.console import Console
 
+from ..application.catalog_service import CatalogApplicationService
+from ..application.conversion import ConversionCoordinator
 from ..application.errors import (
     ApplicationError,
     InputValidationError,
@@ -30,10 +32,7 @@ from ..application.models import (
     SpacyModelView,
     WorkflowPlanView,
 )
-from ..application.service import (
-    AudiobookApplicationService,
-    require_runnable_workflow,
-)
+from ..application.service import AudiobookApplicationService
 from .catalog import (
     CatalogChoiceView,
     TargetChoiceView,
@@ -510,55 +509,15 @@ def _complete_interactive_setup(
     )
 
 
-def _validate_reference_target(
-    backend: Any,
-    request: AudiobookRequest,
-    *,
-    require_voice: bool = False,
-) -> None:
-    if request.engine is None or request.target is None:
-        return
-    choices = tuple(
-        target_choice_view(item)
-        for item in backend.list_targets(
-            engine=request.engine,
-            language=request.language,
-            offline=request.offline,
-            refresh=request.refresh,
-        )
-    )
-    _reject_reference_only_target(request.target, choices)
-    selected = next((choice for choice in choices if choice.id == request.target), None)
-    if (
-        require_voice
-        and request.voice is None
-        and selected is not None
-        and selected.voice_count > 0
-        and selected.default_voice is None
-    ):
-        raise InputValidationError(
-            f"--new-variant requires --voice for target {request.target!r}, "
-            "which has no default voice."
-        )
-
-
-def _prepare_spacy_model(
-    backend: Any,
-    request: AudiobookRequest,
+def _confirm_spacy_model(
+    model: SpacyModelView,
     *,
     json_mode: bool,
     interactive: bool,
     confirm: bool,
+    offline: bool,
     assume_yes: bool,
-) -> SpacyModelView | None:
-    if request.spacy not in {"sm", "md", "lg", "trf"}:
-        return None
-    if request.language is None:
-        raise InputValidationError("Language is required to resolve a spaCy model.")
-
-    model = cast(
-        SpacyModelView, backend.inspect_spacy_model(request.language, request.spacy)
-    )
+) -> bool:
     if not json_mode:
         _output.print("spaCy")
         _output.print(f"  Model  {model.model}")
@@ -568,32 +527,18 @@ def _prepare_spacy_model(
         if not model.installed:
             status = "not installed"
         _output.print(f"  Status {status}")
-    if model.installed:
-        return model
-    if request.offline:
-        return cast(
-            SpacyModelView,
-            backend.ensure_spacy_model(request.language, request.spacy, offline=True),
-        )
+    if model.installed or offline:
+        return True
     if confirm and not typer.confirm(f"Download {model.model}?", default=True):
-        raise InputValidationError(
-            f"spaCy model {model.model!r} is required to continue."
-        )
+        return False
     if not interactive and not assume_yes:
         raise InputValidationError(
             f"spaCy model {model.model!r} is missing. "
             "Run interactively or pass --yes to download it."
         )
-
     if not json_mode:
         _output.print(f"Installing {model.model}...")
-    installed = cast(
-        SpacyModelView, backend.ensure_spacy_model(request.language, request.spacy)
-    )
-    if not json_mode:
-        version = f" {installed.model_version}" if installed.model_version else ""
-        _output.print(f"Installed {installed.model}{version}")
-    return installed
+    return True
 
 
 def _inspection_payload(inspection: BookInspectionView) -> dict[str, object]:
@@ -761,6 +706,7 @@ def convert(
         float | None,
     ]:
         backend, service = _service()
+        coordinator = ConversionCoordinator(service, CatalogApplicationService(backend))
         preparation = service.prepare_setup(
             request,
             overrides,
@@ -774,23 +720,43 @@ def convert(
             selected = _complete_interactive_setup(backend, preparation)
         else:
             selected = preparation.request
-            _validate_reference_target(
-                backend, selected, require_voice=selected.new_variant
+
+        spacy_was_missing = False
+
+        def confirm_spacy(model: SpacyModelView) -> bool:
+            nonlocal spacy_was_missing
+            spacy_was_missing = not model.installed
+            return _confirm_spacy_model(
+                model,
+                json_mode=interaction.json,
+                interactive=interaction.interactive,
+                confirm=interaction.confirm,
+                offline=selected.offline,
+                assume_yes=yes,
             )
-        resolved = service.save_setup(preparation, selected)
-        preparation = resolved.preparation
-        spacy_model = _prepare_spacy_model(
-            backend,
-            resolved.request,
-            json_mode=interaction.json,
-            interactive=interaction.interactive,
-            confirm=interaction.confirm,
-            assume_yes=yes,
+
+        def present_preflight(
+            preflight: PreflightView, spacy_model: SpacyModelView | None
+        ) -> None:
+            if not interaction.json:
+                render_preflight(preflight, _output, spacy_model=spacy_model)
+
+        prepared = coordinator.prepare(
+            selected,
+            overrides,
+            preparation=preparation,
+            on_spacy_model=confirm_spacy,
+            on_preflight=present_preflight,
         )
-        preflight = service.preflight(resolved)
-        if not interaction.json:
-            render_preflight(preflight, _output, spacy_model=spacy_model)
-        require_runnable_workflow(preflight.workflow)
+        preparation = prepared.preparation
+        resolved = prepared.resolved
+        spacy_model = prepared.spacy_model
+        if spacy_was_missing and spacy_model is not None and not interaction.json:
+            version = (
+                f" {spacy_model.model_version}" if spacy_model.model_version else ""
+            )
+            _output.print(f"Installed {spacy_model.model}{version}")
+        preflight = prepared.preflight
         if interaction.confirm and not typer.confirm(
             "Create this audiobook?", default=True
         ):
@@ -810,7 +776,7 @@ def convert(
             )
         )
         try:
-            result = service.render(resolved, on_progress=progress)
+            result = coordinator.execute(prepared, on_progress=progress)
         except Exception:
             progress.close(success=False)
             raise
@@ -1026,6 +992,37 @@ def voices(
     )
 
 
+@app.command()
+def serve(
+    *,
+    host: Annotated[str, typer.Option("--host")] = "127.0.0.1",
+    port: Annotated[int, typer.Option("--port", min=0, max=65535)] = 8765,
+    token: Annotated[str, typer.Option("--token", envvar="TTSFORGE_TOKEN")],
+    state_dir: Annotated[Path | None, typer.Option("--state-dir")] = None,
+    allow_origin: Annotated[
+        list[str] | None,
+        typer.Option("--allow-origin", help="Explicitly allow a browser origin."),
+    ] = None,
+    log_level: Annotated[
+        Literal["critical", "error", "warning", "info", "debug", "trace"],
+        typer.Option("--log-level"),
+    ] = "info",
+    debug: Annotated[bool, typer.Option("--debug")] = False,
+) -> None:
+    """Run the optional TTSForge Studio local API."""
+    from ..server.launcher import run_server
+
+    run_server(
+        host=host,
+        port=port,
+        token=token,
+        state_dir=state_dir,
+        allowed_origins=allow_origin or (),
+        log_level=log_level,
+        debug=debug,
+    )
+
+
 __all__ = [
     "app",
     "cli_main",
@@ -1034,6 +1031,7 @@ __all__ = [
     "info",
     "list_chapters",
     "status",
+    "serve",
     "targets",
     "voices",
 ]

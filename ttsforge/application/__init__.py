@@ -12,6 +12,21 @@ from .errors import (
     WorkflowFailureError,
 )
 from .events import ApplicationEvent, ProgressState
+from .errors_view import ErrorView, error_view
+from .serialization import JsonValue, json_value
+from .catalog import (
+    CatalogChoiceView,
+    EngineChoiceView,
+    EngineOptionView,
+    TargetChoiceView,
+    VoiceChoiceView,
+    engine_choice_view,
+    engine_option_view,
+    target_choice_view,
+    voice_choice_view,
+)
+from .catalog_service import CatalogApplicationService, CatalogBackend
+from .conversion import ConversionCoordinator, PreparedConversion
 from .models import (
     AudiobookOptions,
     AudiobookRequest,
@@ -26,6 +41,7 @@ from .models import (
     ResolvedSetup,
     SetupOrigins,
     SetupPreparation,
+    SpacyModelView,
     VoiceSetupView,
     WorkflowPlanView,
     WorkflowStepView,
@@ -41,6 +57,8 @@ __all__ = [
     "ApplicationBackend",
     "ApplicationError",
     "ApplicationEvent",
+    "ErrorView",
+    "JsonValue",
     "AudiobookApplicationService",
     "AudiobookOptions",
     "AudiobookRequest",
@@ -48,8 +66,21 @@ __all__ = [
     "BookChapterView",
     "BookInspectionView",
     "CatalogItemView",
+    "CatalogApplicationService",
+    "CatalogBackend",
+    "CatalogChoiceView",
+    "EngineChoiceView",
+    "EngineOptionView",
+    "TargetChoiceView",
+    "VoiceChoiceView",
+    "engine_choice_view",
+    "engine_option_view",
+    "target_choice_view",
+    "voice_choice_view",
     "CatalogSelectionError",
     "ConversionResultView",
+    "ConversionCoordinator",
+    "PreparedConversion",
     "InputOverrides",
     "InputValidationError",
     "LegacyWorkspaceError",
@@ -63,10 +94,13 @@ __all__ = [
     "SetupConflictError",
     "SetupOrigins",
     "SetupPreparation",
+    "SpacyModelView",
     "VoiceSetupView",
     "WorkflowFailureError",
     "WorkflowPlanView",
     "WorkflowStepView",
+    "error_view",
+    "json_value",
     "blocked_workflow_steps",
     "require_runnable_workflow",
 ]

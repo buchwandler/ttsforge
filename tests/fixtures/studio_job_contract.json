@@ -1,0 +1,58 @@
+{
+  "submission": {
+    "request": {
+      "source": "/books/Platform Decay - Martha Wells.epub",
+      "project": null,
+      "chapters": "5-17",
+      "output": "/books/Platform Decay - Martha Wells.m4b",
+      "language": "en-US",
+      "engine": "kokoro",
+      "target": "akinvox-multispeaker-v1",
+      "voice": "AV_cori",
+      "engine_options": {},
+      "speed": null,
+      "spacy": "lg",
+      "speech_profile": null,
+      "pause_timing": "engaging",
+      "bitrate": null,
+      "target_lufs": -18.0,
+      "title": "Platform Decay",
+      "author": "Martha Wells",
+      "cover": null,
+      "offline": false,
+      "refresh": false,
+      "rebuild_from": null,
+      "replace_output": false,
+      "fresh": false,
+      "new_variant": false
+    },
+    "explicit_fields": [
+      "chapters",
+      "output",
+      "language",
+      "engine",
+      "target",
+      "voice",
+      "spacy",
+      "pause_timing"
+    ]
+  },
+  "created": {
+    "state": "queued"
+  },
+  "status_required_fields": [
+    "id",
+    "state",
+    "created_at",
+    "started_at",
+    "finished_at",
+    "project",
+    "output",
+    "progress",
+    "result",
+    "error",
+    "event_sequence"
+  ],
+  "event_page_required_fields": ["next", "events"],
+  "event_required_fields": ["seq", "timestamp", "event"]
+}
