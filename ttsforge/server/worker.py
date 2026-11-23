@@ -79,9 +79,9 @@ def run_worker(
                 protocol_stream,
                 {
                     "type": "job.prepared",
-                    "project": str(prepared.preparation.paths.root),
+                    "project": prepared.preparation.paths.root.as_posix(),
                     "output": (
-                        str(prepared.resolved.request.output)
+                        prepared.resolved.request.output.as_posix()
                         if prepared.resolved.request.output is not None
                         else None
                     ),

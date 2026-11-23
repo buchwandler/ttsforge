@@ -406,8 +406,8 @@ for message in [
         assert completed.retry_of == original.id
 
         payload = json.loads(payload_file.read_text(encoding="utf-8"))
-        assert payload["request"]["source"] == str(source)
-        assert payload["request"]["project"] == str(project)
+        assert payload["request"]["source"] == source.as_posix()
+        assert payload["request"]["project"] == project.as_posix()
         assert payload["explicit_fields"] == ["source", "voice"]
     finally:
         recovered_manager.shutdown()
