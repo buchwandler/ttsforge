@@ -28,7 +28,7 @@ def json_value(value: object) -> JsonValue:
     if isinstance(value, datetime):
         return value.isoformat()
     if isinstance(value, Path):
-        return str(value)
+        return value.as_posix()
     if is_dataclass(value) and not isinstance(value, type):
         return {
             item.name: json_value(getattr(value, item.name)) for item in fields(value)
