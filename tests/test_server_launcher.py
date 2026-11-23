@@ -114,7 +114,12 @@ def test_non_loopback_binding_is_rejected(
 
 @pytest.mark.parametrize("host", ["127.0.0.1", "127.0.0.2", "localhost"])
 def test_loopback_hosts_bind_to_loopback_addresses(host: str) -> None:
-    listener = launcher._create_listener(host, 0)
+    try:
+        listener = launcher._create_listener(host, 0)
+    except OSError as error:
+        if error.errno in {errno.EADDRNOTAVAIL, errno.EAFNOSUPPORT}:
+            pytest.skip(f"The OS cannot bind to loopback host {host}")
+        raise
     try:
         address = ipaddress.ip_address(listener.getsockname()[0])
         assert address.is_loopback
