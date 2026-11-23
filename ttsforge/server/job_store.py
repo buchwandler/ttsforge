@@ -342,7 +342,7 @@ def _stored_job(row: sqlite3.Row) -> StoredJob:
 def _stored_event(row: sqlite3.Row) -> StoredJobEvent:
     value = json.loads(row["event_json"])
     if not isinstance(value, dict):
-        raise ValueError("Stored job event must be a JSON object.")
+        raise TypeError("Stored job event must be a JSON object.")
     return StoredJobEvent(
         sequence=row["sequence"],
         timestamp=row["timestamp"],

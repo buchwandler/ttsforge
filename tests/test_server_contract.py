@@ -141,7 +141,7 @@ def test_openapi_documents_typed_responses_bearer_and_public_health(
             "201"
             if (method, path) == ("POST", "/api/v1/projects/narrations")
             else "202"
-            if method == "POST" and (path.endswith("/jobs") or path.endswith("/retry"))
+            if method == "POST" and path.endswith(("/jobs", "/retry"))
             else "200"
         )
         response = operation["responses"][success_code]

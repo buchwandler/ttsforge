@@ -3,6 +3,7 @@ from __future__ import annotations
 import json
 from importlib import import_module
 from pathlib import Path
+from typing import ClassVar
 
 from typer.testing import CliRunner
 
@@ -23,7 +24,7 @@ class _Cancellation:
 
 
 class _PreviewService:
-    instances: list[_PreviewService] = []
+    instances: ClassVar[list[_PreviewService]] = []
 
     def __init__(self, narrations: object, backend: object) -> None:
         del narrations, backend

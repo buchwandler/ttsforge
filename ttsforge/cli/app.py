@@ -1536,8 +1536,8 @@ __all__ = [
     "engines",
     "info",
     "list_chapters",
-    "status",
     "serve",
+    "status",
     "targets",
     "voices",
 ]

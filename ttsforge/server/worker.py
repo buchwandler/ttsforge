@@ -100,7 +100,7 @@ def run_worker(
                 {"type": "job.result", "result": json_value(result)},
             )
         return 0
-    except Exception as error:
+    except Exception as error:  # noqa: BLE001
         diagnostics_stream.write(f"Conversion worker failed: {type(error).__name__}\n")
         if debug:
             traceback.print_exc(file=diagnostics_stream)

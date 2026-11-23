@@ -99,7 +99,7 @@ def run_server(
                     print(json.dumps(ready, separators=(",", ":")), flush=True)
 
         ReadinessServer(config).run(sockets=[listener])
-    except Exception as error:
+    except Exception as error:  # noqa: BLE001
         _startup_error(error, debug=debug)
     finally:
         if listener is not None:

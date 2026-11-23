@@ -462,8 +462,11 @@ def _resolve_variant_output(
         raise InputValidationError(
             "Narration output must differ from the primary audiobook output."
         )
-    if existing is not None and existing.output is not None:
-        if resolved_output == existing.output.resolve():
+    if (
+        existing is not None
+        and existing.output is not None
+        and resolved_output == existing.output.resolve()
+    ):
             return replace(selected, output=output)
     if resolved_output in reserved_outputs:
         raise InputValidationError(

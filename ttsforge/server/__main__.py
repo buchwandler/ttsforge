@@ -11,7 +11,7 @@ from pathlib import Path
 def main(argv: Sequence[str] | None = None) -> None:
     parser = argparse.ArgumentParser(description="Run the TTSForge local API.")
     parser.add_argument("--host", default="127.0.0.1")
-    parser.add_argument("--port", type=int, choices=range(0, 65536), default=8765)
+    parser.add_argument("--port", type=int, choices=range(65536), default=8765)
     parser.add_argument("--token", default=os.environ.get("TTSFORGE_TOKEN"))
     parser.add_argument("--state-dir", type=Path)
     parser.add_argument(

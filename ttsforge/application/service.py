@@ -297,7 +297,7 @@ class AudiobookApplicationService:
                 continue
             try:
                 saved = self._backend.load_setup(variant_paths)
-            except Exception as exc:
+            except Exception as exc:  # noqa: BLE001
                 variants.append(
                     ProjectVariantView(
                         variant_key=directory.name,

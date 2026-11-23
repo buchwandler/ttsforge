@@ -550,7 +550,7 @@ class JobManager:
                             code="worker_process_error",
                         ),
                     )
-        except Exception as error:
+        except Exception as error:  # noqa: BLE001
             _LOG.error("Worker supervision failed: %s", type(error).__name__)
             with self._condition:
                 record = self._jobs[job_id]
