@@ -467,7 +467,7 @@ def _resolve_variant_output(
         and existing.output is not None
         and resolved_output == existing.output.resolve()
     ):
-            return replace(selected, output=output)
+        return replace(selected, output=output)
     if resolved_output in reserved_outputs:
         raise InputValidationError(
             "Narration output conflicts with another saved narration."
