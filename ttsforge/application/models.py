@@ -5,6 +5,7 @@ from __future__ import annotations
 from collections.abc import Mapping
 from dataclasses import dataclass, field
 from pathlib import Path
+from typing import Literal
 
 
 @dataclass(frozen=True, slots=True)
@@ -13,6 +14,7 @@ class ProjectPaths:
     intent: Path
     profile: Path
     bundle: Path
+    # Publicly, variant storage is an additional narration; the key remains internal.
     variant_key: str | None = None
 
     @classmethod
@@ -46,6 +48,49 @@ class ProjectPaths:
 
 
 @dataclass(frozen=True, slots=True)
+class AudiobookMetadata:
+    title: str | None = None
+    subtitle: str | None = None
+    author: str | None = None
+    narrator: str | None = None
+    series: str | None = None
+    series_number: str | None = None
+    language: str | None = None
+    publisher: str | None = None
+    year: str | None = None
+    cover: Path | None = None
+
+    def overlay(self, other: AudiobookMetadata) -> AudiobookMetadata:
+        return AudiobookMetadata(
+            **{
+                name: getattr(other, name)
+                if getattr(other, name) is not None
+                else getattr(self, name)
+                for name in self.__dataclass_fields__
+            }
+        )
+
+    def to_readio_mapping(self) -> dict[str, str]:
+        values = {
+            "title": self.title,
+            "subtitle": self.subtitle,
+            "author": self.author,
+            "narrator": self.narrator,
+            "series": self.series,
+            "series_index": self.series_number,
+            "language": self.language,
+            "publisher": self.publisher,
+            "year": self.year,
+        }
+        return {key: value for key, value in values.items() if value is not None}
+
+    def is_empty(self) -> bool:
+        return not any(
+            getattr(self, name) is not None for name in self.__dataclass_fields__
+        )
+
+
+@dataclass(frozen=True, slots=True)
 class AudiobookRequest:
     source: Path
     project: Path | None = None
@@ -62,6 +107,7 @@ class AudiobookRequest:
     pause_timing: str | None = None
     bitrate: str | int | None = None
     target_lufs: float | None = None
+    metadata: AudiobookMetadata = field(default_factory=AudiobookMetadata)
     title: str | None = None
     author: str | None = None
     cover: Path | None = None
@@ -71,6 +117,15 @@ class AudiobookRequest:
     replace_output: bool = False
     fresh: bool = False
     new_variant: bool = False
+
+    def __post_init__(self) -> None:
+        metadata = self.metadata.overlay(
+            AudiobookMetadata(title=self.title, author=self.author, cover=self.cover)
+        )
+        object.__setattr__(self, "metadata", metadata)
+        object.__setattr__(self, "title", metadata.title)
+        object.__setattr__(self, "author", metadata.author)
+        object.__setattr__(self, "cover", metadata.cover)
 
 
 AudiobookOptions = AudiobookRequest
@@ -114,11 +169,115 @@ class BookInspectionView:
     language: str | None
     chapters: tuple[BookChapterView, ...]
     cover: Path | None = None
+    metadata: AudiobookMetadata = field(default_factory=AudiobookMetadata)
+
+
+QcSeverity = Literal["pass", "warning", "error", "unknown"]
+
+
+@dataclass(frozen=True, slots=True)
+class QcFinding:
+    id: str
+    severity: QcSeverity
+    section: str
+    message: str
+    details: Mapping[str, object] = field(default_factory=dict)
+
+
+@dataclass(frozen=True, slots=True)
+class AudiobookQcReport:
+    project: Path
+    narration_id: str | None
+    passed: bool
+    findings: tuple[QcFinding, ...]
+
+
+@dataclass(frozen=True, slots=True)
+class AudiobookMetadataView:
+    project: Path
+    source: Path
+    source_metadata: AudiobookMetadata
+    overrides: AudiobookMetadata
+    effective: AudiobookMetadata
+
+
+@dataclass(frozen=True, slots=True)
+class MetadataValidationReport:
+    project: Path
+    valid: bool
+    findings: tuple[QcFinding, ...]
+
+
+@dataclass(frozen=True, slots=True)
+class ChapterStatusView:
+    number: int
+    title: str
+    source_id: str | None
+    char_count: int | None
+    selected: bool
+    workflow_state: str | None = None
+    estimated_duration_seconds: float | None = None
+    final_duration_seconds: float | None = None
+
+
+@dataclass(frozen=True, slots=True)
+class ChapterSelectionView:
+    project: Path
+    selection: str
+    selected_chapters: tuple[int, ...]
+
+
+@dataclass(frozen=True, slots=True)
+class AudiobookCapabilitiesView:
+    source_inspection: bool
+    synthesis_preview: bool
+    m4b_export: bool
+    persistent_workspace: bool
+    available_engines: tuple[str, ...]
+    warnings: tuple[str, ...] = ()
+
+
+@dataclass(frozen=True, slots=True)
+class PreviewAudio:
+    wav: bytes
+    sample_rate: int
+    channels: int
+    frames: int
+    duration_seconds: float
+    warnings: tuple[str, ...] = ()
 
 
 @dataclass(frozen=True, slots=True)
 class ProjectVariantView:
     variant_key: str
+    output: Path | None = None
+    engine: str | None = None
+    target: str | None = None
+    voice: str | None = None
+    error: str | None = None
+
+
+@dataclass(frozen=True, slots=True)
+class NarrationId:
+    value: str
+
+    def __post_init__(self) -> None:
+        if (
+            not self.value
+            or self.value in {".", ".."}
+            or "/" in self.value
+            or "\\" in self.value
+        ):
+            raise ValueError(
+                "Narration IDs must be a non-empty project-local identifier."
+            )
+
+
+@dataclass(frozen=True, slots=True)
+class NarrationView:
+    id: str
+    display_name: str
+    primary: bool
     output: Path | None = None
     engine: str | None = None
     target: str | None = None
@@ -155,6 +314,15 @@ class CatalogItemView:
 
 
 @dataclass(frozen=True, slots=True)
+class WorkflowBlockerView:
+    code: str
+    message: str
+    owner: str | None
+    recoverable: bool
+    suggested_action: str | None
+
+
+@dataclass(frozen=True, slots=True)
 class WorkflowStepView:
     stage: str
     package: str
@@ -162,6 +330,9 @@ class WorkflowStepView:
     selector: str | None
     reason: str
     state: str
+    reason_code: str = "specialist_state_unknown"
+    force: bool = False
+    blockers: tuple[WorkflowBlockerView, ...] = ()
 
 
 @dataclass(frozen=True, slots=True)
@@ -172,7 +343,7 @@ class WorkflowPlanView:
     output: Path | None
     steps: tuple[WorkflowStepView, ...]
     warnings: tuple[str, ...] = ()
-
+    executable: bool = True
     variant: str | None = None
 
 
@@ -199,6 +370,24 @@ class PreflightView:
 
 
 @dataclass(frozen=True, slots=True)
+class StageExecutionView:
+    stage: str
+    package: str
+    action: str
+    state_before: str
+    state_after: str | None
+    elapsed_seconds: float
+    reason_code: str
+
+
+@dataclass(frozen=True, slots=True)
+class ExecutionSummaryView:
+    stages: tuple[StageExecutionView, ...]
+    specialist_versions: Mapping[str, str | None]
+    elapsed_seconds: float
+
+
+@dataclass(frozen=True, slots=True)
 class ConversionResultView:
     output: Path
     workspace: Path | None
@@ -207,3 +396,4 @@ class ConversionResultView:
     reused_stages: tuple[str, ...]
     warnings: tuple[str, ...] = ()
     variant: str | None = None
+    execution: ExecutionSummaryView | None = None

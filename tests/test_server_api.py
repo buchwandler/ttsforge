@@ -19,7 +19,9 @@ from ttsforge.application.catalog import (
     TargetChoiceView,
     VoiceChoiceView,
 )
+from ttsforge.application.library import ProjectSummary
 from ttsforge.application.models import (
+    AudiobookCapabilitiesView,
     AudiobookRequest,
     BookChapterView,
     BookInspectionView,
@@ -32,10 +34,12 @@ from ttsforge.application.models import (
     WorkflowPlanView,
 )
 from ttsforge.server.app import (
+    _with_job_activity,
     _write_source_metadata,
     cleanup_imports,
     create_app,
 )
+from ttsforge.server.jobs import JobState
 
 
 class FakeAudiobook:
@@ -57,6 +61,16 @@ class FakeAudiobook:
             author=None,
             language="en-US" if kind == "book" else None,
             chapters=(BookChapterView(1, "Chapter one"),) if kind == "book" else (),
+        )
+
+    def capabilities(self) -> AudiobookCapabilitiesView:
+        return AudiobookCapabilitiesView(
+            source_inspection=True,
+            synthesis_preview=True,
+            m4b_export=False,
+            persistent_workspace=True,
+            available_engines=("kokoro",),
+            warnings=("M4B unavailable",),
         )
 
     def prepare_setup(self, request, overrides, *, interactive: bool = True):
@@ -135,7 +149,7 @@ class FakeCatalog:
                 locale="en-US",
                 language_label="English",
                 gender="female",
-                default=kwargs.get("default_voice") == "voice-a",
+                default=True,
                 runtime_available=True,
             ),
         )
@@ -379,7 +393,7 @@ def test_catalog_and_spacy_endpoints_return_application_views(
         "refresh": False,
     }
     assert voices.json()[0]["default"] is True
-    assert catalog.voice_default == "voice-a"
+    assert catalog.voice_default is None
     assert options.json()[0]["identity_affecting"] is True
     assert spacy.json()[0]["model"] == "en_core_web_lg"
     assert ensured.json()["installed"] is True
@@ -420,6 +434,36 @@ def test_project_status_and_variants_delegate_to_application_service(
     assert variants.json()[0]["variant_key"] == "kokoro-en-voice-a"
     assert audiobook.last_project.root == project
     assert audiobook.last_source == source
+
+
+def test_project_narration_routes_expose_user_facing_ids_and_names(
+    tmp_path: Path,
+) -> None:
+    client, _, _ = make_client(tmp_path)
+    project = tmp_path / "book.ttsforge"
+    headers = auth_headers()
+
+    response = client.get(
+        "/api/v1/projects/narrations",
+        params={"project": str(project)},
+        headers=headers,
+    )
+    detail = client.get(
+        "/api/v1/projects/narrations/kokoro-en-voice-a",
+        params={"project": str(project)},
+        headers=headers,
+    )
+    missing = client.get(
+        "/api/v1/projects/narrations/missing",
+        params={"project": str(project)},
+        headers=headers,
+    )
+
+    assert response.status_code == 200
+    assert response.json()["narrations"][0]["id"] == "kokoro-en-voice-a"
+    assert response.json()["narrations"][0]["display_name"] == "Additional narration"
+    assert detail.json()["primary"] is False
+    assert missing.status_code == 404
 
 
 def test_runtime_endpoint_exposes_only_normalized_package_and_tool_status(
@@ -904,6 +948,25 @@ def test_system_advertises_setup_and_preflight_capabilities(tmp_path: Path) -> N
     assert capabilities["preflight"] is True
     assert capabilities["project_setup"] is True
     assert capabilities["speech_profiles"] is True
+    assert capabilities["narrations"] is True
+
+    assert capabilities["library"] is True
+
+
+def test_system_capabilities_exposes_ttsforge_product_view(tmp_path: Path) -> None:
+    client, _, _ = make_client(tmp_path)
+
+    response = client.get("/api/v1/system/capabilities", headers=auth_headers())
+
+    assert response.status_code == 200
+    assert response.json() == {
+        "source_inspection": True,
+        "synthesis_preview": True,
+        "m4b_export": False,
+        "persistent_workspace": True,
+        "available_engines": ["kokoro"],
+        "warnings": ["M4B unavailable"],
+    }
 
 
 def test_speech_profile_routes_list_and_inspect_shared_profiles(
@@ -944,3 +1007,70 @@ def test_speech_profile_routes_list_and_inspect_shared_profiles(
     }
     assert inspected.json() == {"path": str(valid), "valid": True}
     assert rejected.json() == {"path": str(unrelated), "valid": False}
+
+
+def test_library_project_routes_keep_malformed_candidates_visible(
+    tmp_path: Path,
+) -> None:
+    client, _, _ = make_client(tmp_path)
+    root = tmp_path / "Audiobooks"
+    project = root / "Broken.ttsforge"
+    project.mkdir(parents=True)
+    (project / "render.readio.toml").touch()
+
+    listed = client.get(
+        "/api/v1/library/projects",
+        params={"root": str(root)},
+        headers=auth_headers(),
+    )
+
+    assert listed.status_code == 200
+    body = listed.json()
+    assert body["root"] == str(root)
+    assert len(body["projects"]) == 1
+    summary = body["projects"][0]
+    assert summary["project"] == str(project)
+    assert summary["error"]
+
+    detail = client.get(
+        f"/api/v1/library/projects/{summary['project_id']}", headers=auth_headers()
+    )
+    assert detail.status_code == 200
+    assert detail.json()["project_id"] == summary["project_id"]
+    assert detail.json()["error"] == summary["error"]
+
+
+def test_library_summary_reports_matching_active_job(tmp_path: Path) -> None:
+    project = tmp_path / "Book.ttsforge"
+    project.mkdir()
+    summary = ProjectSummary(
+        project_id="project-id",
+        title=None,
+        author=None,
+        source=None,
+        project=project,
+        chapter_count=0,
+        selected_chapter_count=0,
+        narrations=(),
+        primary_narration_id=None,
+        outputs=(),
+        qc_state=None,
+        active_job_id=None,
+        last_activity=None,
+        error=None,
+    )
+    created = datetime(2026, 1, 1, tzinfo=timezone.utc)
+    active_job = SimpleNamespace(
+        id="job-1",
+        state=JobState.RUNNING,
+        project=project,
+        created_at=created,
+        started_at=created,
+        finished_at=None,
+        event_history=(),
+    )
+
+    result = _with_job_activity(summary, (active_job,))
+
+    assert result.active_job_id == "job-1"
+    assert result.last_activity == created

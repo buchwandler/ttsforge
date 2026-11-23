@@ -51,6 +51,8 @@
     "progress",
     "result",
     "error",
+    "narration_id",
+    "retry_of",
     "event_sequence"
   ],
   "event_page_required_fields": ["first", "next", "truncated", "events"],

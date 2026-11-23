@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import json
+import signal
 import traceback
 from collections.abc import Callable, Mapping
 from dataclasses import asdict, replace
@@ -11,8 +12,10 @@ from typing import Annotated, Any, Literal, TypeVar, cast
 
 import typer
 from rich.console import Console
+from rich.table import Table
 
 from ..application.catalog_service import CatalogApplicationService
+from ..application.chapters import ChapterApplicationService
 from ..application.conversion import ConversionCoordinator
 from ..application.errors import (
     ApplicationError,
@@ -20,9 +23,13 @@ from ..application.errors import (
     OperationConflictError,
     WorkflowFailureError,
 )
+from ..application.library import LibraryApplicationService
+from ..application.metadata import MetadataApplicationService
 from ..application.models import (
+    AudiobookQcReport,
     AudiobookRequest,
     BookInspectionView,
+    ChapterStatusView,
     ConversionResultView,
     InputOverrides,
     PreflightView,
@@ -32,6 +39,9 @@ from ..application.models import (
     SpacyModelView,
     WorkflowPlanView,
 )
+from ..application.narrations import NarrationApplicationService
+from ..application.preview import PreviewApplicationService, PreviewRequest
+from ..application.qc import QcApplicationService
 from ..application.service import AudiobookApplicationService
 from ..application.speech_profiles import discover_speech_replacement_profiles
 from .catalog import (
@@ -92,6 +102,14 @@ app = typer.Typer(
     no_args_is_help=True,
     help="A user-friendly audiobook frontend powered by Readio.",
 )
+narration_app = typer.Typer(add_completion=False, no_args_is_help=True)
+app.add_typer(narration_app, name="narration")
+chapters_app = typer.Typer(add_completion=False, no_args_is_help=True)
+metadata_app = typer.Typer(add_completion=False, no_args_is_help=True)
+app.add_typer(chapters_app, name="chapters")
+app.add_typer(metadata_app, name="metadata")
+projects_app = typer.Typer(add_completion=False, no_args_is_help=True)
+app.add_typer(projects_app, name="projects")
 
 
 @app.callback()
@@ -116,7 +134,7 @@ def _is_expected_error(error: Exception) -> bool:
     return isinstance(error, (ApplicationError, ValueError, OSError, ImportError))
 
 
-def _run(action: Callable[[], T], *, debug: bool) -> T:
+def _run(action: Callable[[], T], *, debug: bool, failure_code: int = 1) -> T:
     try:
         return action()
     except Exception as error:
@@ -183,11 +201,30 @@ def _run(action: Callable[[], T], *, debug: bool) -> T:
                     err=True,
                 )
             typer.echo("Use --debug for a traceback.", err=True)
-        raise typer.Exit(code=1) from error
+        raise typer.Exit(code=failure_code) from error
 
 
 def _json_dump(payload: object) -> None:
     typer.echo(json.dumps(payload, ensure_ascii=False, indent=2, default=str))
+
+
+def _write_preview_file(path: Path, payload: bytes) -> Path:
+    output = path.expanduser()
+    output.parent.mkdir(parents=True, exist_ok=True)
+    created = False
+    try:
+        with output.open("xb") as stream:
+            created = True
+            stream.write(payload)
+    except FileExistsError as error:
+        raise OperationConflictError(
+            f"Preview output already exists: {output}."
+        ) from error
+    except Exception:
+        if created:
+            output.unlink(missing_ok=True)
+        raise
+    return output
 
 
 def _parse_engine_options(values: list[str] | None) -> dict[str, object]:
@@ -218,6 +255,219 @@ def _overrides(**values: object) -> InputOverrides:
             if value is not None and value is not False
         )
     )
+
+
+def _narration_service() -> tuple[
+    AudiobookApplicationService, NarrationApplicationService
+]:
+    backend, audiobook = _service()
+    catalog = CatalogApplicationService(backend)
+    return audiobook, NarrationApplicationService(audiobook, catalog)
+
+
+def _library_service() -> LibraryApplicationService:
+    backend, audiobook = _service()
+    narrations = NarrationApplicationService(
+        audiobook, CatalogApplicationService(backend)
+    )
+    return LibraryApplicationService(audiobook, narrations)
+
+
+@projects_app.command("list")
+def projects_list(
+    root: Annotated[Path, typer.Argument()],
+    json_mode: Annotated[bool, typer.Option("--json")] = False,
+    debug: Annotated[bool, typer.Option("--debug")] = False,
+) -> None:
+    """Discover TTSForge projects below a library directory."""
+    projects = _run(lambda: _library_service().list(root), debug=debug)
+    if json_mode:
+        _json_dump([asdict(item) for item in projects])
+        return
+    if not projects:
+        _output.print(f"No TTSForge projects found under {root}.")
+        return
+    for item in projects:
+        _output.print(f"{item.title or item.project.name}: {item.project}")
+        _output.print(
+            f"  Chapters: {item.selected_chapter_count}/{item.chapter_count}; "
+            f"narrations: {len(item.narrations)}; QC: {item.qc_state or 'unknown'}"
+        )
+        if item.error:
+            _output.print(f"  Error: {item.error}")
+
+
+@projects_app.command("info")
+def projects_info(
+    project: Annotated[Path, typer.Argument()],
+    json_mode: Annotated[bool, typer.Option("--json")] = False,
+    debug: Annotated[bool, typer.Option("--debug")] = False,
+) -> None:
+    """Inspect one TTSForge project directory."""
+    summary = _run(lambda: _library_service().inspect(project), debug=debug)
+    if json_mode:
+        _json_dump(asdict(summary))
+        return
+    _output.print(f"Project: {summary.project}")
+    _output.print(f"Title: {summary.title or 'not set'}")
+    _output.print(f"Author: {summary.author or 'not set'}")
+    _output.print(f"Source: {summary.source or 'not set'}")
+    _output.print(
+        f"Chapters: {summary.selected_chapter_count}/{summary.chapter_count} selected"
+    )
+    _output.print(f"QC: {summary.qc_state or 'unknown'}")
+    for narration in summary.narrations:
+        primary = " (primary)" if narration.primary else ""
+        _output.print(f"Narration: {narration.display_name}{primary} [{narration.id}]")
+    for output in summary.outputs:
+        _output.print(f"Output: {output}")
+    if summary.error:
+        _output.print(f"Error: {summary.error}")
+
+
+def _prepare_narration_render(
+    project: Path, narration_id: str
+) -> tuple[ConversionCoordinator, object]:
+    backend, audiobook = _service()
+    catalog = CatalogApplicationService(backend)
+    narrations = NarrationApplicationService(audiobook, catalog)
+    request, overrides = narrations.request_for_render(
+        ProjectPaths.for_root(project), narration_id
+    )
+    coordinator = ConversionCoordinator(audiobook, catalog)
+    return coordinator, coordinator.prepare(request, overrides)
+
+
+@narration_app.command("list")
+def narration_list(
+    project: Annotated[Path, typer.Argument()],
+    json_mode: Annotated[bool, typer.Option("--json")] = False,
+    debug: Annotated[bool, typer.Option("--debug")] = False,
+) -> None:
+    """List the primary and additional narrations in a TTSForge project."""
+    _, narrations = _narration_service()
+    values = _run(lambda: narrations.list(ProjectPaths.for_root(project)), debug=debug)
+    if json_mode:
+        _json_dump(values)
+    elif not values:
+        _output.print("No narrations configured.")
+    else:
+        for item in values:
+            primary = " (primary)" if item.primary else ""
+            _output.print(f"{item.display_name}{primary} [{item.id}]")
+            if item.error:
+                _output.print(f"  Error: {item.error}")
+
+
+@narration_app.command("info")
+def narration_info(
+    project: Annotated[Path, typer.Argument()],
+    narration_id: Annotated[str, typer.Argument()],
+    json_mode: Annotated[bool, typer.Option("--json")] = False,
+    debug: Annotated[bool, typer.Option("--debug")] = False,
+) -> None:
+    """Show the saved configuration summary for one narration."""
+    _, narrations = _narration_service()
+    item = _run(
+        lambda: narrations.get(ProjectPaths.for_root(project), narration_id),
+        debug=debug,
+    )
+    if json_mode:
+        _json_dump(item)
+    else:
+        _output.print(f"{item.display_name} [{item.id}]")
+        _output.print(f"Primary: {'yes' if item.primary else 'no'}")
+        _output.print(f"Output: {item.output or 'not configured'}")
+        _output.print(f"Engine: {item.engine or 'not configured'}")
+        _output.print(f"Target: {item.target or 'not configured'}")
+        _output.print(f"Voice: {item.voice or 'default'}")
+        if item.error:
+            _output.print(f"Error: {item.error}")
+
+
+@narration_app.command("create")
+def narration_create(
+    project: Annotated[Path, typer.Argument()],
+    display_name: Annotated[str, typer.Option("--name")],
+    engine: Annotated[str, typer.Option("--engine")],
+    target: Annotated[str, typer.Option("--target")],
+    voice: Annotated[str | None, typer.Option("--voice")] = None,
+    engine_option: Annotated[list[str] | None, typer.Option("--engine-option")] = None,
+    speed: Annotated[float | None, typer.Option("--speed")] = None,
+    output: Annotated[Path | None, typer.Option("--output")] = None,
+    json_mode: Annotated[bool, typer.Option("--json")] = False,
+    debug: Annotated[bool, typer.Option("--debug")] = False,
+) -> None:
+    """Create and persist an additional narration without rendering it."""
+    _, narrations = _narration_service()
+    item = _run(
+        lambda: narrations.create(
+            ProjectPaths.for_root(project),
+            display_name=display_name,
+            engine=engine,
+            target=target,
+            voice=voice,
+            engine_options=_parse_engine_options(engine_option),
+            speed=speed,
+            output=output,
+        ),
+        debug=debug,
+    )
+    if json_mode:
+        _json_dump(item)
+    else:
+        _output.print(f"Created narration {item.display_name} [{item.id}].")
+        _output.print(f"Output: {item.output}")
+
+
+@narration_app.command("preflight")
+def narration_preflight(
+    project: Annotated[Path, typer.Argument()],
+    narration_id: Annotated[str, typer.Argument()],
+    json_mode: Annotated[bool, typer.Option("--json")] = False,
+    debug: Annotated[bool, typer.Option("--debug")] = False,
+) -> None:
+    """Inspect the Readio workflow for a saved narration."""
+    _, prepared = _run(
+        lambda: _prepare_narration_render(project, narration_id), debug=debug
+    )
+    if json_mode:
+        _json_dump(prepared.preflight)
+    else:
+        render_preflight(prepared.preflight, _output, spacy_model=prepared.spacy_model)
+
+
+@narration_app.command("render")
+def narration_render(
+    project: Annotated[Path, typer.Argument()],
+    narration_id: Annotated[str, typer.Argument()],
+    json_mode: Annotated[bool, typer.Option("--json")] = False,
+    debug: Annotated[bool, typer.Option("--debug")] = False,
+) -> None:
+    """Render a saved narration using its existing project artifacts."""
+    coordinator, prepared = _run(
+        lambda: _prepare_narration_render(project, narration_id), debug=debug
+    )
+    result = _run(lambda: coordinator.execute(prepared), debug=debug)
+    if json_mode:
+        _json_dump({"narration_id": narration_id, "result": result})
+    else:
+        _output.print(f"Rendered {result.output}")
+
+
+@narration_app.command("delete")
+def narration_delete(
+    project: Annotated[Path, typer.Argument()],
+    narration_id: Annotated[str, typer.Argument()],
+    debug: Annotated[bool, typer.Option("--debug")] = False,
+) -> None:
+    """Delete an additional narration setup without deleting rendered audio."""
+    _, narrations = _narration_service()
+    _run(
+        lambda: narrations.delete(ProjectPaths.for_root(project), narration_id),
+        debug=debug,
+    )
+    _output.print(f"Deleted narration {narration_id}. Rendered audio was kept.")
 
 
 def _choose_catalog_value(
@@ -444,31 +694,17 @@ def _complete_interactive_setup(
         )
     if target is None:
         raise InputValidationError("A render target must be selected.")
-    selected_target = next(
-        (choice for choice in target_views if choice.id == target), None
-    )
 
     def discover_voices() -> tuple[VoiceChoiceView, ...]:
         return tuple(
-            choice
-            for item in backend.list_voices(
+            voice_choice_view(voice)
+            for voice in backend.list_voices(
                 engine=engine,
                 target=target,
                 language=language,
                 offline=request.offline,
                 refresh=request.refresh,
             )
-            if (
-                choice := voice_choice_view(
-                    item,
-                    default_voice=(
-                        selected_target.default_voice
-                        if selected_target is not None
-                        else None
-                    ),
-                )
-            )
-            is not None
         )
 
     if language_changed and voice is not None and "voice" in explicit:
@@ -549,11 +785,71 @@ def _inspection_payload(inspection: BookInspectionView) -> dict[str, object]:
         "author": inspection.author,
         "language": inspection.language,
         "chapters": [asdict(chapter) for chapter in inspection.chapters],
+        "cover": str(inspection.cover) if inspection.cover is not None else None,
+        "metadata": asdict(inspection.metadata),
     }
 
 
 def _workflow_payload(plan: WorkflowPlanView) -> dict[str, object]:
     return asdict(plan)
+
+
+@app.command()
+def preview(
+    project: Annotated[Path, typer.Argument()],
+    text: Annotated[str, typer.Option("--text")],
+    output: Annotated[Path, typer.Option("--output")],
+    narration_id: Annotated[str | None, typer.Option("--narration")] = None,
+    json_mode: Annotated[bool, typer.Option("--json")] = False,
+    debug: Annotated[bool, typer.Option("--debug")] = False,
+) -> None:
+    """Synthesize explicit text with a saved narration and write a WAV preview."""
+    backend, audiobook = _service()
+    catalog = CatalogApplicationService(backend)
+    narrations = NarrationApplicationService(audiobook, catalog)
+    previews = PreviewApplicationService(narrations, backend)
+    request = PreviewRequest(
+        project=project,
+        narration_id=narration_id,
+        text=text,
+    )
+    cancellation = previews.new_cancellation_token()
+
+    def generate() -> tuple[object, Path]:
+        previous_handler = signal.getsignal(signal.SIGINT)
+
+        def cancel(_signum: int, _frame: object) -> None:
+            cancellation.cancel()
+
+        signal.signal(signal.SIGINT, cancel)
+        try:
+            result = previews.preview(request, cancellation=cancellation)
+            output_path = _write_preview_file(output, result.audio.wav)
+            return result, output_path
+        finally:
+            signal.signal(signal.SIGINT, previous_handler)
+
+    result, output_path = _run(generate, debug=debug)
+    if json_mode:
+        _json_dump(
+            {
+                "narration_id": result.narration_id,
+                "excerpt": result.excerpt,
+                "audio": {
+                    "sample_rate": result.audio.sample_rate,
+                    "channels": result.audio.channels,
+                    "frames": result.audio.frames,
+                    "duration_seconds": result.audio.duration_seconds,
+                    "warnings": result.audio.warnings,
+                },
+                "output": output_path,
+            }
+        )
+    else:
+        _output.print(
+            f"Wrote preview WAV {output_path} "
+            f"({result.audio.duration_seconds:.1f}s, {result.audio.sample_rate} Hz)."
+        )
 
 
 @app.command()
@@ -621,8 +917,8 @@ def convert(
         typer.Option(
             "--new-variant",
             help=(
-                "Create a separate setup and output in the existing project, reusing "
-                "source conversion and semantic compile state."
+                "Deprecated compatibility adapter. Prefer `ttsforge narration create` "
+                "and `ttsforge narration render`."
             ),
         ),
     ] = False,
@@ -638,6 +934,12 @@ def convert(
     debug: Annotated[bool, typer.Option("--debug")] = False,
 ) -> None:
     """Inspect, configure, and render an EPUB audiobook as M4B."""
+    if new_variant and not json_mode:
+        typer.echo(
+            "Warning: --new-variant is deprecated. Use `ttsforge narration create` "
+            "and `ttsforge narration render`.",
+            err=True,
+        )
     if new_variant and fresh:
         raise typer.BadParameter("--new-variant cannot be combined with --fresh.")
     if new_variant and rebuild_from in {"convert", "compile"}:
@@ -706,8 +1008,14 @@ def convert(
         float | None,
     ]:
         backend, service = _service()
-        coordinator = ConversionCoordinator(service, CatalogApplicationService(backend))
-        preparation = service.prepare_setup(
+        catalog = CatalogApplicationService(backend)
+        coordinator = ConversionCoordinator(service, catalog)
+        setup_service = (
+            NarrationApplicationService(service, catalog)
+            if request.new_variant
+            else service
+        )
+        preparation = setup_service.prepare_setup(
             request,
             overrides,
             interactive=interaction.interactive,
@@ -800,6 +1108,11 @@ def convert(
                 "request": asdict(preflight.setup.request),
                 "workflow": _workflow_payload(preflight.workflow),
                 "result": asdict(result),
+                "warnings": (
+                    ["--new-variant is deprecated; use the narration commands."]
+                    if new_variant
+                    else []
+                ),
             }
         )
     else:
@@ -809,6 +1122,214 @@ def convert(
             elapsed_seconds=elapsed_seconds,
             configuration_variant=preparation.paths.variant_key,
         )
+
+
+@metadata_app.command("show")
+def metadata_show(
+    project: Annotated[Path, typer.Argument()],
+    json_mode: Annotated[bool, typer.Option("--json")] = False,
+    debug: Annotated[bool, typer.Option("--debug")] = False,
+) -> None:
+    """Show effective source metadata and saved TTSForge overrides."""
+    metadata_service = MetadataApplicationService(_service()[1])
+    view = _run(
+        lambda: metadata_service.show(ProjectPaths.for_root(project.expanduser())),
+        debug=debug,
+        failure_code=2,
+    )
+    if json_mode:
+        _json_dump(asdict(view))
+        return
+    _output.print(f"Project: {view.project}")
+    for name, value in asdict(view.effective).items():
+        _output.print(f"{name.replace('_', ' ').title()}: {value or 'not set'}")
+
+
+@metadata_app.command("set")
+def metadata_set(
+    project: Annotated[Path, typer.Argument()],
+    title: Annotated[str | None, typer.Option("--title")] = None,
+    subtitle: Annotated[str | None, typer.Option("--subtitle")] = None,
+    author: Annotated[str | None, typer.Option("--author")] = None,
+    narrator: Annotated[str | None, typer.Option("--narrator")] = None,
+    series: Annotated[str | None, typer.Option("--series")] = None,
+    series_number: Annotated[str | None, typer.Option("--series-number")] = None,
+    language: Annotated[str | None, typer.Option("--language")] = None,
+    publisher: Annotated[str | None, typer.Option("--publisher")] = None,
+    year: Annotated[str | None, typer.Option("--year")] = None,
+    cover: Annotated[Path | None, typer.Option("--cover")] = None,
+    json_mode: Annotated[bool, typer.Option("--json")] = False,
+    debug: Annotated[bool, typer.Option("--debug")] = False,
+) -> None:
+    """Persist project-wide audiobook metadata overrides."""
+    updates = {
+        name: value
+        for name, value in (
+            ("title", title),
+            ("subtitle", subtitle),
+            ("author", author),
+            ("narrator", narrator),
+            ("series", series),
+            ("series_number", series_number),
+            ("language", language),
+            ("publisher", publisher),
+            ("year", year),
+            ("cover", cover),
+        )
+        if value is not None
+    }
+    metadata_service = MetadataApplicationService(_service()[1])
+    view = _run(
+        lambda: metadata_service.set(
+            ProjectPaths.for_root(project.expanduser()), updates
+        ),
+        debug=debug,
+        failure_code=2,
+    )
+    if json_mode:
+        _json_dump(asdict(view))
+    else:
+        _output.print(f"Updated audiobook metadata in {view.project}.")
+
+
+@metadata_app.command("validate")
+def metadata_validate(
+    project: Annotated[Path, typer.Argument()],
+    json_mode: Annotated[bool, typer.Option("--json")] = False,
+    debug: Annotated[bool, typer.Option("--debug")] = False,
+) -> None:
+    """Validate effective audiobook metadata."""
+    metadata_service = MetadataApplicationService(_service()[1])
+    report = _run(
+        lambda: metadata_service.validate(ProjectPaths.for_root(project.expanduser())),
+        debug=debug,
+        failure_code=2,
+    )
+    if json_mode:
+        _json_dump(asdict(report))
+    else:
+        _output.print(
+            "Audiobook metadata is valid."
+            if report.valid
+            else "Audiobook metadata has errors."
+        )
+        for finding in report.findings:
+            _output.print(f"{finding.severity}: {finding.message}")
+    if not report.valid:
+        raise typer.Exit(code=1)
+
+
+def _chapter_table(chapters: tuple[ChapterStatusView, ...]) -> Table:
+    table = Table("#", "Chapter", "Characters", "Selected", "Workflow")
+    for chapter in chapters:
+        char_count = "" if chapter.char_count is None else f"{chapter.char_count:,}"
+        table.add_row(
+            str(chapter.number),
+            chapter.title,
+            char_count,
+            "yes" if chapter.selected else "no",
+            chapter.workflow_state or "",
+        )
+    return table
+
+
+@chapters_app.command("list")
+def chapters_list(
+    source_or_project: Annotated[Path, typer.Argument(exists=True, readable=True)],
+    json_mode: Annotated[bool, typer.Option("--json")] = False,
+    debug: Annotated[bool, typer.Option("--debug")] = False,
+) -> None:
+    """List chapters from a source book or saved project."""
+    chapter_service = ChapterApplicationService(_service()[1])
+    chapters = _run(
+        lambda: chapter_service.list(source_or_project.expanduser()),
+        debug=debug,
+        failure_code=2,
+    )
+    if json_mode:
+        _json_dump([asdict(chapter) for chapter in chapters])
+    else:
+        _output.print(_chapter_table(chapters))
+
+
+@chapters_app.command("status")
+def chapters_status(
+    project: Annotated[Path, typer.Argument(exists=True, file_okay=False)],
+    json_mode: Annotated[bool, typer.Option("--json")] = False,
+    debug: Annotated[bool, typer.Option("--debug")] = False,
+) -> None:
+    """Show selected chapters and matching Readio workflow states."""
+    chapter_service = ChapterApplicationService(_service()[1])
+    chapters = _run(
+        lambda: chapter_service.status(ProjectPaths.for_root(project.expanduser())),
+        debug=debug,
+        failure_code=2,
+    )
+    if json_mode:
+        _json_dump([asdict(chapter) for chapter in chapters])
+    else:
+        _output.print(_chapter_table(chapters))
+
+
+@chapters_app.command("select")
+def chapters_select(
+    project: Annotated[Path, typer.Argument(exists=True, file_okay=False)],
+    selection: Annotated[str, typer.Argument()],
+    json_mode: Annotated[bool, typer.Option("--json")] = False,
+    debug: Annotated[bool, typer.Option("--debug")] = False,
+) -> None:
+    """Validate a project's existing chapter selection without changing its scope."""
+    chapter_service = ChapterApplicationService(_service()[1])
+    selected = _run(
+        lambda: chapter_service.select(
+            ProjectPaths.for_root(project.expanduser()), selection
+        ),
+        debug=debug,
+        failure_code=2,
+    )
+    if json_mode:
+        _json_dump(asdict(selected))
+    else:
+        _output.print(
+            f"Project {selected.project} already selects chapters {selected.selection}."
+        )
+
+
+@app.command("check")
+def check_audiobook(
+    project: Annotated[Path, typer.Argument()],
+    narration: Annotated[str | None, typer.Option("--narration")] = None,
+    json_mode: Annotated[bool, typer.Option("--json")] = False,
+    debug: Annotated[bool, typer.Option("--debug")] = False,
+) -> None:
+    """Run product-level audiobook quality checks."""
+
+    def check() -> AudiobookQcReport:
+        backend, audiobook = _service()
+        narrations = NarrationApplicationService(
+            audiobook, CatalogApplicationService(backend)
+        )
+        return QcApplicationService(audiobook, narrations).check(
+            ProjectPaths.for_root(project.expanduser()), narration
+        )
+
+    report = _run(check, debug=debug, failure_code=2)
+    if json_mode:
+        _json_dump(asdict(report))
+    else:
+        _output.print(
+            f"Audiobook QC {'passed' if report.passed else 'failed'} "
+            f"for {report.project}."
+        )
+        for finding in report.findings:
+            _output.print(f"{finding.severity}: {finding.id}: {finding.message}")
+    if any(
+        finding.id in {"project.primary_missing", "project.primary_invalid"}
+        for finding in report.findings
+    ):
+        raise typer.Exit(code=2)
+    if not report.passed:
+        raise typer.Exit(code=1)
 
 
 @app.command("list")
@@ -956,9 +1477,9 @@ def voices(
 ) -> None:
     """List voices available for an engine target."""
 
-    def discover() -> tuple[tuple[object, ...], str | None]:
+    def discover() -> tuple[object, ...]:
         backend = _service()[0]
-        values = tuple(
+        return tuple(
             backend.list_voices(
                 engine=engine,
                 target=target,
@@ -967,27 +1488,12 @@ def voices(
                 refresh=refresh,
             )
         )
-        default_voice = None
-        if engine is not None and target is not None:
-            targets = tuple(
-                target_choice_view(item)
-                for item in backend.list_targets(
-                    engine=engine,
-                    language=language,
-                    offline=offline,
-                    refresh=refresh,
-                )
-            )
-            selected = next((item for item in targets if item.id == target), None)
-            if selected is not None:
-                default_voice = selected.default_voice
-        return values, default_voice
 
-    values, default_voice = _run(discover, debug=debug)
+    values = _run(discover, debug=debug)
     _catalog_command(
         "Voices",
         values,
-        view=lambda item: voice_choice_view(item, default_voice=default_voice),
+        view=voice_choice_view,
         json_mode=json_mode,
     )
 

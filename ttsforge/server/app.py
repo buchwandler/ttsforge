@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import asyncio
 import importlib.metadata
 import json
 import logging
@@ -46,10 +47,18 @@ from ..application import (
     BlockedWorkflowError,
     CatalogApplicationService,
     CatalogSelectionError,
+    ChapterApplicationService,
     ConversionCoordinator,
     InputValidationError,
+    LibraryApplicationService,
+    MetadataApplicationService,
+    NarrationApplicationService,
     OperationConflictError,
+    PreviewApplicationService,
+    PreviewRequest,
     ProjectPaths,
+    ProjectSummary,
+    QcApplicationService,
     WorkflowFailureError,
     error_view,
     json_value,
@@ -59,10 +68,16 @@ from ..application.speech_profiles import (
     is_speech_replacement_profile,
 )
 from .auth import require_bearer_token
+from .job_store import SqliteJobStore
 from .jobs import JobManager, JobRecord, JobState
 from .models import (
     ApiErrorResponseModel,
+    AudiobookCapabilitiesResponseModel,
+    AudiobookMetadataViewResponseModel,
     BookInspectionResponseModel,
+    ChapterListResponseModel,
+    ChapterSelectionRequestModel,
+    ChapterSelectionResponseModel,
     DeleteSourceImportResponseModel,
     EngineChoiceResponseModel,
     EngineOptionResponseModel,
@@ -73,10 +88,22 @@ from .models import (
     JobStateLiteral,
     JobStatusResponseModel,
     JobSubmissionModel,
+    LibraryProjectsResponseModel,
+    MetadataValidationResponseModel,
+    NarrationCreateRequestModel,
+    NarrationDeleteResponseModel,
+    NarrationListResponseModel,
+    NarrationResponseModel,
     PreflightResponseModel,
+    PreviewRequestModel,
     ProjectInfoResponseModel,
+    ProjectMetadataSetRequestModel,
+    ProjectPathRequestModel,
+    ProjectQcRequestModel,
     ProjectSetupResponseModel,
+    ProjectSummaryResponseModel,
     ProjectVariantResponseModel,
+    QcReportResponseModel,
     RuntimeStatusResponseModel,
     SetupResolutionResponseModel,
     SourceImportResponseModel,
@@ -108,6 +135,7 @@ class ApplicationServices:
     audiobook: AudiobookApplicationService
     catalog: CatalogApplicationService
     conversion: ConversionCoordinator
+    preview: PreviewApplicationService | None = None
 
 
 class OriginPolicyMiddleware(BaseHTTPMiddleware):
@@ -166,7 +194,19 @@ def create_app(  # noqa: C901
     imports_dir.mkdir(parents=True, exist_ok=True)
     cleanup_imports(imports_dir, retention_days=import_retention_days)
     app_services = services or _application_services()
-    jobs = job_manager if job_manager is not None else JobManager(debug=debug)
+    narrations = NarrationApplicationService(
+        app_services.audiobook, app_services.catalog
+    )
+    chapter_service = ChapterApplicationService(app_services.audiobook)
+    metadata_service = MetadataApplicationService(app_services.audiobook)
+    qc_service = QcApplicationService(app_services.audiobook, narrations)
+    library_service = LibraryApplicationService(app_services.audiobook, narrations)
+    preview_service = getattr(app_services, "preview", None)
+    jobs = (
+        job_manager
+        if job_manager is not None
+        else JobManager(debug=debug, store=SqliteJobStore(state / "jobs.sqlite3"))
+    )
     origins = tuple(dict.fromkeys((*_TAURI_ORIGINS, *allowed_origins)))
 
     app = FastAPI(
@@ -186,7 +226,7 @@ def create_app(  # noqa: C901
     app.add_middleware(
         CORSMiddleware,
         allow_origins=list(origins),
-        allow_methods=["GET", "POST", "DELETE"],
+        allow_methods=["GET", "POST", "DELETE", "PATCH"],
         allow_headers=["Authorization", "Content-Type"],
         allow_credentials=False,
     )
@@ -299,8 +339,18 @@ def create_app(  # noqa: C901
                 "project_setup": True,
                 "spacy_ensure": True,
                 "speech_profiles": True,
+                "narrations": True,
+                "library": True,
+                "preview": preview_service is not None,
             },
         }
+
+    @router.get(
+        "/system/capabilities",
+        response_model=AudiobookCapabilitiesResponseModel,
+    )
+    def system_capabilities() -> object:
+        return json_value(app_services.audiobook.capabilities())
 
     @router.get("/system/runtime", response_model=RuntimeStatusResponseModel)
     def system_runtime() -> dict[str, object]:
@@ -437,7 +487,6 @@ def create_app(  # noqa: C901
                 language=language,
                 offline=offline,
                 refresh=refresh,
-                default_voice=None if selected is None else selected.default_voice,
             )
         )
 
@@ -488,6 +537,149 @@ def create_app(  # noqa: C901
             app_services.audiobook.status(ProjectPaths.for_root(request_path(project)))
         )
 
+    def narration_or_404(paths: ProjectPaths, narration_id: str):
+        try:
+            return narrations.get(paths, narration_id)
+        except InputValidationError:
+            raise HTTPException(
+                status_code=404, detail="Narration not found."
+            ) from None
+
+    @router.get("/projects/narrations", response_model=NarrationListResponseModel)
+    def list_narrations(project: str, source: str | None = None) -> dict[str, object]:
+        paths = ProjectPaths.for_root(request_path(project))
+        values = narrations.list(
+            paths, source=request_path(source) if source is not None else None
+        )
+        return {"project": str(paths.root), "narrations": json_value(values)}
+
+    @router.post(
+        "/projects/narrations",
+        response_model=NarrationResponseModel,
+        status_code=201,
+    )
+    def create_narration(body: NarrationCreateRequestModel) -> object:
+        item = narrations.create(
+            ProjectPaths.for_root(request_path(body.project)),
+            display_name=body.display_name,
+            engine=body.engine,
+            target=body.target,
+            voice=body.voice,
+            engine_options=dict(body.engine_options),
+            speed=body.speed,
+            output=request_path(body.output) if body.output is not None else None,
+        )
+        return json_value(item)
+
+    @router.get(
+        "/projects/narrations/{narration_id}", response_model=NarrationResponseModel
+    )
+    def narration_info(project: str, narration_id: str) -> object:
+        paths = ProjectPaths.for_root(request_path(project))
+        return json_value(narration_or_404(paths, narration_id))
+
+    @router.delete(
+        "/projects/narrations/{narration_id}",
+        response_model=NarrationDeleteResponseModel,
+    )
+    def delete_narration(project: str, narration_id: str) -> dict[str, bool]:
+        paths = ProjectPaths.for_root(request_path(project))
+        narration_or_404(paths, narration_id)
+        narrations.delete(paths, narration_id)
+        return {"deleted": True}
+
+    @router.post(
+        "/previews",
+        response_class=Response,
+        responses={
+            200: {
+                "content": {
+                    "audio/wav": {"schema": {"type": "string", "format": "binary"}}
+                },
+            }
+        },
+    )
+    async def create_preview(body: PreviewRequestModel, request: Request) -> Response:
+        if preview_service is None:
+            raise HTTPException(
+                status_code=503, detail="Preview synthesis is unavailable."
+            )
+        preview_request = PreviewRequest(
+            project=request_path(body.project),
+            narration_id=body.narration_id,
+            text=body.text,
+            chapter=body.chapter,
+            paragraph=body.paragraph,
+        )
+        cancellation = preview_service.new_cancellation_token()
+        task = asyncio.create_task(
+            run_in_threadpool(
+                preview_service.preview,
+                preview_request,
+                cancellation=cancellation,
+            )
+        )
+        while not task.done():
+            if await request.is_disconnected():
+                cancellation.cancel()
+            await asyncio.sleep(0.05)
+        result = await task
+        return Response(
+            content=result.audio.wav,
+            media_type="audio/wav",
+            headers={
+                "X-TTSForge-Narration-Id": result.narration_id,
+                "X-TTSForge-Sample-Rate": str(result.audio.sample_rate),
+                "X-TTSForge-Channels": str(result.audio.channels),
+                "X-TTSForge-Duration-Seconds": str(result.audio.duration_seconds),
+            },
+        )
+
+    @router.post(
+        "/projects/narrations/{narration_id}/preflight",
+        response_model=PreflightResponseModel,
+    )
+    def preflight_narration(project: str, narration_id: str) -> dict[str, object]:
+        paths = ProjectPaths.for_root(request_path(project))
+        narration_or_404(paths, narration_id)
+        request, overrides = narrations.request_for_render(paths, narration_id)
+        request = _request_for_import(
+            request,
+            imports_dir,
+            state,
+            claim=True,
+            create_output_parent=True,
+        )
+        prepared = app_services.conversion.prepare(request, overrides)
+        setup = prepared.resolved.preparation
+        return {
+            "project": str(setup.paths.root),
+            "configuration_variant": setup.paths.variant_key,
+            "reused_setup": setup.reused,
+            "spacy_model": json_value(prepared.spacy_model),
+            "request": json_value(prepared.resolved.request),
+            "workflow": json_value(prepared.preflight.workflow),
+        }
+
+    @router.post(
+        "/projects/narrations/{narration_id}/jobs",
+        status_code=202,
+        response_model=JobCreateResponseModel,
+    )
+    def create_narration_job(project: str, narration_id: str) -> dict[str, str]:
+        paths = ProjectPaths.for_root(request_path(project))
+        narration_or_404(paths, narration_id)
+        request, overrides = narrations.request_for_render(paths, narration_id)
+        request = _request_for_import(
+            request,
+            imports_dir,
+            state,
+            claim=True,
+            create_output_parent=True,
+        )
+        record = jobs.submit(request, overrides, narration_id=narration_id)
+        return {"id": record.id, "state": record.state.value}
+
     @router.get("/projects/variants", response_model=list[ProjectVariantResponseModel])
     def project_variants(project: str, source: str | None = None) -> object:
         return json_value(
@@ -515,12 +707,78 @@ def create_app(  # noqa: C901
         variants = app_services.audiobook.list_variants(
             paths, source=saved.source if saved is not None else None
         )
+        narration_views = narrations.list(
+            paths, source=saved.source if saved is not None else None
+        )
         return {
             "project": str(paths.root),
             "saved_setup": json_value(saved),
             "workflow": json_value(workflow),
             "variants": json_value(variants),
+            "narrations": json_value(narration_views),
         }
+
+    @router.get("/library/projects", response_model=LibraryProjectsResponseModel)
+    def list_library_projects(root: str) -> dict[str, object]:
+        library_root = request_path(root)
+        records = jobs.list_jobs(limit=100)
+        projects = [
+            json_value(_with_job_activity(item, records))
+            for item in library_service.list(library_root)
+        ]
+        return {"root": str(library_root), "projects": projects}
+
+    @router.get(
+        "/library/projects/{project_id}", response_model=ProjectSummaryResponseModel
+    )
+    def library_project(project_id: str) -> object:
+        return json_value(
+            _with_job_activity(
+                library_service.get(project_id), jobs.list_jobs(limit=100)
+            )
+        )
+
+    @router.get("/projects/metadata", response_model=AudiobookMetadataViewResponseModel)
+    def project_metadata(project: str) -> object:
+        return json_value(metadata_service.show(_project_paths(project)))
+
+    @router.patch(
+        "/projects/metadata", response_model=AudiobookMetadataViewResponseModel
+    )
+    def set_project_metadata(body: ProjectMetadataSetRequestModel) -> object:
+        values = body.metadata.model_dump(exclude_unset=True)
+        if "cover" in values and values["cover"] is not None:
+            values["cover"] = request_path(values["cover"])
+        updates = {key: value for key, value in values.items() if value is not None}
+        return json_value(metadata_service.set(_project_paths(body.project), updates))
+
+    @router.post(
+        "/projects/metadata/validate", response_model=MetadataValidationResponseModel
+    )
+    def validate_project_metadata(body: ProjectPathRequestModel) -> object:
+        return json_value(metadata_service.validate(_project_paths(body.project)))
+
+    @router.get("/projects/chapters", response_model=ChapterListResponseModel)
+    def project_chapters(project: str) -> dict[str, object]:
+        paths = _project_paths(project)
+        return {
+            "project": str(paths.root),
+            "chapters": json_value(chapter_service.status(paths)),
+        }
+
+    @router.post(
+        "/projects/chapters/select", response_model=ChapterSelectionResponseModel
+    )
+    def select_project_chapters(body: ChapterSelectionRequestModel) -> object:
+        return json_value(
+            chapter_service.select(_project_paths(body.project), body.selection)
+        )
+
+    @router.post("/projects/qc", response_model=QcReportResponseModel)
+    def project_qc(body: ProjectQcRequestModel) -> object:
+        return json_value(
+            qc_service.check(_project_paths(body.project), body.narration_id)
+        )
 
     @router.post("/jobs", status_code=202, response_model=JobCreateResponseModel)
     def create_job(body: JobSubmissionModel) -> dict[str, str]:
@@ -556,6 +814,22 @@ def create_app(  # noqa: C901
     @router.get("/jobs/{job_id}", response_model=JobStatusResponseModel)
     def job_status(job_id: str) -> dict[str, object]:
         return _job_status_view(_get_job_record(jobs, job_id))
+
+    @router.post(
+        "/jobs/{job_id}/retry",
+        status_code=202,
+        response_model=JobCreateResponseModel,
+    )
+    def retry_job(job_id: str) -> dict[str, str]:
+        try:
+            record = jobs.retry(job_id)
+        except KeyError:
+            raise HTTPException(status_code=404, detail="Job not found.") from None
+        except InputValidationError as error:
+            raise HTTPException(status_code=400, detail=str(error)) from None
+        except OperationConflictError as error:
+            raise HTTPException(status_code=409, detail=str(error)) from None
+        return {"id": record.id, "state": record.state.value}
 
     @router.get("/jobs/{job_id}/events", response_model=JobEventsPageResponseModel)
     def job_events(
@@ -598,15 +872,55 @@ def _project_paths(project: str, variant: str | None = None) -> ProjectPaths:
     return ProjectPaths.for_variant(root, variant)
 
 
+def _with_job_activity(
+    summary: ProjectSummary, records: Sequence[JobRecord]
+) -> ProjectSummary:
+    project = summary.project.resolve()
+    matching = tuple(
+        record
+        for record in records
+        if record.project is not None and record.project.resolve() == project
+    )
+    active = next(
+        (
+            record
+            for record in matching
+            if record.state in {JobState.QUEUED, JobState.PREPARING, JobState.RUNNING}
+        ),
+        None,
+    )
+    timestamps = [summary.last_activity] if summary.last_activity is not None else []
+    for record in matching:
+        timestamps.extend(
+            timestamp
+            for timestamp in (record.created_at, record.started_at, record.finished_at)
+            if timestamp is not None
+        )
+        if record.event_history:
+            try:
+                timestamps.append(
+                    datetime.fromisoformat(record.event_history[-1].timestamp)
+                )
+            except ValueError:
+                pass
+    return replace(
+        summary,
+        active_job_id=active.id if active is not None else None,
+        last_activity=max(timestamps) if timestamps else None,
+    )
+
+
 def _application_services() -> ApplicationServices:
     from ..readio_backend import ReadioBackend, create_readio
 
     backend = ReadioBackend(create_readio())
     audiobook = AudiobookApplicationService(backend)
     catalog = CatalogApplicationService(backend)
-    return ApplicationServices(
-        audiobook, catalog, ConversionCoordinator(audiobook, catalog)
+    conversion = ConversionCoordinator(audiobook, catalog)
+    preview = PreviewApplicationService(
+        NarrationApplicationService(audiobook, catalog), backend
     )
+    return ApplicationServices(audiobook, catalog, conversion, preview)
 
 
 def _get_job_record(job_manager: JobManager, job_id: str) -> JobRecord:
@@ -629,6 +943,8 @@ def _job_summary_view(record: JobRecord) -> dict[str, object]:
         ),
         "project": str(record.project) if record.project is not None else None,
         "output": str(record.output) if record.output is not None else None,
+        "narration_id": record.narration_id,
+        "retry_of": record.retry_of,
         "event_sequence": record.event_sequence,
     }
 

@@ -1,4 +1,4 @@
-"""In-memory bounded-progress job records and isolated worker supervision."""
+"""Persistent Studio job records and isolated worker supervision."""
 
 from __future__ import annotations
 
@@ -19,14 +19,20 @@ from enum import Enum
 from pathlib import Path
 from typing import Any
 
+from ..application.errors import InputValidationError, OperationConflictError
 from ..application.errors_view import ErrorView
 from ..application.events import ApplicationEvent
 from ..application.models import (
     AudiobookRequest,
     ConversionResultView,
+    ExecutionSummaryView,
     InputOverrides,
+    StageExecutionView,
 )
 from ..application.serialization import JsonValue, json_value
+from .job_store import JobStore, SqliteJobStore, StoredJob, StoredJobEvent
+from .models import AudiobookRequestModel
+from .requests import application_request
 
 _LOG = logging.getLogger(__name__)
 _MAX_PROTOCOL_LINE_BYTES = 1024 * 1024
@@ -69,6 +75,8 @@ class JobRecord:
     request: AudiobookRequest
     project: Path | None
     output: Path | None
+    narration_id: str | None
+    retry_of: str | None
     progress: ApplicationEvent | None
     result: ConversionResultView | None
     error: ErrorView | None
@@ -93,6 +101,10 @@ class _MutableJobRecord:
     error: ErrorView | None = None
     event_sequence: int = 0
     cancellation_requested: bool = False
+    explicit_fields: frozenset[str] = frozenset()
+    narration_id: str | None = None
+    retry_of: str | None = None
+    queue_order: int = 0
 
 
 class _WorkerProtocolError(Exception):
@@ -111,6 +123,7 @@ class JobManager:
         cancel_grace_seconds: float = 2.0,
         debug: bool = False,
         worker_command: Sequence[str] | None = None,
+        store: JobStore | None = None,
     ) -> None:
         if (
             max_active_jobs < 1
@@ -131,6 +144,7 @@ class JobManager:
             worker_command or (sys.executable, "-m", "ttsforge.server.worker")
         )
         self._condition = threading.Condition()
+        self._store = store or SqliteJobStore(":memory:")
         self._jobs: dict[str, _MutableJobRecord] = {}
         self._queue: deque[str] = deque()
         self._active_jobs: set[str] = set()
@@ -144,14 +158,149 @@ class JobManager:
             daemon=True,
         )
 
+        self._restore_jobs()
+        if self._queue:
+            self._scheduler_started = True
+            self._scheduler.start()
+
+    def _restore_jobs(self) -> None:
+        interrupted: list[_MutableJobRecord] = []
+        for stored in self._store.list_jobs():
+            request_data = json.loads(stored.request_json)
+            request = application_request(
+                AudiobookRequestModel.model_validate(request_data)
+            )
+            explicit_fields = frozenset(json.loads(stored.explicit_fields_json))
+            event_history = deque(
+                (
+                    JobEventRecord(
+                        sequence=event.sequence,
+                        timestamp=event.timestamp,
+                        event=event.event,
+                    )
+                    for event in self._store.list_events(stored.id)
+                ),
+                maxlen=self._event_history_limit,
+            )
+            record = _MutableJobRecord(
+                id=stored.id,
+                state=JobState(stored.state),
+                created_at=_parse_datetime(stored.created_at),
+                request=request,
+                payload=json.dumps(
+                    {
+                        "request": request_data,
+                        "explicit_fields": sorted(explicit_fields),
+                        "debug": self._debug,
+                    },
+                    ensure_ascii=False,
+                    allow_nan=False,
+                    separators=(",", ":"),
+                ),
+                project=Path(stored.project) if stored.project is not None else None,
+                output=Path(stored.output) if stored.output is not None else None,
+                started_at=(
+                    _parse_datetime(stored.started_at)
+                    if stored.started_at is not None
+                    else None
+                ),
+                finished_at=(
+                    _parse_datetime(stored.finished_at)
+                    if stored.finished_at is not None
+                    else None
+                ),
+                progress=(
+                    _application_event(json.loads(stored.progress_json))
+                    if stored.progress_json is not None
+                    else None
+                ),
+                result=(
+                    _conversion_result(json.loads(stored.result_json))
+                    if stored.result_json is not None
+                    else None
+                ),
+                error=(
+                    _error_view(json.loads(stored.error_json))
+                    if stored.error_json is not None
+                    else None
+                ),
+                event_sequence=stored.event_sequence,
+                event_history=event_history,
+                cancellation_requested=stored.cancellation_requested,
+                explicit_fields=explicit_fields,
+                narration_id=stored.narration_id,
+                retry_of=stored.retry_of,
+                queue_order=stored.queue_order,
+            )
+            self._jobs[record.id] = record
+            if record.state in {JobState.PREPARING, JobState.RUNNING}:
+                interrupted.append(record)
+
+        self._queue.extend(job.id for job in self._store.pending_jobs())
+        for record in interrupted:
+            record.cancellation_requested = False
+            self._fail_job(
+                record,
+                ErrorView(
+                    type="JobInterruptedError",
+                    message="The job was interrupted when TTSForge stopped.",
+                    category="worker",
+                    code="job_interrupted_by_restart",
+                    details={"recoverable": True, "retryable": True},
+                ),
+            )
+        self._prune_terminal_jobs()
+
+    def _stored_job(self, record: _MutableJobRecord) -> StoredJob:
+        return StoredJob(
+            id=record.id,
+            state=record.state.value,
+            request_json=_json_text(json_value(record.request)),
+            explicit_fields_json=_json_text(sorted(record.explicit_fields)),
+            project=str(record.project) if record.project is not None else None,
+            narration_id=record.narration_id,
+            output=str(record.output) if record.output is not None else None,
+            created_at=record.created_at.isoformat(),
+            started_at=(record.started_at.isoformat() if record.started_at else None),
+            finished_at=(
+                record.finished_at.isoformat() if record.finished_at else None
+            ),
+            progress_json=_json_text(json_value(record.progress))
+            if record.progress is not None
+            else None,
+            result_json=_json_text(json_value(record.result))
+            if record.result is not None
+            else None,
+            error_json=_json_text(json_value(record.error))
+            if record.error is not None
+            else None,
+            cancellation_requested=record.cancellation_requested,
+            event_sequence=record.event_sequence,
+            queue_order=record.queue_order,
+            retry_of=record.retry_of,
+        )
+
+    @staticmethod
+    def _stored_event(event: JobEventRecord) -> StoredJobEvent:
+        return StoredJobEvent(
+            sequence=event.sequence,
+            timestamp=event.timestamp,
+            event=event.event,
+        )
+
     def submit(
-        self, request: AudiobookRequest, overrides: InputOverrides | None = None
+        self,
+        request: AudiobookRequest,
+        overrides: InputOverrides | None = None,
+        *,
+        narration_id: str | None = None,
+        retry_of: str | None = None,
     ) -> JobRecord:
         selected_overrides = overrides or InputOverrides()
-        request_json = json_value(request)
+        request_data = json_value(request)
         payload = json.dumps(
             {
-                "request": request_json,
+                "request": request_data,
                 "explicit_fields": sorted(selected_overrides.fields),
                 "debug": self._debug,
             },
@@ -170,16 +319,26 @@ class JobManager:
             project=request.project or request.source.with_suffix(".ttsforge"),
             output=request.output or request.source.with_suffix(".m4b"),
             event_history=deque(maxlen=self._event_history_limit),
+            explicit_fields=selected_overrides.fields,
+            narration_id=narration_id,
+            retry_of=retry_of,
         )
+        event = JobEventRecord(
+            sequence=1,
+            timestamp=now.isoformat(),
+            event={"type": "job.state", "state": JobState.QUEUED.value},
+        )
+        record.event_sequence = event.sequence
+        record.event_history.append(event)
         with self._condition:
             if self._shutdown:
                 raise RuntimeError("Job manager is shutting down.")
+            stored = self._store.create_job(
+                self._stored_job(record), self._stored_event(event)
+            )
+            record.queue_order = stored.queue_order
             self._jobs[job_id] = record
             self._queue.append(job_id)
-            self._append_event(
-                record,
-                {"type": "job.state", "state": JobState.QUEUED.value},
-            )
             if not self._scheduler_started:
                 self._scheduler_started = True
                 self._scheduler.start()
@@ -189,6 +348,27 @@ class JobManager:
     def get(self, job_id: str) -> JobRecord:
         with self._condition:
             return self._snapshot(self._require_job(job_id))
+
+    def retry(self, job_id: str) -> JobRecord:
+        with self._condition:
+            previous = self._require_job(job_id)
+            if previous.state is not JobState.FAILED:
+                raise OperationConflictError("Only failed jobs can be retried.")
+            request = previous.request
+            overrides = InputOverrides(previous.explicit_fields)
+            narration_id = previous.narration_id
+        if not request.source.is_file():
+            raise InputValidationError("The original source file no longer exists.")
+        if request.project is not None and not request.project.is_dir():
+            raise InputValidationError(
+                "The original project directory no longer exists."
+            )
+        return self.submit(
+            request,
+            overrides,
+            narration_id=narration_id,
+            retry_of=job_id,
+        )
 
     def list_jobs(
         self,
@@ -241,6 +421,7 @@ class JobManager:
             if record.state in _TERMINAL_STATES:
                 return self._snapshot(record)
             record.cancellation_requested = True
+            self._store.update_job(self._stored_job(record))
             if record.state is JobState.QUEUED:
                 try:
                     self._queue.remove(job_id)
@@ -257,17 +438,13 @@ class JobManager:
             return self._snapshot(self._require_job(job_id))
 
     def shutdown(self, *, wait: bool = True) -> None:
-        processes: tuple[subprocess.Popen[str], ...]
         with self._condition:
             if not self._shutdown:
                 self._shutdown = True
-                for job_id in tuple(self._queue):
+                for job_id in self._active_jobs:
                     record = self._jobs[job_id]
                     record.cancellation_requested = True
-                    self._transition(record, JobState.CANCELLED)
-                self._queue.clear()
-                for job_id in self._active_jobs:
-                    self._jobs[job_id].cancellation_requested = True
+                    self._store.update_job(self._stored_job(record))
                 processes = tuple(self._processes.values())
                 self._condition.notify_all()
             else:
@@ -275,12 +452,14 @@ class JobManager:
 
         for process in processes:
             _terminate_process_tree(process, self._cancel_grace_seconds)
-        if wait and self._scheduler_started:
-            self._scheduler.join()
-            with self._condition:
-                runners = tuple(self._runner_threads)
-            for runner in runners:
-                runner.join()
+        if wait:
+            if self._scheduler_started:
+                self._scheduler.join()
+                with self._condition:
+                    runners = tuple(self._runner_threads)
+                for runner in runners:
+                    runner.join()
+            self._store.close()
 
     def _schedule(self) -> None:
         while True:
@@ -505,12 +684,16 @@ class JobManager:
         if not isinstance(encoded, dict):
             raise TypeError("Job events must serialize to JSON objects.")
         record.event_sequence += 1
-        record.event_history.append(
-            JobEventRecord(
-                sequence=record.event_sequence,
-                timestamp=datetime.now(timezone.utc).isoformat(),
-                event=encoded,
-            )
+        stored_event = JobEventRecord(
+            sequence=record.event_sequence,
+            timestamp=datetime.now(timezone.utc).isoformat(),
+            event=encoded,
+        )
+        record.event_history.append(stored_event)
+        self._store.append_event(
+            self._stored_job(record),
+            self._stored_event(stored_event),
+            limit=self._event_history_limit,
         )
 
     def _transition(self, record: _MutableJobRecord, state: JobState) -> None:
@@ -539,6 +722,7 @@ class JobManager:
         terminal.sort(key=lambda record: record.finished_at or record.created_at)
         for record in terminal[:excess]:
             self._jobs.pop(record.id)
+        self._store.delete_jobs(tuple(record.id for record in terminal[:excess]))
 
     def _require_job(self, job_id: str) -> _MutableJobRecord:
         try:
@@ -556,6 +740,8 @@ class JobManager:
             request=record.request,
             project=record.project,
             output=record.output,
+            narration_id=record.narration_id,
+            retry_of=record.retry_of,
             progress=record.progress,
             result=record.result,
             error=record.error,
@@ -566,6 +752,17 @@ class JobManager:
 
 def _new_job_id() -> str:
     return str(uuid.uuid4())
+
+
+def _json_text(value: object) -> str:
+    return json.dumps(value, ensure_ascii=False, allow_nan=False, separators=(",", ":"))
+
+
+def _parse_datetime(value: str) -> datetime:
+    parsed = datetime.fromisoformat(value)
+    if parsed.tzinfo is None:
+        return parsed.replace(tzinfo=timezone.utc)
+    return parsed
 
 
 def _process_group_options() -> dict[str, Any]:
@@ -683,6 +880,61 @@ def _conversion_result(value: object) -> ConversionResultView:
         reused_stages=_string_tuple(value.get("reused_stages")),
         warnings=_string_tuple(value.get("warnings", [])),
         variant=_optional_string(value.get("variant")),
+        execution=_execution_summary(value.get("execution")),
+    )
+
+
+def _execution_summary(value: object) -> ExecutionSummaryView | None:
+    if value is None:
+        return None
+    if not isinstance(value, dict):
+        raise _WorkerProtocolError(
+            "Worker execution summary must be an object or null."
+        )
+    raw_stages = value.get("stages")
+    raw_versions = value.get("specialist_versions")
+    elapsed = _optional_number(value.get("elapsed_seconds"))
+    if not isinstance(raw_stages, list) or not isinstance(raw_versions, dict):
+        raise _WorkerProtocolError("Worker execution summary fields are invalid.")
+    if elapsed is None or not all(
+        isinstance(key, str) and (version is None or isinstance(version, str))
+        for key, version in raw_versions.items()
+    ):
+        raise _WorkerProtocolError("Worker execution summary values are invalid.")
+    stages: list[StageExecutionView] = []
+    for raw_stage in raw_stages:
+        if not isinstance(raw_stage, dict):
+            raise _WorkerProtocolError("Worker execution stage must be an object.")
+        stage = raw_stage.get("stage")
+        package = raw_stage.get("package")
+        action = raw_stage.get("action")
+        state_before = raw_stage.get("state_before")
+        reason_code = raw_stage.get("reason_code")
+        state_after = _optional_string(raw_stage.get("state_after"))
+        stage_elapsed = _optional_number(raw_stage.get("elapsed_seconds"))
+        if (
+            not all(
+                isinstance(item, str)
+                for item in (stage, package, action, state_before, reason_code)
+            )
+            or stage_elapsed is None
+        ):
+            raise _WorkerProtocolError("Worker execution stage fields are invalid.")
+        stages.append(
+            StageExecutionView(
+                stage=stage,
+                package=package,
+                action=action,
+                state_before=state_before,
+                state_after=state_after,
+                elapsed_seconds=stage_elapsed,
+                reason_code=reason_code,
+            )
+        )
+    return ExecutionSummaryView(
+        stages=tuple(stages),
+        specialist_versions=raw_versions,
+        elapsed_seconds=elapsed,
     )
 
 

@@ -15,6 +15,7 @@ from ttsforge.application import (
     InputOverrides,
     InputValidationError,
     LegacyWorkspaceError,
+    NarrationApplicationService,
     OperationConflictError,
     ProjectPaths,
     ProjectScopeConflictError,
@@ -23,7 +24,7 @@ from ttsforge.application import (
     blocked_workflow_steps,
     require_runnable_workflow,
 )
-from ttsforge.application.service import _configuration_variant_key
+from ttsforge.application.narrations import _configuration_variant_key
 
 
 def _inspection(source: Path) -> BookInspectionView:
@@ -112,6 +113,12 @@ class _FakeBackend:
             executed_stages=("render",),
             reused_stages=(),
         )
+
+
+def _narration_service(
+    service: AudiobookApplicationService,
+) -> NarrationApplicationService:
+    return NarrationApplicationService(service, None)
 
 
 def test_prepare_setup_uses_source_defaults_and_ttsforge_paths(tmp_path: Path) -> None:
@@ -575,6 +582,7 @@ def test_blocked_workflow_steps_preserve_stage_reasons_and_public_fields() -> No
             compose,
             export,
         ),
+        executable=False,
     )
 
     blocked = blocked_workflow_steps(plan)
@@ -633,7 +641,7 @@ def test_new_variant_requires_an_existing_base_setup(tmp_path: Path) -> None:
     with pytest.raises(
         InputValidationError, match="requires an existing TTSForge project"
     ):
-        service.prepare_setup(
+        _narration_service(service).prepare_setup(
             AudiobookRequest(source=source, new_variant=True), InputOverrides()
         )
 
@@ -649,7 +657,7 @@ def test_new_variant_inherits_shared_setup_and_clears_saved_synthesis_choices(
     source = tmp_path / "book.epub"
     saved = _prepare_saved_variant_project(backend, source, tmp_path)
 
-    preparation = service.prepare_setup(
+    preparation = _narration_service(service).prepare_setup(
         AudiobookRequest(source=source, new_variant=True), InputOverrides()
     )
 
@@ -692,7 +700,7 @@ def test_noninteractive_new_variant_requires_engine_and_target(tmp_path: Path) -
             r"--engine and --target"
         ),
     ):
-        service.prepare_setup(
+        _narration_service(service).prepare_setup(
             AudiobookRequest(source=source, new_variant=True),
             InputOverrides(),
             interactive=False,
@@ -716,7 +724,7 @@ def test_noninteractive_new_variant_preserves_explicit_synthesis_choices(
         speed=1.2,
     )
 
-    preparation = service.prepare_setup(
+    preparation = _narration_service(service).prepare_setup(
         request,
         InputOverrides(
             frozenset({"engine", "target", "voice", "engine_options", "speed"})
@@ -751,7 +759,9 @@ def test_new_variant_rejects_shared_preparation_changes(
     request = AudiobookRequest(source=source, new_variant=True, **{field_name: value})
 
     with pytest.raises(ProjectScopeConflictError, match="--new-variant cannot change"):
-        service.prepare_setup(request, InputOverrides(frozenset({field_name})))
+        _narration_service(service).prepare_setup(
+            request, InputOverrides(frozenset({field_name}))
+        )
 
 
 def test_new_variant_accepts_unchanged_shared_preparation_overrides(
@@ -774,7 +784,9 @@ def test_new_variant_accepts_unchanged_shared_preparation_overrides(
         {"chapters", "language", "spacy", "speech_profile", "pause_timing"}
     )
 
-    preparation = service.prepare_setup(request, InputOverrides(fields))
+    preparation = _narration_service(service).prepare_setup(
+        request, InputOverrides(fields)
+    )
 
     assert preparation.request.chapters == "2-4"
     assert preparation.request.language == saved.language
@@ -800,7 +812,7 @@ def _prepare_resolvable_variant(
     fields = {"engine", "target", "voice"}
     if output is not None:
         fields.add("output")
-    preparation = service.prepare_setup(
+    preparation = _narration_service(service).prepare_setup(
         request, InputOverrides(frozenset(fields)), interactive=False
     )
     return preparation
@@ -844,7 +856,7 @@ def test_new_variant_saves_separate_setup_and_keeps_base_files_unchanged(
     base_paths.profile.write_bytes(b"base profile")
     base_intent = base_paths.intent.read_bytes()
     base_profile = base_paths.profile.read_bytes()
-    preparation = service.prepare_setup(
+    preparation = _narration_service(service).prepare_setup(
         AudiobookRequest(source=source, new_variant=True), InputOverrides()
     )
     selected = replace(
@@ -854,7 +866,8 @@ def test_new_variant_saves_separate_setup_and_keeps_base_files_unchanged(
         voice="voice-b",
     )
 
-    resolved = service.save_setup(preparation, selected)
+    narrations = NarrationApplicationService(service, None)
+    resolved = narrations.create_from_preparation(preparation, selected)
 
     variant_paths = resolved.preparation.paths
     assert variant_paths.root == base_paths.root
@@ -871,8 +884,9 @@ def test_new_variant_saves_separate_setup_and_keeps_base_files_unchanged(
     )
     assert variant_paths.intent.is_file()
     assert variant_paths.profile.is_file()
-    assert resolved.request.output == tmp_path / (
-        f"Platform Decay - Martha Wells [{variant_paths.variant_key}].m4b"
+    assert (
+        resolved.request.output
+        == tmp_path / "Platform Decay - Martha Wells [engine-b voice-b].m4b"
     )
     assert resolved.request.output != base_output
     assert not resolved.request.replace_output
@@ -893,12 +907,14 @@ def test_new_variant_rejects_base_or_project_output_paths(
     preparation = _prepare_resolvable_variant(backend, service, source, output=output)
 
     message = (
-        "must differ from the base audiobook output"
+        "must differ from the primary audiobook output"
         if output_kind == "base"
         else "cannot be inside the TTSForge project"
     )
     with pytest.raises(InputValidationError, match=message):
-        service.save_setup(preparation)
+        NarrationApplicationService(service, None).create_from_preparation(
+            preparation, preparation.request
+        )
     assert not any(call[0] == "save_setup" for call in backend.calls)
 
 
@@ -910,7 +926,9 @@ def test_new_variant_rejects_source_as_explicit_output(tmp_path: Path) -> None:
     preparation = _prepare_resolvable_variant(backend, service, source, output=source)
 
     with pytest.raises(InputValidationError, match="cannot be the source file"):
-        service.save_setup(preparation)
+        NarrationApplicationService(service, None).create_from_preparation(
+            preparation, preparation.request
+        )
     assert not any(call[0] == "save_setup" for call in backend.calls)
 
 

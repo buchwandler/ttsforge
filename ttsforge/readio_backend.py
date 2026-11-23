@@ -12,12 +12,18 @@ import readio.api as readio_api
 from .application.errors import WorkflowFailureError
 from .application.events import ApplicationEvent
 from .application.models import (
+    AudiobookCapabilitiesView,
+    AudiobookMetadata,
     AudiobookRequest,
     BookChapterView,
     BookInspectionView,
     ConversionResultView,
+    ExecutionSummaryView,
+    PreviewAudio,
     ProjectPaths,
     SpacyModelView,
+    StageExecutionView,
+    WorkflowBlockerView,
     WorkflowPlanView,
     WorkflowStepView,
 )
@@ -32,21 +38,24 @@ def _workflow_failure(
     *,
     category: str,
 ) -> WorkflowFailureError:
-    if isinstance(error, readio_api.OutputCollisionError):
-        category = "output collision"
-    elif isinstance(error, readio_api.WorkflowStageError):
-        category = "render-stage failure"
-    elif isinstance(error, readio_api.WorkflowError):
-        category = "workflow preflight failure"
-    details = getattr(error, "details", {})
+    info = readio_api.describe_error(error)
+    category = {
+        "output_exists": "output collision",
+        "stage_failed": "render-stage failure",
+        "unsafe_workflow_state": "workflow preflight failure",
+        "workflow_replan_failed": "workflow preflight failure",
+        "catalog_operation_failed": "runtime/backend unavailable",
+        "cancellation_requested": "cancelled",
+        "invalid_request": "configuration / setup invalid",
+    }.get(info.code) or ("render-stage failure" if info.stage is not None else category)
     return WorkflowFailureError(
-        str(error),
+        info.message,
         category=category,
-        stage=getattr(error, "stage", None),
-        package=getattr(error, "package", None),
-        selector=getattr(error, "selector", None),
-        code=getattr(error, "code", None),
-        details=details if isinstance(details, Mapping) else {},
+        stage=info.stage,
+        package=info.package,
+        selector=info.selector,
+        code=info.code,
+        details=info.details,
     )
 
 
@@ -93,6 +102,26 @@ def _metadata_text(metadata: Mapping[str, object], key: str) -> str | None:
     return None
 
 
+def _audiobook_metadata(
+    values: Mapping[str, object], *, cover: Path | None = None
+) -> AudiobookMetadata:
+    return AudiobookMetadata(
+        title=_metadata_text(values, "title"),
+        subtitle=_metadata_text(values, "subtitle"),
+        author=_metadata_text(values, "author"),
+        narrator=_metadata_text(values, "narrator"),
+        series=_metadata_text(values, "series"),
+        series_number=(
+            _metadata_text(values, "series_number")
+            or _metadata_text(values, "series_index")
+        ),
+        language=_metadata_text(values, "language"),
+        publisher=_metadata_text(values, "publisher"),
+        year=_metadata_text(values, "year"),
+        cover=cover,
+    )
+
+
 def _spacy_model_view(info: readio_api.SpacyModelInfo) -> SpacyModelView:
     return SpacyModelView(
         language=info.language,
@@ -112,19 +141,20 @@ class ReadioBackend:
 
     def inspect_source(self, source: Path) -> BookInspectionView:
         try:
-            inspection = readio_api.inspect_source(source)
+            inspection = self._app.inspect_source(source)
         except readio_api.ReadioError as error:
             raise _workflow_failure(
                 error,
                 category="source inspection failure",
             ) from error
         metadata = inspection.metadata
+        product_metadata = _audiobook_metadata(metadata)
         return BookInspectionView(
             source=inspection.source,
             kind=inspection.kind,
-            title=_metadata_text(metadata, "title"),
-            author=_metadata_text(metadata, "author"),
-            language=_metadata_text(metadata, "language"),
+            title=product_metadata.title,
+            author=product_metadata.author,
+            language=product_metadata.language,
             chapters=tuple(
                 BookChapterView(
                     number=chapter.number,
@@ -134,11 +164,12 @@ class ReadioBackend:
                 )
                 for chapter in inspection.chapters
             ),
+            metadata=product_metadata,
         )
 
-    def list_engines(self) -> tuple[dict[str, object], ...]:
+    def list_engines(self) -> tuple[readio_api.EngineInfo, ...]:
         try:
-            return tuple(readio_api.list_engines())
+            return self._app.list_engines()
         except readio_api.ReadioError as error:
             raise _workflow_failure(
                 error,
@@ -152,16 +183,13 @@ class ReadioBackend:
         language: str | None = None,
         offline: bool = False,
         refresh: bool = False,
-    ) -> tuple[object, ...]:
+    ) -> tuple[readio_api.TargetInfo, ...]:
         try:
-            return cast(
-                tuple[object, ...],
-                readio_api.discover_engine_targets(
-                    engine,
-                    language=language,
-                    offline=offline,
-                    refresh=refresh,
-                ),
+            return self._app.list_targets(
+                engine,
+                language=language,
+                offline=offline,
+                refresh=refresh,
             )
         except readio_api.ReadioError as error:
             raise _workflow_failure(
@@ -171,11 +199,14 @@ class ReadioBackend:
 
     def list_engine_options(
         self, engine: str, *, target: str | None = None
-    ) -> tuple[object, ...]:
-        return cast(
-            tuple[object, ...],
-            readio_api.list_engine_options(engine, target=target),
-        )
+    ) -> tuple[readio_api.EngineOptionInfo, ...]:
+        try:
+            return self._app.list_engine_options(engine, target=target)
+        except readio_api.ReadioError as error:
+            raise _workflow_failure(
+                error,
+                category="runtime/backend unavailable",
+            ) from error
 
     def list_voices(
         self,
@@ -185,23 +216,116 @@ class ReadioBackend:
         language: str | None = None,
         offline: bool = False,
         refresh: bool = False,
-    ) -> tuple[object, ...]:
+    ) -> tuple[readio_api.VoiceInfo, ...]:
         try:
-            return cast(
-                tuple[object, ...],
-                readio_api.list_voices(
-                    engine=engine,
-                    target=target,
+            engine_ids = (
+                (engine,)
+                if engine is not None
+                else tuple(
+                    item.id for item in self._app.list_engines() if item.runnable
+                )
+            )
+            voices: list[readio_api.VoiceInfo] = []
+            for engine_id in engine_ids:
+                targets = self._app.list_targets(
+                    engine_id,
                     language=language,
                     offline=offline,
                     refresh=refresh,
-                ),
-            )
+                )
+                for target_info in targets:
+                    if target is not None and target_info.id != target:
+                        continue
+                    voices.extend(
+                        self._app.list_voices(
+                            engine=engine_id,
+                            target=target_info.id,
+                            language=language,
+                            offline=offline,
+                            refresh=refresh,
+                        )
+                    )
+            return tuple(voices)
         except readio_api.ReadioError as error:
             raise _workflow_failure(
                 error,
                 category="runtime/backend unavailable",
             ) from error
+
+    def capabilities(self) -> AudiobookCapabilitiesView:
+        try:
+            readio_capabilities = self._app.capabilities()
+            synthesis = self._app.synthesis_capabilities()
+            export_formats = self._app.export_capabilities()
+        except readio_api.ReadioError as error:
+            raise _workflow_failure(
+                error,
+                category="runtime/backend unavailable",
+            ) from error
+
+        available_engines = tuple(
+            engine.id for engine in synthesis.engines if engine.runnable
+        )
+        m4b_export = any(
+            item.extension.casefold() == ".m4b" and item.available
+            for item in export_formats
+        )
+        warnings = list(readio_capabilities.warnings)
+        if synthesis.reason is not None and synthesis.reason not in warnings:
+            warnings.append(synthesis.reason)
+        if not m4b_export:
+            m4b = next(
+                (
+                    item
+                    for item in export_formats
+                    if item.extension.casefold() == ".m4b"
+                ),
+                None,
+            )
+            warnings.append(
+                m4b.reason
+                if m4b is not None and m4b.reason
+                else "M4B export is unavailable."
+            )
+
+        return AudiobookCapabilitiesView(
+            source_inspection=readio_capabilities.workflow.conversion == "ready",
+            synthesis_preview=synthesis.state == "ready",
+            m4b_export=m4b_export,
+            persistent_workspace=True,
+            available_engines=available_engines,
+            warnings=tuple(warnings),
+        )
+
+    def new_cancellation_token(self) -> readio_api.CancellationToken:
+        return readio_api.CancellationToken()
+
+    def synthesize_preview(
+        self,
+        *,
+        text: str,
+        profile: Path,
+        role: str | None = None,
+        cancellation: object | None = None,
+    ) -> PreviewAudio:
+        try:
+            result = self._app.synthesize(
+                readio_api.SpeakRequest(text=text, profile=profile, role=role),
+                cancellation=cast(readio_api.CancellationToken | None, cancellation),
+            )
+        except readio_api.ReadioError as error:
+            raise _workflow_failure(
+                error, category="preview synthesis failure"
+            ) from error
+        audio = result.audio
+        return PreviewAudio(
+            wav=audio.to_wav_bytes(),
+            sample_rate=audio.sample_rate,
+            channels=audio.channels,
+            frames=audio.frames,
+            duration_seconds=audio.duration_seconds,
+            warnings=tuple(result.warnings),
+        )
 
     def list_spacy_models(self, language: str) -> tuple[SpacyModelView, ...]:
         try:
@@ -387,6 +511,7 @@ class ReadioBackend:
             pause_timing=_value(pause_timing) if pause_timing is not None else None,
             bitrate=intent.output.bitrate,
             target_lufs=intent.compose.target_lufs,
+            metadata=_audiobook_metadata(output_metadata, cover=intent.output.cover),
             title=output_metadata.get("title"),
             author=output_metadata.get("author"),
             cover=intent.output.cover,
@@ -401,11 +526,7 @@ class ReadioBackend:
         options = dict(request.engine_options)
         if request.speed is not None:
             options["speed"] = request.speed
-        metadata = {
-            key: value
-            for key, value in (("title", request.title), ("author", request.author))
-            if value is not None
-        }
+        metadata = request.metadata.to_readio_mapping()
         try:
             intent = self.create_book_intent(
                 source=request.source,
@@ -482,10 +603,23 @@ class ReadioBackend:
                     selector=step.selector,
                     reason=step.reason,
                     state=_value(step.state),
+                    reason_code=_value(step.reason_code),
+                    force=step.force,
+                    blockers=tuple(
+                        WorkflowBlockerView(
+                            code=blocker.code,
+                            message=blocker.message,
+                            owner=blocker.owner,
+                            recoverable=blocker.recoverable,
+                            suggested_action=blocker.suggested_action,
+                        )
+                        for blocker in step.blockers
+                    ),
                 )
                 for step in plan.steps
             ),
             warnings=tuple(plan.warnings),
+            executable=plan.executable,
             variant=plan.variant,
         )
 
@@ -503,6 +637,7 @@ class ReadioBackend:
             result = self._app.render(
                 cast(readio_api.RenderRequest, request),
                 on_progress=forward if on_progress is not None else None,
+                include_report=True,
             )
         except readio_api.ReadioError as error:
             failure = _workflow_failure(
@@ -516,6 +651,32 @@ class ReadioBackend:
                 "profile": str(profile),
             }
             raise failure from error
+
+        report = result.report
+        execution = (
+            ExecutionSummaryView(
+                stages=tuple(
+                    StageExecutionView(
+                        stage=_value(stage.stage),
+                        package=stage.package,
+                        action=_value(stage.action),
+                        state_before=_value(stage.state_before),
+                        state_after=(
+                            _value(stage.state_after)
+                            if stage.state_after is not None
+                            else None
+                        ),
+                        elapsed_seconds=stage.elapsed_seconds,
+                        reason_code=_value(stage.reason_code),
+                    )
+                    for stage in report.stages
+                ),
+                specialist_versions=dict(report.specialist_versions),
+                elapsed_seconds=report.elapsed_seconds,
+            )
+            if report is not None
+            else None
+        )
         return ConversionResultView(
             output=result.output,
             workspace=result.workspace,
@@ -524,6 +685,7 @@ class ReadioBackend:
             reused_stages=tuple(result.reused_stages),
             warnings=tuple(result.warnings),
             variant=result.variant,
+            execution=execution,
         )
 
 

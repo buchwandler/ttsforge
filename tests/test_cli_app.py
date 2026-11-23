@@ -5,10 +5,10 @@ from dataclasses import replace
 from importlib import import_module
 from io import StringIO
 from pathlib import Path
-from types import SimpleNamespace
 from typing import ClassVar
 
 import pytest
+import readio.api as readio_api
 from click import unstyle
 from readio.api import WorkflowStageError
 from rich.console import Console
@@ -19,12 +19,14 @@ from ttsforge.application.errors import (
     WorkflowFailureError,
 )
 from ttsforge.application.models import (
+    AudiobookQcReport,
     AudiobookRequest,
     BookChapterView,
     BookInspectionView,
     ConversionResultView,
     InputOverrides,
     ProjectPaths,
+    QcFinding,
     SetupOrigins,
     SetupPreparation,
     SpacyModelView,
@@ -92,6 +94,9 @@ class _Backend:
             output=selected.output,
             steps=self.workflow_steps,
             variant=self.workflow_variant,
+            executable=not any(
+                step.action == "blocked" for step in self.workflow_steps
+            ),
         )
 
     def render(self, request: object, *, on_progress=None) -> ConversionResultView:
@@ -109,19 +114,52 @@ class _Backend:
             variant=self.result_variant,
         )
 
-    def list_engines(self) -> tuple[object, ...]:
+    def list_engines(self) -> tuple[readio_api.EngineInfo, ...]:
         self.calls.append(("engines",))
-        return ({"id": "engine-a", "name": "Engine A"},)
+        return (
+            readio_api.EngineInfo(
+                id="engine-a",
+                version=None,
+                installed=True,
+                runnable=True,
+                features=(),
+            ),
+        )
 
-    def list_targets(self, **kwargs: object) -> tuple[object, ...]:
+    def list_targets(self, **kwargs: object) -> tuple[readio_api.TargetInfo, ...]:
         self.calls.append(("targets", kwargs))
-        return ({"id": "target-a", "engine": "engine-a", "language": "en-US"},)
+        return (
+            readio_api.TargetInfo(
+                id="target-a",
+                languages=("en-US",),
+                status="ready",
+                runtime_available=True,
+                default_voice="voice-a",
+                voice_count=2,
+                qualities=(),
+                voice_mode="named",
+                sample_rate=24000,
+                features=("named_voices",),
+                reference_only=False,
+            ),
+        )
 
-    def list_voices(self, **kwargs: object) -> tuple[object, ...]:
+    def list_voices(self, **kwargs: object) -> tuple[readio_api.VoiceInfo, ...]:
         self.calls.append(("voices", kwargs))
         return (
-            {"id": "voice-a", "engine": "engine-a", "language": "en-US"},
-            {"id": "voice-b", "engine": "engine-a", "language": "en-US"},
+            readio_api.VoiceInfo(
+                "voice-a", "en-US", "en-US", "English", "unknown", "builtin", True, True
+            ),
+            readio_api.VoiceInfo(
+                "voice-b",
+                "en-US",
+                "en-US",
+                "English",
+                "unknown",
+                "builtin",
+                False,
+                True,
+            ),
         )
 
     def list_spacy_models(self, language: str) -> tuple[SpacyModelView, ...]:
@@ -1155,44 +1193,32 @@ def test_explicit_voice_is_rejected_when_language_filter_invalidates_it(
 def test_catalog_lists_curated_human_metadata_and_default_voice(monkeypatch) -> None:
     backend = _Backend()
     backend.list_targets = lambda **kwargs: (
-        SimpleNamespace(
+        readio_api.TargetInfo(
             id="target-a",
             languages=("en", "de"),
             status="ready",
             runtime_available=True,
             default_voice="af_heart",
-            voices=("af_heart", "af_bella"),
-            speakers=(),
-            voice_details=(
-                SimpleNamespace(
-                    language="en", locale="en-US", language_label="English"
-                ),
-                SimpleNamespace(language="de", locale="de-DE", language_label="German"),
-            ),
+            voice_count=2,
             qualities=("fp32",),
+            voice_mode="static",
             sample_rate=24000,
-            capabilities=frozenset({"named_voices", "lexicons"}),
-            metadata={
-                "voice_mode": "static",
-                "private_target_payload": "hidden-target-data",
-            },
+            features=("named_voices", "lexicons"),
+            reference_only=False,
         ),
     )
     backend.list_voices = lambda **kwargs: (
-        SimpleNamespace(
-            selector="kokoro:target-a/af_heart",
-            voice="af_heart",
-            languages=("en",),
-            gender="female",
+        readio_api.VoiceInfo(
+            id="af_heart",
+            language="en",
             locale="en-US",
-            installed=True,
-            metadata={
-                "voice": {"language_label": "American English"},
-                "private_voice_payload": "hidden-voice-data",
-            },
+            language_label="American English",
+            gender="female",
+            kind="builtin",
+            default=True,
+            runtime_available=True,
         ),
     )
-
     targets = _invoke(
         monkeypatch,
         backend,
@@ -1205,7 +1231,7 @@ def test_catalog_lists_curated_human_metadata_and_default_voice(monkeypatch) -> 
     )
 
     assert targets.exit_code == 0, targets.output
-    assert "English/German" in targets.output
+    assert "en/de" in targets.output
     assert "2 voices" in targets.output
     assert "fp32" in targets.output and "24 kHz" in targets.output
     assert "private_target_payload" not in targets.output
@@ -1226,49 +1252,27 @@ def test_interactive_voice_picker_uses_named_results_and_persists_selection(
     source = tmp_path / "book.epub"
     source.touch()
     backend = _Backend()
-    target = SimpleNamespace(
-        id="akinvox-multispeaker-v1",
-        languages=("en", "de"),
-        status="ready",
-        runtime_available=True,
-        default_voice="AV_ariala",
-        voices=tuple(f"target-voice-{index}" for index in range(16)),
-        speakers=(),
-        voice_details=(),
-        qualities=("fp32",),
-        sample_rate=24000,
-        capabilities=frozenset({"named_voices", "lexicons"}),
-        metadata={"voice_mode": "static"},
+    backend.list_targets = lambda **kwargs: (
+        readio_api.TargetInfo(
+            id="akinvox-multispeaker-v1",
+            languages=("en", "de"),
+            status="ready",
+            runtime_available=True,
+            default_voice="AV_ariala",
+            voice_count=16,
+            qualities=("fp32",),
+            voice_mode="static",
+            sample_rate=24000,
+            features=("named_voices", "lexicons"),
+            reference_only=False,
+        ),
     )
-    backend.list_targets = lambda **kwargs: (target,)
     returned_voices = (
-        SimpleNamespace(
-            selector="kokoro:akinvox-multispeaker-v1/AV_ariala",
-            voice="AV_ariala",
-            speaker=None,
-            kind="builtin",
-            languages=("en",),
-            gender="female",
-            locale="en-US",
-            installed=True,
+        readio_api.VoiceInfo(
+            "AV_ariala", "en", "en-US", "English", "female", "builtin", True, True
         ),
-        SimpleNamespace(
-            selector="kokoro:akinvox-multispeaker-v1/AV_brody",
-            voice="AV_brody",
-            speaker=None,
-            kind="builtin",
-            languages=("en",),
-            gender="male",
-            locale="en-US",
-            installed=True,
-        ),
-        SimpleNamespace(
-            selector="kokoro:akinvox-multispeaker-v1",
-            voice=None,
-            speaker=None,
-            kind="reference-capable",
-            languages=("en",),
-            installed=True,
+        readio_api.VoiceInfo(
+            "AV_brody", "en", "en-US", "English", "male", "builtin", False, True
         ),
     )
     voice_calls: list[dict[str, object]] = []
@@ -1339,20 +1343,32 @@ def test_interactive_voice_picker_uses_named_results_and_persists_selection(
 def test_reference_only_target_is_hidden_interactively_and_rejected_noninteractive(
     monkeypatch, tmp_path: Path, capsys
 ) -> None:
-    reference_target = {
-        "id": "reference-only",
-        "languages": ("en",),
-        "voices": (),
-        "speakers": (),
-        "capabilities": frozenset({"reference_voice"}),
-        "metadata": {"supports_reference_enrollment": True},
-    }
-    normal_target = {
-        "id": "target-a",
-        "languages": ("en",),
-        "voices": ("voice-a",),
-        "capabilities": frozenset({"named_voices"}),
-    }
+    reference_target = readio_api.TargetInfo(
+        id="reference-only",
+        languages=("en",),
+        status="ready",
+        runtime_available=False,
+        default_voice=None,
+        voice_count=0,
+        qualities=(),
+        voice_mode=None,
+        sample_rate=None,
+        features=("reference_voice",),
+        reference_only=True,
+    )
+    normal_target = readio_api.TargetInfo(
+        id="target-a",
+        languages=("en",),
+        status="ready",
+        runtime_available=True,
+        default_voice="voice-a",
+        voice_count=1,
+        qualities=(),
+        voice_mode="named",
+        sample_rate=24000,
+        features=("named_voices",),
+        reference_only=False,
+    )
     backend = _Backend()
     backend.list_targets = lambda **kwargs: (reference_target, normal_target)
     source = tmp_path / "book.epub"
@@ -1404,8 +1420,12 @@ def test_reference_only_target_is_hidden_interactively_and_rejected_noninteracti
 
 def test_catalog_selection_accepts_numeric_and_identifier_values(monkeypatch) -> None:
     choices = (
-        cli_app.engine_choice_view({"id": "kokoro", "installed": True}),
-        cli_app.engine_choice_view({"id": "piper", "installed": True}),
+        cli_app.engine_choice_view(
+            readio_api.EngineInfo("kokoro", None, True, True, ())
+        ),
+        cli_app.engine_choice_view(
+            readio_api.EngineInfo("piper", None, True, True, ())
+        ),
     )
     answers = iter(("2", "kokoro"))
     monkeypatch.setattr(cli_app.typer, "prompt", lambda *args, **kwargs: next(answers))
@@ -2085,12 +2105,19 @@ def test_noninteractive_new_variant_requires_voice_for_named_voice_target(
     backend = _Backend()
     _create_cli_base_setup(backend, source, tmp_path)
     backend.list_targets = lambda **kwargs: (
-        {
-            "id": "target-a",
-            "engine": "engine-a",
-            "language": "en-US",
-            "voices": ["voice-a"],
-        },
+        readio_api.TargetInfo(
+            id="target-a",
+            languages=("en-US",),
+            status="ready",
+            runtime_available=True,
+            default_voice=None,
+            voice_count=1,
+            qualities=(),
+            voice_mode="named",
+            sample_rate=24000,
+            features=("named_voices",),
+            reference_only=False,
+        ),
     )
 
     result = _invoke(
@@ -2328,8 +2355,9 @@ def test_reported_two_output_variant_scenario_preserves_base_artifacts(
     assert variant_paths.bundle == base_paths.bundle
     assert variant_paths.intent.is_file()
     assert variant_paths.profile.is_file()
-    assert selected.output == tmp_path / (
-        f"Platform Decay - Martha Wells [{variant_key}].m4b"
+    assert (
+        selected.output
+        == tmp_path / "Platform Decay - Martha Wells [engine-a voice-b].m4b"
     )
     assert selected.output.is_file()
     assert Path(f"{selected.output}.audioexport.json").is_file()
@@ -2344,3 +2372,141 @@ def test_reported_two_output_variant_scenario_preserves_base_artifacts(
         base_paths.intent.read_bytes(),
         base_paths.profile.read_bytes(),
     ) == original_artifacts
+
+
+def test_metadata_cli_persists_overrides_and_reports_validation(
+    monkeypatch, tmp_path: Path
+) -> None:
+    source = tmp_path / "book.epub"
+    source.touch()
+    backend = _Backend()
+    paths = ProjectPaths.for_root(tmp_path / "book.ttsforge")
+    paths.root.mkdir()
+    paths.intent.touch()
+    paths.profile.touch()
+    backend.saved[paths.root] = AudiobookRequest(
+        source=source.resolve(),
+        project=paths.root,
+        output=tmp_path / "book.m4b",
+        language="en-US",
+        engine="engine-a",
+        target="target-a",
+        voice="voice-a",
+    )
+
+    updated = _invoke(
+        monkeypatch,
+        backend,
+        [
+            "metadata",
+            "set",
+            str(paths.root),
+            "--title",
+            "Override title",
+            "--year",
+            "2024",
+            "--json",
+        ],
+    )
+    validated = _invoke(
+        monkeypatch,
+        backend,
+        ["metadata", "validate", str(paths.root), "--json"],
+    )
+
+    assert updated.exit_code == 0, updated.output
+    assert json.loads(updated.output)["effective"]["title"] == "Override title"
+    assert validated.exit_code == 0, validated.output
+    assert json.loads(validated.output)["valid"] is True
+
+
+def test_chapter_cli_reports_project_selection_without_changing_it(
+    monkeypatch, tmp_path: Path
+) -> None:
+    source = tmp_path / "book.epub"
+    source.touch()
+    backend = _Backend()
+    paths = ProjectPaths.for_root(tmp_path / "book.ttsforge")
+    paths.root.mkdir()
+    paths.intent.touch()
+    paths.profile.touch()
+    backend.saved[paths.root] = AudiobookRequest(
+        source=source.resolve(),
+        project=paths.root,
+        chapters="1-2",
+        output=tmp_path / "book.m4b",
+        language="en-US",
+        engine="engine-a",
+        target="target-a",
+        voice="voice-a",
+    )
+
+    listed = _invoke(monkeypatch, backend, ["chapters", "list", str(source), "--json"])
+    status = _invoke(
+        monkeypatch, backend, ["chapters", "status", str(paths.root), "--json"]
+    )
+    selected = _invoke(
+        monkeypatch,
+        backend,
+        ["chapters", "select", str(paths.root), "1-2", "--json"],
+    )
+    rejected = _invoke(
+        monkeypatch,
+        backend,
+        ["chapters", "select", str(paths.root), "3", "--json"],
+    )
+
+    assert listed.exit_code == 0, listed.output
+    assert json.loads(listed.output)[0]["title"] == "Opening"
+    assert status.exit_code == 0, status.output
+    assert [item["selected"] for item in json.loads(status.output)] == [
+        True,
+        True,
+        False,
+        False,
+    ]
+    assert selected.exit_code == 0, selected.output
+    assert json.loads(selected.output)["selection"] == "1-2"
+    assert rejected.exit_code == 2
+    assert backend.saved[paths.root].chapters == "1-2"
+
+
+def test_check_cli_preserves_json_report_and_failure_exit_code(
+    monkeypatch, tmp_path: Path
+) -> None:
+    project = tmp_path / "book.ttsforge"
+    backend = _Backend()
+    report = AudiobookQcReport(
+        project=project,
+        narration_id="primary",
+        passed=False,
+        findings=(
+            QcFinding(
+                id="metadata.year_invalid",
+                severity="error",
+                section="metadata",
+                message="Audiobook year must contain four digits.",
+            ),
+        ),
+    )
+
+    class _Qc:
+        def __init__(self, audiobook: object, narrations: object) -> None:
+            pass
+
+        def check(self, paths: ProjectPaths, narration_id: str | None = None):
+            assert paths.root == project
+            assert narration_id == "primary"
+            return report
+
+    monkeypatch.setattr(cli_app, "QcApplicationService", _Qc)
+    result = _invoke(
+        monkeypatch,
+        backend,
+        ["check", str(project), "--narration", "primary", "--json"],
+    )
+
+    assert result.exit_code == 1
+    payload = json.loads(result.output)
+    assert payload["passed"] is False
+    assert payload["findings"][0]["id"] == "metadata.year_invalid"

@@ -18,7 +18,11 @@ from readio.api import (
 import ttsforge.readio_backend as backend_module
 from ttsforge.application.errors import WorkflowFailureError
 from ttsforge.application.events import ApplicationEvent
-from ttsforge.application.models import AudiobookRequest, ProjectPaths
+from ttsforge.application.models import (
+    AudiobookMetadata,
+    AudiobookRequest,
+    ProjectPaths,
+)
 from ttsforge.readio_backend import ReadioBackend, create_readio
 
 
@@ -26,7 +30,7 @@ def test_create_readio_constructs_the_public_gateway() -> None:
     assert isinstance(create_readio(), Readio)
 
 
-def test_source_and_discovery_calls_delegate_to_public_functions(
+def test_source_and_catalog_calls_use_the_readio_instance_api(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
     source = Path("book.epub")
@@ -35,6 +39,12 @@ def test_source_and_discovery_calls_delegate_to_public_functions(
         kind="book",
         metadata={
             "title": "Book",
+            "subtitle": "Sub title",
+            "narrator": "Human narrator",
+            "series": "Series",
+            "series_index": "3",
+            "publisher": "Publisher",
+            "year": "2024",
             "authors": ["Writer One", "Writer Two"],
             "language": "en",
         },
@@ -42,61 +52,107 @@ def test_source_and_discovery_calls_delegate_to_public_functions(
             SimpleNamespace(number=1, title="Opening", source_id="c1", char_count=120),
         ),
     )
+    api = backend_module.readio_api
+    engine = api.EngineInfo("piper", "1.0", True, True, ("voices",))
+    target = api.TargetInfo(
+        id="en-us-medium",
+        languages=("en-us",),
+        status="ready",
+        runtime_available=True,
+        default_voice="lessac",
+        voice_count=1,
+        qualities=(),
+        voice_mode="named",
+        sample_rate=22050,
+        features=("voices",),
+        reference_only=False,
+    )
+    option = api.EngineOptionInfo(
+        name="device",
+        value_type="string",
+        required=False,
+        default="cpu",
+        choices=("cpu",),
+        minimum=None,
+        maximum=None,
+        description="Runtime device",
+        identity_affecting=False,
+        runtime_only=True,
+    )
+    voice = api.VoiceInfo(
+        "lessac", "en-us", "en-US", "English", "female", "builtin", True, True
+    )
     calls: list[tuple[str, object]] = []
 
     def inspect_source(path: Path) -> object:
         calls.append(("source", path))
         return inspection
 
-    def list_engines() -> list[dict[str, object]]:
+    def list_engines() -> tuple[object, ...]:
         calls.append(("engines", None))
-        return [{"id": "piper"}]
+        return (engine,)
 
-    def discover_targets(engine: str, **kwargs: object) -> tuple[str, ...]:
-        calls.append(("targets", (engine, kwargs)))
-        return ("target",)
+    def list_targets(selected_engine: str, **kwargs: object) -> tuple[object, ...]:
+        calls.append(("targets", (selected_engine, kwargs)))
+        return (target,)
 
-    def list_engine_options(engine: str, **kwargs: object) -> tuple[str, ...]:
-        calls.append(("options", (engine, kwargs)))
-        return ("device",)
+    def list_engine_options(
+        selected_engine: str, **kwargs: object
+    ) -> tuple[object, ...]:
+        calls.append(("options", (selected_engine, kwargs)))
+        return (option,)
 
-    def list_voices(**kwargs: object) -> tuple[str, ...]:
+    def list_voices(**kwargs: object) -> tuple[object, ...]:
         calls.append(("voices", kwargs))
-        return ("voice",)
+        return (voice,)
 
     def inspect_voice(selector: str, **kwargs: object) -> str:
         calls.append(("voice", (selector, kwargs)))
         return "detail"
 
-    api = backend_module.readio_api
-    monkeypatch.setattr(api, "inspect_source", inspect_source)
-    monkeypatch.setattr(api, "list_engines", list_engines)
-    monkeypatch.setattr(api, "discover_engine_targets", discover_targets)
-    monkeypatch.setattr(api, "list_engine_options", list_engine_options)
-    monkeypatch.setattr(api, "list_voices", list_voices)
     monkeypatch.setattr(api, "inspect_voice", inspect_voice)
-
-    backend = ReadioBackend(app=cast(Readio, object()))
+    backend = ReadioBackend(
+        app=cast(
+            Readio,
+            SimpleNamespace(
+                inspect_source=inspect_source,
+                list_engines=list_engines,
+                list_targets=list_targets,
+                list_engine_options=list_engine_options,
+                list_voices=list_voices,
+            ),
+        )
+    )
 
     view = backend.inspect_source(source)
     assert view.title == "Book"
     assert view.author == "Writer One, Writer Two"
     assert view.language == "en"
+    assert view.metadata.subtitle == "Sub title"
+    assert view.metadata.narrator == "Human narrator"
+    assert view.metadata.series == "Series"
+    assert view.metadata.series_number == "3"
+    assert view.metadata.publisher == "Publisher"
+    assert view.metadata.year == "2024"
     assert view.chapters[0].source_id == "c1"
-    assert backend.list_engines() == ({"id": "piper"},)
+    assert backend.list_engines() == (engine,)
     assert backend.list_targets(
         engine="piper", language="en-us", offline=True, refresh=True
-    ) == ("target",)
-    assert backend.list_engine_options("piper", target="en-us-medium") == ("device",)
+    ) == (target,)
+    assert backend.list_engine_options("piper", target="en-us-medium") == (option,)
     assert backend.list_voices(
         engine="piper", target="en-us-medium", language="en-us", offline=True
-    ) == ("voice",)
+    ) == (voice,)
     assert backend.inspect_voice("piper:en-us-medium", language="en-us") == "detail"
     assert calls == [
         ("source", source),
         ("engines", None),
         ("targets", ("piper", {"language": "en-us", "offline": True, "refresh": True})),
         ("options", ("piper", {"target": "en-us-medium"})),
+        (
+            "targets",
+            ("piper", {"language": "en-us", "offline": True, "refresh": False}),
+        ),
         (
             "voices",
             {
@@ -109,6 +165,35 @@ def test_source_and_discovery_calls_delegate_to_public_functions(
         ),
         ("voice", ("piper:en-us-medium", {"language": "en-us"})),
     ]
+
+
+def test_capabilities_project_normalized_readio_capability_apis() -> None:
+    api = backend_module.readio_api
+    engine = api.EngineInfo("piper", "1.0", True, True, ("voices",))
+    readio_caps = api.ReadioCapabilities(
+        readio_version="0.6.8",
+        specialists=(),
+        workflow=api.WorkflowCapabilities("ready", "ready", "ready", "ready", "ready"),
+        engines=(engine,),
+        export_formats=(api.ExportFormatCapability("m4b", ".m4b", True),),
+        warnings=("Readio warning",),
+    )
+    synthesis_caps = api.SynthesisCapabilities("ready", (engine,))
+    app = SimpleNamespace(
+        capabilities=lambda: readio_caps,
+        synthesis_capabilities=lambda: synthesis_caps,
+        export_capabilities=lambda: readio_caps.export_formats,
+    )
+    backend = ReadioBackend(app=cast(Readio, app))
+
+    capabilities = backend.capabilities()
+
+    assert capabilities.source_inspection is True
+    assert capabilities.synthesis_preview is True
+    assert capabilities.m4b_export is True
+    assert capabilities.persistent_workspace is True
+    assert capabilities.available_engines == ("piper",)
+    assert capabilities.warnings == ("Readio warning",)
 
 
 def test_spacy_model_inventory_maps_public_readio_api_and_normalizes_errors(
@@ -362,6 +447,16 @@ def test_save_setup_persists_profile_and_render_intent(
         target_lufs=-19.0,
         title="Book title",
         author="Writer",
+        metadata=AudiobookMetadata(
+            subtitle="Subtitle",
+            narrator="Narrator",
+            series="Series",
+            series_number="2",
+            language="en-US",
+            publisher="Publisher",
+            year="2024",
+            cover=tmp_path / "cover.jpg",
+        ),
         spacy="sm",
         speech_profile=tmp_path / "speech.toml",
         pause_timing="engaging",
@@ -416,8 +511,18 @@ def test_save_setup_persists_profile_and_render_intent(
         "output_format": "m4b",
         "output": request.output,
         "bitrate": "128k",
-        "cover": None,
-        "metadata": {"title": "Book title", "author": "Writer"},
+        "cover": tmp_path / "cover.jpg",
+        "metadata": {
+            "title": "Book title",
+            "subtitle": "Subtitle",
+            "author": "Writer",
+            "narrator": "Narrator",
+            "series": "Series",
+            "series_index": "2",
+            "language": "en-US",
+            "publisher": "Publisher",
+            "year": "2024",
+        },
         "spacy": "on",
         "preparation": backend_module.readio_api.PreparationIntent(
             spacy="sm", speech_profile=request.speech_profile
@@ -566,13 +671,23 @@ def test_request_bridge_uses_persisted_intent_and_runtime_controls(
 
 def test_inspect_and_render_map_public_gateway_results() -> None:
     request = cast(RenderRequest, object())
+    blocker = SimpleNamespace(
+        code="missing_runtime",
+        message="Engine runtime is unavailable.",
+        owner="voicerender",
+        recoverable=True,
+        suggested_action="Install the selected engine runtime.",
+    )
     step = SimpleNamespace(
         stage="render",
-        package="readio",
-        action="reuse",
+        package="voicerender",
+        action="blocked",
         selector="book",
-        reason="Artifact is valid",
-        state="ready",
+        reason="Engine runtime is unavailable.",
+        state="blocked",
+        reason_code="engine_unavailable",
+        force=True,
+        blockers=(blocker,),
     )
     plan = SimpleNamespace(
         source=Path("book.epub"),
@@ -582,6 +697,22 @@ def test_inspect_and_render_map_public_gateway_results() -> None:
         steps=(step,),
         warnings=("warning",),
         variant="specialist-variant",
+        executable=False,
+    )
+    report = SimpleNamespace(
+        stages=(
+            SimpleNamespace(
+                stage="render",
+                package="voicerender",
+                action="run",
+                state_before="missing",
+                state_after="ready",
+                elapsed_seconds=2.5,
+                reason_code="artifact_missing",
+            ),
+        ),
+        specialist_versions={"voicerender": "0.6.8"},
+        elapsed_seconds=3.0,
     )
     result = SimpleNamespace(
         output=Path("book.m4b"),
@@ -591,6 +722,7 @@ def test_inspect_and_render_map_public_gateway_results() -> None:
         reused_stages=("render",),
         warnings=("warning",),
         variant="specialist-variant",
+        report=report,
     )
     calls: list[tuple[str, object]] = []
 
@@ -611,8 +743,10 @@ def test_inspect_and_render_map_public_gateway_results() -> None:
         calls.append(("inspect", value))
         return plan
 
-    def render(value: RenderRequest, *, on_progress=None) -> object:
-        calls.append(("render", (value, on_progress)))
+    def render(
+        value: RenderRequest, *, on_progress=None, include_report=False
+    ) -> object:
+        calls.append(("render", (value, on_progress, include_report)))
         assert on_progress is not None
         on_progress(event)
         return result
@@ -625,9 +759,16 @@ def test_inspect_and_render_map_public_gateway_results() -> None:
     conversion = backend.render(request, on_progress=events.append)
 
     assert workflow.steps[0].stage == "render"
+    assert workflow.steps[0].reason_code == "engine_unavailable"
+    assert workflow.steps[0].force is True
+    assert workflow.steps[0].blockers[0].code == "missing_runtime"
+    assert workflow.executable is False
     assert workflow.variant == "specialist-variant"
     assert conversion.variant == "specialist-variant"
-    assert workflow.steps[0].state == "ready"
+    assert conversion.execution is not None
+    assert conversion.execution.stages[0].state_after == "ready"
+    assert conversion.execution.stages[0].reason_code == "artifact_missing"
+    assert conversion.execution.specialist_versions == {"voicerender": "0.6.8"}
     assert workflow.warnings == ("warning",)
     assert conversion.executed_stages == ("compose",)
     assert conversion.reused_stages == ("render",)
@@ -635,6 +776,7 @@ def test_inspect_and_render_map_public_gateway_results() -> None:
     assert calls[1][0] == "render"
     assert calls[1][1][0] is request
     assert callable(calls[1][1][1])
+    assert calls[1][1][2] is True
     assert events == [
         ApplicationEvent(
             stage="render",
@@ -672,11 +814,51 @@ def test_normalize_workflow_error_retains_public_stage_context() -> None:
     assert normalized.details == {"retryable": True}
 
 
+def test_readio_error_codes_map_to_stable_categories() -> None:
+    api = backend_module.readio_api
+    errors = (
+        (
+            api.WorkflowResolutionError("invalid request"),
+            "invalid_request",
+            "configuration / setup invalid",
+        ),
+        (
+            api.OutputCollisionError("output exists"),
+            "output_exists",
+            "output collision",
+        ),
+        (
+            api.WorkflowStateError("unsafe state"),
+            "unsafe_workflow_state",
+            "workflow preflight failure",
+        ),
+        (
+            api.WorkflowReplanError("replan failed"),
+            "workflow_replan_failed",
+            "workflow preflight failure",
+        ),
+        (
+            api.WorkflowCancelledError(),
+            "cancellation_requested",
+            "cancelled",
+        ),
+    )
+
+    for error, expected_code, expected_category in errors:
+        normalized = backend_module.normalize_readio_error(error)
+
+        assert normalized is not None
+        assert normalized.code == expected_code
+        assert normalized.category == expected_category
+
+
 def test_render_failure_reports_persisted_setup_paths() -> None:
     profile = Path("book.ttsforge/narrator.renderprofile.toml")
     request = RenderRequest(source=Path("book.epub"), profile=profile)
 
-    def render(value: RenderRequest, *, on_progress=None) -> object:
+    def render(
+        value: RenderRequest, *, on_progress=None, include_report=False
+    ) -> object:
         raise WorkflowStageError(
             "render",
             "The engine runtime is unavailable.",

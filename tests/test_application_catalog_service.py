@@ -2,37 +2,47 @@ from __future__ import annotations
 
 from types import SimpleNamespace
 
+import readio.api as readio_api
+
 from ttsforge.application.catalog import EngineChoiceView, EngineOptionView
 from ttsforge.application.catalog_service import CatalogApplicationService
 from ttsforge.application.models import SpacyModelView
 
 
 class FakeCatalogBackend:
-    def list_engines(self) -> tuple[object, ...]:
+    def list_engines(self) -> tuple[readio_api.EngineInfo, ...]:
         return (
-            SimpleNamespace(
+            readio_api.EngineInfo(
                 id="kokoro",
+                version=None,
                 installed=True,
-                capabilities=("named_voices",),
+                runnable=True,
+                features=("named_voices",),
             ),
         )
 
-    def list_targets(self, **kwargs: object) -> tuple[object, ...]:
+    def list_targets(self, **kwargs: object) -> tuple[readio_api.TargetInfo, ...]:
         return (
-            SimpleNamespace(
+            readio_api.TargetInfo(
                 id="target-a",
                 languages=("en-US",),
-                default_voice="voice-a",
-                voices=("voice-a", "voice-b"),
                 status="ready",
+                runtime_available=True,
+                default_voice="voice-a",
+                voice_count=2,
+                qualities=(),
+                voice_mode="named",
+                sample_rate=24000,
+                features=("voices",),
+                reference_only=False,
             ),
         )
 
     def list_engine_options(
         self, engine: str, *, target: str | None = None
-    ) -> tuple[object, ...]:
+    ) -> tuple[readio_api.EngineOptionInfo, ...]:
         return (
-            SimpleNamespace(
+            readio_api.EngineOptionInfo(
                 name="quality",
                 value_type="string",
                 required=False,
@@ -46,11 +56,14 @@ class FakeCatalogBackend:
             ),
         )
 
-    def list_voices(self, **kwargs: object) -> tuple[object, ...]:
+    def list_voices(self, **kwargs: object) -> tuple[readio_api.VoiceInfo, ...]:
         return (
-            SimpleNamespace(id="voice-a", language="en-US"),
-            SimpleNamespace(id="voice-b", language="en-US"),
-            SimpleNamespace(language="en-US"),
+            readio_api.VoiceInfo(
+                "voice-a", "en-US", "en-US", "English", "female", "builtin", True, True
+            ),
+            readio_api.VoiceInfo(
+                "voice-b", "en-US", "en-US", "English", "male", "builtin", False, True
+            ),
         )
 
     def list_spacy_models(self, language: str) -> tuple[SpacyModelView, ...]:
@@ -84,9 +97,7 @@ def test_catalog_service_normalizes_engine_target_voice_and_options() -> None:
     targets = service.targets(engine="kokoro", language="en-US")
     assert targets[0].id == "target-a"
     assert targets[0].voice_count == 2
-    voices = service.voices(
-        engine="kokoro", target="target-a", language="en-US", default_voice="voice-a"
-    )
+    voices = service.voices(engine="kokoro", target="target-a", language="en-US")
     assert [voice.id for voice in voices] == ["voice-a", "voice-b"]
     assert [voice.default for voice in voices] == [True, False]
     assert service.engine_options("kokoro", target="target-a") == (

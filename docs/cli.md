@@ -14,30 +14,30 @@ render/export an M4B:
 ttsforge convert novel.epub
 ```
 
-| Option                          | Meaning                                                                                              |
-| ------------------------------- | ---------------------------------------------------------------------------------------------------- |
-| `--project PATH`                | Project directory. Defaults to `<source-stem>.ttsforge` beside the EPUB.                             |
-| `--chapters SELECTOR`           | Chapter selection for the book workflow, for example `1-5`, `1,3,5`, or `all`.                       |
-| `-o, --output PATH`             | M4B output path; defaults to `<source-stem>.m4b`.                                                    |
-| `--language LANG`               | Language used for the audiobook setup.                                                               |
-| `--engine ENGINE`               | Readio synthesis engine.                                                                             |
-| `--target TARGET`               | Runnable target exposed by the selected engine.                                                      |
-| `--voice VOICE`                 | Voice selector supported by the selected target.                                                     |
-| `--engine-option KEY=VALUE`     | Engine-specific option; repeatable. Use options exposed by Readio for that engine and target.        |
-| `--speed FLOAT`                 | Speech speed in the range shown by help; the selected engine may impose stricter support.            |
-| `--bitrate VALUE`               | M4B export bitrate.                                                                                  |
-| `--target-lufs FLOAT`           | Composition loudness target.                                                                         |
-| `--title TEXT`, `--author TEXT` | Audiobook metadata overrides.                                                                        |
-| `--cover PATH`                  | Cover image for the audiobook.                                                                       |
-| `--offline` / `--refresh`       | Control Readio discovery/resource behavior for this request.                                         |
-| `--rebuild-from STAGE`          | Ask Readio to rebuild from `convert`, `compile`, `render_plan`, `render`, `compose`, or `export`.    |
-| `--replace-output`              | Explicitly authorize replacing an existing M4B output.                                               |
-| `--fresh`                       | Use a separate new TTSForge project directory. Does not replace output or force a rebuild.           |
-| `--new-variant`                 | Create a separate setup and M4B in an existing project, reusing source conversion and compile state. |
-| `-y, --yes`                     | Skip final confirmation only.                                                                        |
-| `--non-interactive`             | Disable prompts; new variants require explicit engine and target selectors.                          |
-| `--json`                        | Emit structured output without prompts or progress prose.                                            |
-| `--debug`                       | Show a traceback after an error.                                                                     |
+| Option                          | Meaning                                                                                           |
+| ------------------------------- | ------------------------------------------------------------------------------------------------- |
+| `--project PATH`                | Project directory. Defaults to `<source-stem>.ttsforge` beside the EPUB.                          |
+| `--chapters SELECTOR`           | Chapter selection for the book workflow, for example `1-5`, `1,3,5`, or `all`.                    |
+| `-o, --output PATH`             | M4B output path; defaults to `<source-stem>.m4b`.                                                 |
+| `--language LANG`               | Language used for the audiobook setup.                                                            |
+| `--engine ENGINE`               | Readio synthesis engine.                                                                          |
+| `--target TARGET`               | Runnable target exposed by the selected engine.                                                   |
+| `--voice VOICE`                 | Voice selector supported by the selected target.                                                  |
+| `--engine-option KEY=VALUE`     | Engine-specific option; repeatable. Use options exposed by Readio for that engine and target.     |
+| `--speed FLOAT`                 | Speech speed in the range shown by help; the selected engine may impose stricter support.         |
+| `--bitrate VALUE`               | M4B export bitrate.                                                                               |
+| `--target-lufs FLOAT`           | Composition loudness target.                                                                      |
+| `--title TEXT`, `--author TEXT` | Audiobook metadata overrides.                                                                     |
+| `--cover PATH`                  | Cover image for the audiobook.                                                                    |
+| `--offline` / `--refresh`       | Control Readio discovery/resource behavior for this request.                                      |
+| `--rebuild-from STAGE`          | Ask Readio to rebuild from `convert`, `compile`, `render_plan`, `render`, `compose`, or `export`. |
+| `--replace-output`              | Explicitly authorize replacing an existing M4B output.                                            |
+| `--fresh`                       | Use a separate new TTSForge project directory. Does not replace output or force a rebuild.        |
+| `--new-variant`                 | Deprecated compatibility adapter. Prefer the `narration` commands.                                |
+| `-y, --yes`                     | Skip final confirmation only.                                                                     |
+| `--non-interactive`             | Disable prompts; new variants require explicit engine and target selectors.                       |
+| `--json`                        | Emit structured output without prompts or progress prose.                                         |
+| `--debug`                       | Show a traceback after an error.                                                                  |
 
 Chapter selectors are 1-based and ranges are inclusive. Use `all`, a number such as `4`,
 a range such as `2-7`, or comma-separated combinations such as `1,3,8-10`. Open-ended
@@ -50,14 +50,15 @@ a different explicit selector is rejected. Use `--fresh` or pass a different pro
 path to create a project with a different chapter scope. `--non-interactive` and
 `--json` never prompt; a new project defaults to `all`.
 
-`--new-variant` requires a complete saved base setup. It inherits the base source,
-chapter scope, and preparation settings, then asks for a new engine, target, and
-applicable voice. With `--non-interactive` or `--json`, supply `--engine` and
-`--target`; supply `--voice` when the selected target does not provide a default. It
-rejects `--fresh`, convert/compile rebuilds, and changes to shared preparation settings.
-It does not enable `--replace-output`.
+`--new-variant` is a deprecated compatibility adapter for creating and rendering an
+additional narration. It inherits the base source, chapter scope, and preparation
+settings, then selects an engine, target, and applicable voice. With `--non-interactive`
+or `--json`, supply `--engine` and `--target`; supply `--voice` when the selected target
+does not provide a default. It rejects `--fresh`, convert/compile rebuilds, and changes
+to shared preparation settings. It does not enable `--replace-output`. JSON output
+includes a structured warning; non-JSON output prints a deprecation warning.
 
-Each alternate configuration gets its own Readio intent and render profile below
+Each additional narration keeps its own Readio intent and render profile below
 `variants/<configuration-key>/`, while sharing the project's `book.ssmd-bundle/`. The
 configuration key is TTSForge setup identity, not Readio's specialist render variant.
 `info` lists valid and incomplete alternate setups; `status` continues to inspect the
@@ -65,6 +66,92 @@ root setup. TTSForge saves the resolved render intent and narrator profile befor
 rendering. A failed render can be retried with the saved setup. Readio owns preflight
 decisions, stage reuse, and rendering. See [Projects and outputs](projects.md) for
 persistence and precedence.
+
+## `narration`
+
+Use the narration commands to list, inspect, create, preflight, render, and delete saved
+narrations in an existing TTSForge project:
+
+```bash
+ttsforge narration list novel.ttsforge
+ttsforge narration create novel.ttsforge --name "Kokoro Heart" \
+  --engine kokoro --target target-a --voice voice-a
+ttsforge narration info novel.ttsforge <narration-id>
+ttsforge narration preflight novel.ttsforge <narration-id>
+ttsforge narration render novel.ttsforge <narration-id>
+ttsforge narration delete novel.ttsforge <narration-id>
+```
+
+Creation requires a saved primary setup. The stable narration ID identifies the
+synthesis configuration; the display name is used in the output filename and is
+persisted separately. Deleting an additional narration removes only its TTSForge setup.
+Rendered audio is kept. Use `--json` on list, info, create, preflight, and render for
+structured output.
+
+## `preview`
+
+Synthesize explicit text with a saved narration and save the returned WAV to a path you
+choose:
+
+```bash
+ttsforge preview novel.ttsforge \
+  --narration <narration-id> \
+  --text "The station lights went out one by one." \
+  --output preview.wav
+```
+
+`--narration` defaults to `primary`. The command uses the narration's saved Readio
+profile, does not render the full audiobook, and refuses to overwrite an existing
+output. Preview audio stays in memory unless you request an output file. Chapter-derived
+previews are unavailable until Readio exposes a public source excerpt API. Use `--json`
+for audio metadata and the output path.
+
+## `metadata`
+
+Inspect and update project-wide audiobook metadata overrides:
+
+```bash
+ttsforge metadata show novel.ttsforge
+ttsforge metadata set novel.ttsforge --title "Novel" --author "A. Writer" \
+  --narrator "Reader" --year 2024 --cover cover.jpg
+ttsforge metadata validate novel.ttsforge --json
+```
+
+`metadata set` accepts `--title`, `--subtitle`, `--author`, `--narrator`, `--series`,
+`--series-number`, `--language`, `--publisher`, `--year`, and `--cover`. Overrides are
+stored in the project as TTSForge-owned metadata, separate from Readio workflow state.
+`metadata show` returns source metadata, saved overrides, and effective metadata.
+Validation reports missing required fields as warnings and invalid values as errors.
+
+## `chapters`
+
+List chapter inventory, inspect the project's saved selection, or validate that a
+requested selection matches the existing project scope:
+
+```bash
+ttsforge chapters list novel.epub --json
+ttsforge chapters status novel.ttsforge --json
+ttsforge chapters select novel.ttsforge 1-5 --json
+```
+
+`chapters select` does not change the project's saved selection. A different selection
+requires a separate project path or `convert --fresh`. The top-level `list` command
+remains available for source chapter inventory.
+
+## `check`
+
+Run TTSForge product-level checks for a saved project:
+
+```bash
+ttsforge check novel.ttsforge --json
+ttsforge check novel.ttsforge --narration kokoro-heart
+```
+
+The report aggregates source, setup, metadata, chapter-selection, output-existence, and
+Readio workflow findings. Exit codes are `0` when there are no error findings, `1` when
+QC finds errors, and `2` for command or configuration failures. Deep M4B/audio QC is
+reported as unknown until Readio exposes an authoritative public result; TTSForge does
+not inspect specialist-owned artifacts.
 
 ## `list`
 
@@ -97,6 +184,19 @@ ttsforge status novel.ttsforge
 
 The source argument is optional; `--project PATH` can select a project explicitly.
 Supports `--json` and `--debug`.
+
+## `projects`
+
+Discover TTSForge project candidates below a collection root or inspect one directly:
+
+```bash
+ttsforge projects list ~/Audiobooks --json
+ttsforge projects info ~/Audiobooks/Novel.ttsforge --json
+```
+
+Malformed and legacy candidates remain visible with an error. A `.ttsforge` suffix alone
+does not establish project validity. JSON summaries include selected chapter counts,
+narrations, outputs, QC state, and job activity.
 
 ## Discovery commands
 
@@ -133,8 +233,9 @@ the [server guide](server.md) and [Studio API reference](studio-api.md).
 
 ## Removed commands
 
-The TTSForge 0.5 CLI focuses on `convert`, `list`, `info`, `status`, `engines`,
-`targets`, `voices`, and optional `serve`. Earlier commands such as `preview`, `plan`,
-`config`, `models`, `formats`, `doctor`, and `ssmd` are not registered in this workflow.
-The former backend-specific `read`, `sample`, `demo`, `download`, and `phonemes`
-commands are also removed. See the [migration guide](migration-readio.md).
+The TTSForge 0.5 CLI focuses on `convert`, `narration`, `preview`, `metadata`,
+`chapters`, `check`, `list`, `info`, `status`, `engines`, `targets`, `voices`, and
+optional `serve`. Earlier commands such as `plan`, `config`, `models`, `formats`,
+`doctor`, and `ssmd` are not registered in this workflow. The former backend-specific
+`read`, `sample`, `demo`, `download`, and `phonemes` commands are also removed. See the
+[migration guide](migration-readio.md).

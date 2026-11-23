@@ -47,7 +47,7 @@ def test_readio_requirement_uses_the_released_preflight_api_floor() -> None:
         item for item in dependencies if item.split("[", 1)[0].startswith("readio")
     ]
 
-    assert readio == ["readio[audioexport]>=0.6.7,<0.7"]
+    assert readio == ["readio[audioexport]>=0.6.8,<0.7"]
 
 
 def test_ttsforge_does_not_declare_backend_or_rendering_dependencies() -> None:
@@ -78,5 +78,5 @@ def test_server_and_studio_extras_define_the_optional_runtime() -> None:
         "pydantic>=2.9,<3",
         "uvicorn>=0.32,<1",
         "python-multipart>=0.0.20,<1",
-        "readio[spacy,kokoro]>=0.6.7,<0.7",
+        "readio[spacy,kokoro]>=0.6.8,<0.7",
     ]

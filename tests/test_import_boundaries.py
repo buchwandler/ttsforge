@@ -200,6 +200,7 @@ def test_cli_registers_only_the_supported_audiobook_commands() -> None:
     help_text = _semantic_output(result.stdout)
     for command in (
         "convert",
+        "preview",
         "list",
         "info",
         "status",
@@ -208,7 +209,7 @@ def test_cli_registers_only_the_supported_audiobook_commands() -> None:
         "voices",
     ):
         assert command in help_text
-    for obsolete in ("models", "plan", "config", "ssmd", "formats", "preview"):
+    for obsolete in ("models", "plan", "config", "ssmd", "formats"):
         assert f"{obsolete} " not in help_text
 
 

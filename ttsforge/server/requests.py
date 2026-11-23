@@ -5,11 +5,19 @@ from __future__ import annotations
 from dataclasses import fields
 from pathlib import Path
 
-from ..application import AudiobookRequest, InputOverrides, InputValidationError
+from ..application import (
+    AudiobookMetadata,
+    AudiobookRequest,
+    InputOverrides,
+    InputValidationError,
+)
 from .models import AudiobookRequestModel
 
 
 def application_request(model: AudiobookRequestModel) -> AudiobookRequest:
+    metadata_values = model.metadata.model_dump()
+    metadata_values["cover"] = _path(model.metadata.cover)
+    metadata = AudiobookMetadata(**metadata_values)
     return AudiobookRequest(
         source=request_path(model.source),
         project=_path(model.project),
@@ -26,6 +34,7 @@ def application_request(model: AudiobookRequestModel) -> AudiobookRequest:
         pause_timing=model.pause_timing,
         bitrate=model.bitrate,
         target_lufs=model.target_lufs,
+        metadata=metadata,
         title=model.title,
         author=model.author,
         cover=_path(model.cover),

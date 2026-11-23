@@ -5,6 +5,7 @@ from __future__ import annotations
 import math
 from collections.abc import Mapping
 from dataclasses import fields, is_dataclass
+from datetime import datetime
 from enum import Enum
 from pathlib import Path
 from typing import TypeAlias
@@ -24,6 +25,8 @@ def json_value(value: object) -> JsonValue:
         return value
     if isinstance(value, Enum):
         return json_value(value.value)
+    if isinstance(value, datetime):
+        return value.isoformat()
     if isinstance(value, Path):
         return str(value)
     if is_dataclass(value) and not isinstance(value, type):

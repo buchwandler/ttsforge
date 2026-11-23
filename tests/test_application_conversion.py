@@ -4,6 +4,7 @@ from pathlib import Path
 from types import SimpleNamespace
 
 import pytest
+import readio.api as readio_api
 
 from ttsforge.application import (
     AudiobookApplicationService,
@@ -72,6 +73,7 @@ class FakeBackend:
             workspace_mode="none",
             output=Path("book.m4b"),
             steps=steps,
+            executable=not self.blocked,
         )
 
     def render(self, request: object, *, on_progress=None) -> ConversionResultView:
@@ -90,12 +92,18 @@ class FakeBackend:
     def list_targets(self, **kwargs: object) -> tuple[object, ...]:
         self.calls.append("targets")
         return (
-            SimpleNamespace(
+            readio_api.TargetInfo(
                 id="target-a",
                 languages=("en-US",),
+                status="ready",
+                runtime_available=True,
                 default_voice="voice-a",
-                voices=("voice-a",),
-                capabilities=("named_voices",),
+                voice_count=1,
+                qualities=(),
+                voice_mode="named",
+                sample_rate=24000,
+                features=("named_voices",),
+                reference_only=False,
             ),
         )
 
@@ -106,7 +114,18 @@ class FakeBackend:
 
     def list_voices(self, **kwargs: object) -> tuple[object, ...]:
         self.calls.append("voices")
-        return (SimpleNamespace(id="voice-a", language="en-US"),)
+        return (
+            readio_api.VoiceInfo(
+                id="voice-a",
+                language="en-US",
+                locale="en-US",
+                language_label="English",
+                gender="unknown",
+                kind="builtin",
+                default=True,
+                runtime_available=True,
+            ),
+        )
 
     def list_spacy_models(self, language: str) -> tuple[SpacyModelView, ...]:
         return (self.inspect_spacy_model(language, "lg"),)
@@ -196,12 +215,18 @@ def test_reference_only_target_is_rejected_before_setup_is_saved(
 ) -> None:
     backend = FakeBackend()
     backend.list_targets = lambda **kwargs: (
-        SimpleNamespace(
+        readio_api.TargetInfo(
             id="target-a",
             languages=("en-US",),
-            voices=(),
-            capabilities=("reference_voice",),
-            metadata={"supports_reference_enrollment": True},
+            status="ready",
+            runtime_available=True,
+            default_voice=None,
+            voice_count=1,
+            qualities=(),
+            voice_mode="named",
+            sample_rate=24000,
+            features=("reference_voice",),
+            reference_only=True,
         ),
     )
     coordinator, _ = _coordinator(backend)

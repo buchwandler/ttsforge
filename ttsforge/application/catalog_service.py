@@ -6,11 +6,16 @@ from typing import Protocol
 
 from .catalog import (
     EngineChoiceView,
+    EngineInfoRecord,
+    EngineOptionInfoRecord,
     EngineOptionView,
     TargetChoiceView,
+    TargetInfoRecord,
     VoiceChoiceView,
+    VoiceInfoRecord,
     engine_choice_view,
     engine_option_view,
+    inspected_voice_choice_view,
     target_choice_view,
     voice_choice_view,
 )
@@ -18,7 +23,7 @@ from .models import SpacyModelView
 
 
 class CatalogBackend(Protocol):
-    def list_engines(self) -> tuple[object, ...]: ...
+    def list_engines(self) -> tuple[EngineInfoRecord, ...]: ...
 
     def list_targets(
         self,
@@ -27,11 +32,11 @@ class CatalogBackend(Protocol):
         language: str | None = None,
         offline: bool = False,
         refresh: bool = False,
-    ) -> tuple[object, ...]: ...
+    ) -> tuple[TargetInfoRecord, ...]: ...
 
     def list_engine_options(
         self, engine: str, *, target: str | None = None
-    ) -> tuple[object, ...]: ...
+    ) -> tuple[EngineOptionInfoRecord, ...]: ...
 
     def list_voices(
         self,
@@ -41,7 +46,7 @@ class CatalogBackend(Protocol):
         language: str | None = None,
         offline: bool = False,
         refresh: bool = False,
-    ) -> tuple[object, ...]: ...
+    ) -> tuple[VoiceInfoRecord, ...]: ...
 
     def list_spacy_models(self, language: str) -> tuple[SpacyModelView, ...]: ...
 
@@ -99,19 +104,16 @@ class CatalogApplicationService:
         language: str | None = None,
         offline: bool = False,
         refresh: bool = False,
-        default_voice: str | None = None,
     ) -> tuple[VoiceChoiceView, ...]:
         return tuple(
-            choice
-            for item in self._backend.list_voices(
+            voice_choice_view(voice)
+            for voice in self._backend.list_voices(
                 engine=engine,
                 target=target,
                 language=language,
                 offline=offline,
                 refresh=refresh,
             )
-            if (choice := voice_choice_view(item, default_voice=default_voice))
-            is not None
         )
 
     def spacy_models(self, language: str) -> tuple[SpacyModelView, ...]:
@@ -128,6 +130,6 @@ class CatalogApplicationService:
     def inspect_voice(
         self, selector: str, *, language: str | None = None
     ) -> VoiceChoiceView | None:
-        return voice_choice_view(
+        return inspected_voice_choice_view(
             self._backend.inspect_voice(selector, language=language)
         )

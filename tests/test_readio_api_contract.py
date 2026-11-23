@@ -1,4 +1,4 @@
-"""Contract checks for the Readio 0.6 public API used by TTSForge."""
+"""Contract checks for the Readio 0.6.8 public API used by TTSForge."""
 
 from __future__ import annotations
 
@@ -12,6 +12,14 @@ def test_required_public_api_symbols_are_available() -> None:
     required = {
         "Readio",
         "ReadioError",
+        "EngineInfo",
+        "TargetInfo",
+        "VoiceInfo",
+        "EngineOptionInfo",
+        "ErrorInfo",
+        "WorkflowBlocker",
+        "StageExecutionRecord",
+        "ExecutionReport",
         "PreparationIntent",
         "ProjectionIntent",
         "SpacyModelInfo",
@@ -31,12 +39,9 @@ def test_required_public_api_symbols_are_available() -> None:
         "ExportOptions",
         "create_book_intent",
         "create_profile",
-        "discover_engine_targets",
-        "inspect_source",
+        "describe_error",
         "inspect_voice",
-        "list_engine_options",
-        "list_engines",
-        "list_voices",
+        "inspect_source",
         "load_profile",
         "load_render_intent",
         "render_request_from_intent",
@@ -46,7 +51,7 @@ def test_required_public_api_symbols_are_available() -> None:
     missing = sorted(name for name in required if not hasattr(readio_api, name))
     assert not missing, (
         "The installed Readio does not provide TTSForge's required public API: "
-        f"{', '.join(missing)}. Install Readio >=0.6.2,<0.7."
+        f"{', '.join(missing)}. Install Readio >=0.6.8,<0.7."
     )
 
 
@@ -69,58 +74,78 @@ def test_setup_intents_and_spacy_model_are_public_contracts() -> None:
     assert {"preparation", "projection"} <= intent_parameters
 
 
-def test_workflow_types_expose_the_normalized_contract() -> None:
-    request_fields = {field.name for field in fields(readio_api.RenderRequest)}
-    event_fields = {field.name for field in fields(readio_api.WorkflowEvent)}
-    source_fields = {field.name for field in fields(readio_api.SourceInspection)}
-    chapter_fields = {field.name for field in fields(readio_api.SourceChapter)}
+def test_normalized_catalog_dtos_and_workflow_results_are_public_contracts() -> None:
+    expected_fields = {
+        "EngineInfo": {"id", "version", "installed", "runnable", "features", "reason"},
+        "TargetInfo": {
+            "id",
+            "languages",
+            "status",
+            "runtime_available",
+            "default_voice",
+            "voice_count",
+            "qualities",
+            "voice_mode",
+            "sample_rate",
+            "features",
+            "reference_only",
+        },
+        "VoiceInfo": {
+            "id",
+            "language",
+            "locale",
+            "language_label",
+            "gender",
+            "default",
+            "runtime_available",
+        },
+        "EngineOptionInfo": {
+            "name",
+            "value_type",
+            "required",
+            "default",
+            "choices",
+            "minimum",
+            "maximum",
+            "description",
+            "identity_affecting",
+            "runtime_only",
+        },
+        "WorkflowBlocker": {
+            "code",
+            "message",
+            "owner",
+            "recoverable",
+            "suggested_action",
+        },
+        "StageExecutionRecord": {
+            "stage",
+            "package",
+            "action",
+            "state_before",
+            "state_after",
+            "elapsed_seconds",
+            "reason_code",
+        },
+        "ExecutionReport": {
+            "stages",
+            "specialist_versions",
+            "elapsed_seconds",
+        },
+    }
+    for name, expected in expected_fields.items():
+        model = getattr(readio_api, name)
+        assert is_dataclass(model)
+        assert expected <= {field.name for field in fields(model)}
 
-    assert {
-        "source",
-        "profile",
-        "chapters",
-        "language",
-        "bundle",
-        "output",
-        "rebuild_from",
-        "replace_output",
-        "planning",
-        "voice_render",
-        "composition",
-        "export",
-    } <= request_fields
-    assert {
-        "stage",
-        "kind",
-        "package",
-        "selector",
-        "current",
-        "total",
-        "message",
-        "elapsed_seconds",
-        "details",
-    } <= event_fields
-    assert {"source", "kind", "metadata", "chapters"} <= source_fields
-    assert {
-        "number",
-        "title",
-        "source_id",
-        "parent_id",
-        "level",
-        "char_count",
-    } <= chapter_fields
-    assert all(
-        is_dataclass(getattr(readio_api, name))
-        for name in (
-            "RenderRequest",
-            "WorkflowEvent",
-            "SourceInspection",
-            "SourceChapter",
-        )
-    )
+    step_fields = {field.name for field in fields(readio_api.WorkflowStep)}
+    plan_fields = {field.name for field in fields(readio_api.WorkflowPlan)}
+    assert {"reason_code", "force", "blockers"} <= step_fields
+    assert "executable" in dir(readio_api.WorkflowPlan)
+    assert {"source", "workspace", "output", "steps", "warnings"} <= plan_fields
 
 
-def test_readio_gateway_exposes_unified_source_and_workflow_operations() -> None:
+def test_readio_gateway_exposes_normalized_catalog_and_capability_methods() -> None:
     app = readio_api.Readio()
     for name in (
         "inspect_source",
@@ -128,6 +153,13 @@ def test_readio_gateway_exposes_unified_source_and_workflow_operations() -> None
         "inspect_intent",
         "inspect",
         "render",
+        "list_engines",
+        "list_targets",
+        "list_voices",
+        "list_engine_options",
+        "capabilities",
+        "synthesis_capabilities",
+        "export_capabilities",
     ):
         assert callable(getattr(app, name))
 
@@ -141,10 +173,5 @@ def test_book_intent_and_profile_helpers_are_public_callables() -> None:
         "create_profile",
         "load_profile",
         "validate_profile",
-        "list_engines",
-        "discover_engine_targets",
-        "list_engine_options",
-        "list_voices",
-        "inspect_voice",
     ):
         assert callable(getattr(readio_api, name))

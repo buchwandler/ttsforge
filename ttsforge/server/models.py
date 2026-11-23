@@ -15,6 +15,19 @@ class SourceInspectRequest(StrictModel):
     path: str
 
 
+class AudiobookMetadataModel(StrictModel):
+    title: str | None = None
+    subtitle: str | None = None
+    author: str | None = None
+    narrator: str | None = None
+    series: str | None = None
+    series_number: str | None = None
+    language: str | None = None
+    publisher: str | None = None
+    year: str | None = None
+    cover: str | None = None
+
+
 class AudiobookRequestModel(StrictModel):
     source: str
     project: str | None = None
@@ -31,6 +44,7 @@ class AudiobookRequestModel(StrictModel):
     pause_timing: Literal["fixed", "natural", "engaging"] | None = None
     bitrate: str | int | None = None
     target_lufs: float | None = None
+    metadata: AudiobookMetadataModel = Field(default_factory=AudiobookMetadataModel)
     title: str | None = None
     author: str | None = None
     cover: str | None = None
@@ -45,6 +59,25 @@ class AudiobookRequestModel(StrictModel):
 class JobSubmissionModel(StrictModel):
     request: AudiobookRequestModel
     explicit_fields: list[str] = Field(default_factory=list)
+
+
+class NarrationCreateRequestModel(StrictModel):
+    project: str
+    display_name: str
+    engine: str
+    target: str
+    voice: str | None = None
+    engine_options: dict[str, JsonValue] = Field(default_factory=dict)
+    speed: float | None = None
+    output: str | None = None
+
+
+class PreviewRequestModel(StrictModel):
+    project: str
+    narration_id: str | None = None
+    text: str | None = None
+    chapter: int | None = Field(default=None, ge=1)
+    paragraph: int | None = Field(default=None, ge=1)
 
 
 class SpacyEnsureRequest(StrictModel):
@@ -81,6 +114,15 @@ class SystemResponseModel(StrictModel):
     ttsforge_version: str | None
     python_version: str
     capabilities: dict[str, bool]
+
+
+class AudiobookCapabilitiesResponseModel(StrictModel):
+    source_inspection: bool
+    synthesis_preview: bool
+    m4b_export: bool
+    persistent_workspace: bool
+    available_engines: list[str]
+    warnings: list[str]
 
 
 class PythonRuntimeResponseModel(StrictModel):
@@ -142,6 +184,7 @@ class BookInspectionResponseModel(StrictModel):
     language: str | None
     chapters: list[BookChapterResponseModel]
     cover: str | None
+    metadata: AudiobookMetadataModel = Field(default_factory=AudiobookMetadataModel)
 
 
 class SourceImportStatusResponseModel(StrictModel):
@@ -249,6 +292,14 @@ class SetupResolutionResponseModel(StrictModel):
     origins: SetupOriginsResponseModel
 
 
+class WorkflowBlockerResponseModel(StrictModel):
+    code: str
+    message: str
+    owner: str | None
+    recoverable: bool
+    suggested_action: str | None
+
+
 class WorkflowStepResponseModel(StrictModel):
     stage: str
     package: str
@@ -256,6 +307,10 @@ class WorkflowStepResponseModel(StrictModel):
     selector: str | None
     reason: str
     state: str
+
+    reason_code: str
+    force: bool
+    blockers: list[WorkflowBlockerResponseModel]
 
 
 class WorkflowPlanResponseModel(StrictModel):
@@ -265,6 +320,7 @@ class WorkflowPlanResponseModel(StrictModel):
     output: str | None
     steps: list[WorkflowStepResponseModel]
     warnings: list[str]
+    executable: bool
     variant: str | None
 
 
@@ -292,11 +348,124 @@ class ProjectVariantResponseModel(StrictModel):
     error: str | None
 
 
+class NarrationResponseModel(StrictModel):
+    id: str
+    display_name: str
+    primary: bool
+    output: str | None
+    engine: str | None
+    target: str | None
+    voice: str | None
+    error: str | None
+
+
+class NarrationListResponseModel(StrictModel):
+    project: str
+    narrations: list[NarrationResponseModel]
+
+
+class NarrationDeleteResponseModel(StrictModel):
+    deleted: bool
+
+
 class ProjectInfoResponseModel(StrictModel):
     project: str
     saved_setup: AudiobookRequestModel | None
     workflow: WorkflowPlanResponseModel | None
     variants: list[ProjectVariantResponseModel]
+    narrations: list[NarrationResponseModel]
+
+
+class ProjectSummaryResponseModel(StrictModel):
+    project_id: str
+    title: str | None
+    author: str | None
+    source: str | None
+    project: str
+    chapter_count: int
+    selected_chapter_count: int
+    narrations: list[NarrationResponseModel]
+    primary_narration_id: str | None
+    outputs: list[str]
+    qc_state: str | None
+    active_job_id: str | None
+    last_activity: str | None
+    error: str | None
+
+
+class LibraryProjectsResponseModel(StrictModel):
+    root: str
+    projects: list[ProjectSummaryResponseModel]
+
+
+class ProjectPathRequestModel(StrictModel):
+    project: str
+
+
+class ProjectMetadataSetRequestModel(StrictModel):
+    project: str
+    metadata: AudiobookMetadataModel
+
+
+class ProjectQcRequestModel(StrictModel):
+    project: str
+    narration_id: str | None = None
+
+
+class ChapterSelectionRequestModel(StrictModel):
+    project: str
+    selection: str
+
+
+class QcFindingResponseModel(StrictModel):
+    id: str
+    severity: Literal["pass", "warning", "error", "unknown"]
+    section: str
+    message: str
+    details: dict[str, JsonValue] = Field(default_factory=dict)
+
+
+class QcReportResponseModel(StrictModel):
+    project: str
+    narration_id: str | None
+    passed: bool
+    findings: list[QcFindingResponseModel]
+
+
+class AudiobookMetadataViewResponseModel(StrictModel):
+    project: str
+    source: str
+    source_metadata: AudiobookMetadataModel
+    overrides: AudiobookMetadataModel
+    effective: AudiobookMetadataModel
+
+
+class MetadataValidationResponseModel(StrictModel):
+    project: str
+    valid: bool
+    findings: list[QcFindingResponseModel]
+
+
+class ChapterStatusResponseModel(StrictModel):
+    number: int
+    title: str
+    source_id: str | None
+    char_count: int | None
+    selected: bool
+    workflow_state: str | None
+    estimated_duration_seconds: float | None
+    final_duration_seconds: float | None
+
+
+class ChapterListResponseModel(StrictModel):
+    project: str
+    chapters: list[ChapterStatusResponseModel]
+
+
+class ChapterSelectionResponseModel(StrictModel):
+    project: str
+    selection: str
+    selected_chapters: list[int]
 
 
 class ApplicationEventResponseModel(StrictModel):
@@ -311,6 +480,22 @@ class ApplicationEventResponseModel(StrictModel):
     details: dict[str, JsonValue]
 
 
+class StageExecutionResponseModel(StrictModel):
+    stage: str
+    package: str
+    action: str
+    state_before: str
+    state_after: str | None
+    elapsed_seconds: float
+    reason_code: str
+
+
+class ExecutionSummaryResponseModel(StrictModel):
+    stages: list[StageExecutionResponseModel]
+    specialist_versions: dict[str, str | None]
+    elapsed_seconds: float
+
+
 class ConversionResultResponseModel(StrictModel):
     output: str
     workspace: str | None
@@ -319,6 +504,7 @@ class ConversionResultResponseModel(StrictModel):
     reused_stages: list[str]
     warnings: list[str]
     variant: str | None
+    execution: ExecutionSummaryResponseModel | None
 
 
 JobStateLiteral = Literal[
@@ -363,6 +549,8 @@ class JobSummaryResponseModel(StrictModel):
     finished_at: str | None
     project: str | None
     output: str | None
+    narration_id: str | None
+    retry_of: str | None
     event_sequence: int
 
 

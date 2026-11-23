@@ -1,6 +1,6 @@
 # Application architecture
 
-TTSForge is an audiobook product layer over Readio `>=0.6.7,<0.7`. It supports the CLI
+TTSForge is an audiobook product layer over Readio `>=0.6.8,<0.7`. It supports the CLI
 and the local HTTP API used by TTSForge Studio. Readio owns the render workflow,
 persistent intent/profile formats, specialist integrations, stage reuse, composition,
 and export. TTSForge owns the EPUB-facing workflow, project-directory convention, setup

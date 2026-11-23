@@ -5,7 +5,7 @@ workflow API and does not bundle a speech engine.
 
 ## Requirements
 
-TTSForge requires Readio `>=0.6.7,<0.7`, which provides the workflow gateway,
+TTSForge requires Readio `>=0.6.8,<0.7`, which provides the workflow gateway,
 render-intent helpers, source inspection, and engine discovery used by this CLI. A
 Readio source checkout is not required for a normal installation.
 
@@ -23,6 +23,13 @@ separately when speech synthesis is needed. Consult the
 [Readio installation guide](https://github.com/buchwandler/readio/blob/main/docs/index.md)
 for the supported integrations and their platform requirements. TTSForge does not guess
 or provide a parallel set of engine extras.
+
+## Packaged audiobook Skill
+
+The distribution includes the TTSForge audiobook Skill and its CLI, project, narration,
+and QC references under `ttsforge/skills/ttsforge/`. Access the installed resource with
+`importlib.resources`; the Skill routes audiobook production to TTSForge and generic
+speech or document rendering to Readio.
 
 ## Optional Studio server
 
@@ -50,7 +57,7 @@ with the selected port; server diagnostics go to stderr.
 ## Development installation
 
 For local development, check out TTSForge beside a Readio checkout that provides the
-required `>=0.6.7,<0.7` API, then install both editable:
+required `>=0.6.8,<0.7` API, then install both editable:
 
 ```bash
 python -m venv .venv

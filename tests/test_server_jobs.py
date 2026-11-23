@@ -1,7 +1,9 @@
 from __future__ import annotations
 
+import json
 import sys
 import time
+from dataclasses import replace
 from pathlib import Path
 
 from ttsforge.application.models import (
@@ -9,6 +11,7 @@ from ttsforge.application.models import (
     ConversionResultView,
     InputOverrides,
 )
+from ttsforge.server.job_store import SqliteJobStore
 from ttsforge.server.jobs import JobManager, JobState
 
 _SUCCESS_WORKER = r"""
@@ -253,3 +256,158 @@ time.sleep(30)
 
     assert manager.get(submitted.id).state is JobState.CANCELLED
     assert manager._scheduler.is_alive() is False
+
+
+def test_queued_jobs_resume_in_fifo_order_after_restart(tmp_path: Path) -> None:
+    database = tmp_path / "jobs.sqlite3"
+    blocking_worker = r"""
+import json, sys, time
+json.loads(sys.stdin.read())
+print(json.dumps({"type": "job.state", "state": "running"}), flush=True)
+time.sleep(30)
+"""
+    first_manager = JobManager(
+        cancel_grace_seconds=0.2,
+        worker_command=(sys.executable, "-u", "-c", blocking_worker),
+        store=SqliteJobStore(database),
+    )
+    running = first_manager.submit(_request(tmp_path / "running.epub"))
+    _wait_for_state(first_manager, running.id, JobState.RUNNING)
+    queued_first = first_manager.submit(
+        AudiobookRequest(source=tmp_path / "first.epub")
+    )
+    queued_second = first_manager.submit(
+        AudiobookRequest(source=tmp_path / "second.epub")
+    )
+    first_manager.shutdown()
+
+    assert first_manager.get(queued_first.id).state is JobState.QUEUED
+    assert first_manager.get(queued_second.id).state is JobState.QUEUED
+
+    order_file = tmp_path / "worker-order.txt"
+    success_worker = f"""
+import json, sys
+from pathlib import Path
+payload = json.loads(sys.stdin.read())
+with open({str(order_file)!r}, "a", encoding="utf-8") as output_file:
+    output_file.write(Path(payload["request"]["source"]).name + "\\n")
+project = "/projects/recovered"
+output = "/projects/recovered.m4b"
+for message in [
+    {{"type": "job.state", "state": "preparing"}},
+    {{"type": "job.prepared", "project": project, "output": output}},
+    {{"type": "job.state", "state": "running"}},
+    {{"type": "job.result", "result": {{
+        "output": output, "workspace": project, "workspace_mode": "modern",
+        "executed_stages": [], "reused_stages": [], "warnings": [], "variant": None
+    }}}}
+]:
+    print(json.dumps(message), flush=True)
+"""
+    restarted = JobManager(
+        worker_command=(sys.executable, "-u", "-c", success_worker),
+        store=SqliteJobStore(database),
+    )
+    try:
+        first_completed = _wait_for_state(
+            restarted, queued_first.id, JobState.COMPLETED
+        )
+        assert first_completed.state is JobState.COMPLETED
+        second_completed = _wait_for_state(
+            restarted, queued_second.id, JobState.COMPLETED
+        )
+        assert second_completed.state is JobState.COMPLETED
+        assert order_file.read_text(encoding="utf-8").splitlines() == [
+            "first.epub",
+            "second.epub",
+        ]
+    finally:
+        restarted.shutdown()
+
+
+def test_interrupted_job_recovers_as_retryable_failure_and_retry_keeps_request(
+    tmp_path: Path,
+) -> None:
+    database = tmp_path / "jobs.sqlite3"
+    source = tmp_path / "book.epub"
+    source.write_text("source", encoding="utf-8")
+    project = tmp_path / "book.ttsforge"
+    project.mkdir()
+    failing_worker = r"""
+import json, sys
+json.loads(sys.stdin.read())
+print(json.dumps({"type": "job.error", "error": {
+    "type": "WorkflowFailureError", "message": "Failed before render",
+    "category": "preflight", "code": "preflight_failed"
+}}), flush=True)
+sys.exit(1)
+"""
+    original_manager = JobManager(
+        worker_command=(sys.executable, "-u", "-c", failing_worker),
+        store=SqliteJobStore(database),
+    )
+    original = original_manager.submit(
+        AudiobookRequest(source=source, project=project),
+        InputOverrides(frozenset({"source", "voice"})),
+        narration_id="narration-1",
+    )
+    _wait_for_state(original_manager, original.id, JobState.FAILED)
+    original_manager.shutdown()
+
+    store = SqliteJobStore(database)
+    saved = store.get_job(original.id)
+    assert saved is not None
+    store.update_job(
+        replace(
+            saved,
+            state=JobState.RUNNING.value,
+            finished_at=None,
+            error_json=None,
+            cancellation_requested=False,
+        )
+    )
+    store.close()
+
+    payload_file = tmp_path / "retry-payload.json"
+    retry_worker = f"""
+import json, sys
+from pathlib import Path
+payload = json.loads(sys.stdin.read())
+Path({str(payload_file)!r}).write_text(json.dumps(payload), encoding="utf-8")
+project = {str(project)!r}
+output = {str(tmp_path / "book.m4b")!r}
+for message in [
+    {{"type": "job.state", "state": "preparing"}},
+    {{"type": "job.prepared", "project": project, "output": output}},
+    {{"type": "job.state", "state": "running"}},
+    {{"type": "job.result", "result": {{
+        "output": output, "workspace": project, "workspace_mode": "modern",
+        "executed_stages": [], "reused_stages": [], "warnings": [], "variant": None
+    }}}}
+]:
+    print(json.dumps(message), flush=True)
+"""
+    recovered_manager = JobManager(
+        worker_command=(sys.executable, "-u", "-c", retry_worker),
+        store=SqliteJobStore(database),
+    )
+    try:
+        recovered = recovered_manager.get(original.id)
+        assert recovered.state is JobState.FAILED
+        assert recovered.error is not None
+        assert recovered.error.code == "job_interrupted_by_restart"
+        assert recovered.error.details == {"recoverable": True, "retryable": True}
+
+        retried = recovered_manager.retry(original.id)
+        assert retried.id != original.id
+        assert retried.retry_of == original.id
+        assert retried.narration_id == "narration-1"
+        completed = _wait_for_state(recovered_manager, retried.id, JobState.COMPLETED)
+        assert completed.retry_of == original.id
+
+        payload = json.loads(payload_file.read_text(encoding="utf-8"))
+        assert payload["request"]["source"] == str(source)
+        assert payload["request"]["project"] == str(project)
+        assert payload["explicit_fields"] == ["source", "voice"]
+    finally:
+        recovered_manager.shutdown()

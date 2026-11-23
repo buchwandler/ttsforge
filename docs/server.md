@@ -90,15 +90,17 @@ Imports, managed projects, and outputs use separate directories. An imported sou
 project and output paths. Explicit client paths are preserved. A direct local source
 path is not copied or owned by the server.
 
-Conversion jobs are held in memory and run in isolated Python child processes. One job
-is active at a time by default. Job status and bounded progress history are not
-persisted, so restarting the server clears them. Cancelling a job terminates its worker
-process tree; server shutdown also stops active workers.
+Conversion jobs run in isolated Python child processes, with one worker active at a time
+by default. Job records and bounded event history are persisted in SQLite at
+`<state-dir>/jobs.sqlite3`. Queued jobs resume in FIFO order after restart. Jobs
+interrupted in `preparing` or `running` become failed with code
+`job_interrupted_by_restart`; use the retry endpoint to create a new job that runs
+normal preflight again. Cancelling a job terminates its worker process tree, and server
+shutdown also stops active workers.
 
-Terminal job records are capped at 100. The oldest terminal jobs are pruned first;
-queued, preparing, and running jobs are never pruned. `GET /api/v1/jobs` supports state,
-limit, and an exclusive `before` job-ID cursor. Event pages report `first`, `next`, and
-`truncated` so a Studio client can detect when bounded event history has dropped older
-events.
+Terminal job records are capped at 100, with the oldest terminal records pruned first.
+Queued and active jobs are never pruned. `GET /api/v1/jobs` supports state, limit, and
+an exclusive `before` job-ID cursor. Event pages report `first`, `next`, and `truncated`
+so Studio can detect when bounded event history has dropped older events.
 
 See the [Studio API reference](studio-api.md) for endpoints and request formats.

@@ -8,8 +8,12 @@ The versioned Studio contract is documented in the
 [Studio API reference](../studio-api.md); the [OpenAPI 3.1 schema](openapi-v1.json) is
 checked in with the source documentation.
 
+The Studio library endpoints expose project discovery and summaries. The TTSForge
+audiobook Skill and its CLI, project, narration, and QC references are packaged with the
+distribution.
+
 Python integrations should use Readio's public `readio.api` workflow gateway. TTSForge
-requires Readio `>=0.6.7,<0.7` and uses its typed source-inspection, render-intent,
+requires Readio `>=0.6.8,<0.7` and uses its typed source-inspection, render-intent,
 profile, discovery, workflow-inspection, and render operations.
 
 ## Inspect and render a saved intent

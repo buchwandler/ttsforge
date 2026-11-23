@@ -6,6 +6,8 @@ build-backend = "setuptools.build_meta"
 where = ["."]
 include = ["ttsforge*"]
 
+[tool.setuptools.package-data]
+ttsforge = ["skills/ttsforge/*.md", "skills/ttsforge/references/*.md"]
 [project]
 name = "ttsforge"
 description = "User-friendly audiobook conversion powered by Readio."
@@ -17,7 +19,7 @@ authors = [
 ]
 urls = { Homepage = "https://github.com/buchwandler/ttsforge" }
 dependencies = [
-    "readio[audioexport]>=0.6.7,<0.7",
+    "readio[audioexport]>=0.6.8,<0.7",
     "rich>=13.0.0",
     "typer>=0.20.0",
     "tomli>=2; python_version < '3.11'",
@@ -57,7 +59,7 @@ studio = [
     "pydantic>=2.9,<3",
     "uvicorn>=0.32,<1",
     "python-multipart>=0.0.20,<1",
-    "readio[spacy,kokoro]>=0.6.7,<0.7",
+    "readio[spacy,kokoro]>=0.6.8,<0.7",
 ]
 [project.scripts]
 ttsforge = "ttsforge.launcher:main"

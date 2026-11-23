@@ -22,6 +22,7 @@ _SETUP_FIELDS = (
     "speech_profile",
     "pause_timing",
     "target_lufs",
+    "metadata",
     "title",
     "author",
     "cover",
@@ -46,6 +47,8 @@ def _has_saved_value(request: AudiobookRequest, field_name: str) -> bool:
     value = getattr(request, field_name)
     if field_name == "engine_options":
         return bool(value)
+    if field_name == "metadata":
+        return not value.is_empty()
     return value is not None
 
 

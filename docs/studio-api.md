@@ -52,15 +52,22 @@ server-side traceback to logs; it does not expose exception details to the clien
 
 ## System and runtime
 
-| Method and path              | Purpose                                                              |
-| ---------------------------- | -------------------------------------------------------------------- |
-| `GET /api/v1/health`         | Unauthenticated liveness and startup check.                          |
-| `GET /api/v1/system`         | API version, TTSForge and Python versions, and capabilities.         |
-| `GET /api/v1/system/runtime` | Normalized Python, package, AudioExport, FFmpeg, and FFprobe status. |
+| Method and path                   | Purpose                                                                   |
+| --------------------------------- | ------------------------------------------------------------------------- |
+| `GET /api/v1/health`              | Unauthenticated liveness and startup check.                               |
+| `GET /api/v1/system/capabilities` | Readio-backed audiobook preview, source, export, and engine capabilities. |
+| `GET /api/v1/system`              | API version, TTSForge and Python versions, and capabilities.              |
+| `GET /api/v1/system/runtime`      | Normalized Python, package, AudioExport, FFmpeg, and FFprobe status.      |
 
 The capability map includes `jobs`, `job_events`, `cancel`, `source_upload`,
-`setup_resolve`, `preflight`, `project_setup`, `spacy_ensure`, and `speech_profiles`.
-Studio can use these flags rather than inferring support from installed packages.
+`setup_resolve`, `preflight`, `project_setup`, `spacy_ensure`, `speech_profiles`,
+`narrations`, `library`, and `preview`. Studio can use these flags rather than inferring
+support from installed packages.
+
+`GET /api/v1/system/capabilities` separately reports TTSForge product capabilities:
+source inspection, synthesis preview, M4B export, persistent workspaces, runnable
+engines, and warnings. These are derived from Readio's normalized capability APIs and
+are not a proxy for Readio's versioned capability JSON.
 
 `GET /api/v1/system` returns a capability map. This example advertises the complete
 current Studio surface:
@@ -79,7 +86,10 @@ current Studio surface:
     "preflight": true,
     "project_setup": true,
     "spacy_ensure": true,
-    "speech_profiles": true
+    "speech_profiles": true,
+    "narrations": true,
+    "library": true,
+    "preview": true
   }
 }
 ```
@@ -91,7 +101,7 @@ availability are reported, but the API does not install or download FFmpeg.
 ```json
 {
   "python": {"version": "3.13.0", "executable": "/usr/bin/python"},
-  "packages": {"ttsforge": "0.5.0", "readio": "0.6.7"},
+  "packages": {"ttsforge": "0.5.0", "readio": "0.6.8"},
   "audio": {
     "audioexport": {"available": true, "version": "0.1.8"},
     "ffmpeg": {"available": true, "path": "/usr/bin/ffmpeg"},
@@ -106,26 +116,122 @@ availability are reported, but the API does not install or download FFmpeg.
 
 ## Sources, catalog, and projects
 
-| Method and path                                  | Request or query                                              | Purpose                                                                                                       |
-| ------------------------------------------------ | ------------------------------------------------------------- | ------------------------------------------------------------------------------------------------------------- |
-| `POST /api/v1/sources/inspect`                   | JSON `{ "path": "/books/book.epub" }`                         | Inspect a readable local source without creating a project.                                                   |
-| `POST /api/v1/sources/import`                    | Multipart form field `file`                                   | Copy and inspect an uploaded book. The response includes `source_id`, the stored `path`, and inspection data. |
-| `GET /api/v1/sources/imports/{source_id}`        | `source_id`                                                   | Read managed import ownership and retention metadata.                                                         |
-| `DELETE /api/v1/sources/imports/{source_id}`     | `source_id`                                                   | Explicitly delete a server-managed import.                                                                    |
-| `GET /api/v1/catalog/engines`                    | None                                                          | List Readio-discovered engines.                                                                               |
-| `GET /api/v1/catalog/targets`                    | `engine`, optional `language`, `offline`, `refresh`           | List available targets for an engine.                                                                         |
-| `GET /api/v1/catalog/voices`                     | `engine`, `target`, optional `language`, `offline`, `refresh` | List voices available for a target.                                                                           |
-| `GET /api/v1/catalog/engine-options`             | `engine`, optional `target`                                   | Describe engine-specific options.                                                                             |
-| `GET /api/v1/resources/spacy`                    | `language`                                                    | List normalized spaCy model availability.                                                                     |
-| `POST /api/v1/resources/spacy/ensure`            | JSON `{ "language": "en", "tier": "lg", "offline": false }`   | Inspect or provision the requested model through Readio.                                                      |
-| `GET /api/v1/resources/speech-profiles`          | `directory`                                                   | Discover valid speech replacement profiles in one directory.                                                  |
-| `POST /api/v1/resources/speech-profiles/inspect` | JSON `{ "path": "/profiles/custom.toml" }`                    | Validate one profile.                                                                                         |
-| `GET /api/v1/projects/status`                    | `project` path                                                | Inspect workflow status for a project.                                                                        |
-| `GET /api/v1/projects/variants`                  | `project` path, optional `source` path                        | List alternate project setups.                                                                                |
-| `GET /api/v1/projects/setup`                     | `project`, optional `variant`                                 | Read the saved base or variant setup.                                                                         |
-| `GET /api/v1/projects/info`                      | `project`                                                     | Read saved setup, workflow plan, and variant summaries.                                                       |
-| `POST /api/v1/setup/resolve`                     | Job-style request body                                        | Resolve setup without saving it or starting conversion.                                                       |
-| `POST /api/v1/conversions/preflight`             | Job-style request body                                        | Prepare setup and workflow without rendering.                                                                 |
+| Method and path                                             | Request or query                                              | Purpose                                                                                                       |
+| ----------------------------------------------------------- | ------------------------------------------------------------- | ------------------------------------------------------------------------------------------------------------- |
+| `POST /api/v1/sources/inspect`                              | JSON `{ "path": "/books/book.epub" }`                         | Inspect a readable local source without creating a project.                                                   |
+| `POST /api/v1/sources/import`                               | Multipart form field `file`                                   | Copy and inspect an uploaded book. The response includes `source_id`, the stored `path`, and inspection data. |
+| `GET /api/v1/sources/imports/{source_id}`                   | `source_id`                                                   | Read managed import ownership and retention metadata.                                                         |
+| `DELETE /api/v1/sources/imports/{source_id}`                | `source_id`                                                   | Explicitly delete a server-managed import.                                                                    |
+| `GET /api/v1/catalog/engines`                               | None                                                          | List Readio-discovered engines.                                                                               |
+| `GET /api/v1/catalog/targets`                               | `engine`, optional `language`, `offline`, `refresh`           | List available targets for an engine.                                                                         |
+| `GET /api/v1/catalog/voices`                                | `engine`, `target`, optional `language`, `offline`, `refresh` | List voices available for a target.                                                                           |
+| `GET /api/v1/catalog/engine-options`                        | `engine`, optional `target`                                   | Describe engine-specific options.                                                                             |
+| `GET /api/v1/resources/spacy`                               | `language`                                                    | List normalized spaCy model availability.                                                                     |
+| `POST /api/v1/resources/spacy/ensure`                       | JSON `{ "language": "en", "tier": "lg", "offline": false }`   | Inspect or provision the requested model through Readio.                                                      |
+| `GET /api/v1/resources/speech-profiles`                     | `directory`                                                   | Discover valid speech replacement profiles in one directory.                                                  |
+| `POST /api/v1/resources/speech-profiles/inspect`            | JSON `{ "path": "/profiles/custom.toml" }`                    | Validate one profile.                                                                                         |
+| `POST /api/v1/previews`                                     | JSON project, optional narration ID, and explicit text        | Synthesize a short preview and return `audio/wav`.                                                            |
+| `GET /api/v1/projects/status`                               | `project` path                                                | Inspect workflow status for a project.                                                                        |
+| `GET /api/v1/projects/narrations`                           | `project` path, optional `source` path                        | List primary and additional user-facing narrations.                                                           |
+| `POST /api/v1/projects/narrations`                          | JSON create request                                           | Create an additional narration setup.                                                                         |
+| `GET /api/v1/projects/narrations/{narration_id}`            | `project` path and narration ID                               | Read one narration summary.                                                                                   |
+| `DELETE /api/v1/projects/narrations/{narration_id}`         | `project` path and narration ID                               | Delete an additional narration setup, retaining rendered audio.                                               |
+| `POST /api/v1/projects/narrations/{narration_id}/preflight` | `project` path and narration ID                               | Prepare the saved narration and inspect its Readio workflow.                                                  |
+| `POST /api/v1/projects/narrations/{narration_id}/jobs`      | `project` path and narration ID                               | Submit a persistent render job for a saved narration.                                                         |
+| `GET /api/v1/projects/variants`                             | `project` path, optional `source` path                        | Compatibility view of alternate project setup details.                                                        |
+| `GET /api/v1/projects/setup`                                | `project`, optional `variant`                                 | Read the saved base or variant setup.                                                                         |
+| `GET /api/v1/projects/info`                                 | `project`                                                     | Read saved setup, workflow plan, variants, and narration summaries.                                           |
+| `GET /api/v1/library/projects`                              | `root` path                                                   | Discover project candidates and return TTSForge summaries.                                                    |
+| `GET /api/v1/library/projects/{project_id}`                 | `project_id` from a library summary                           | Inspect one project summary, including malformed candidates.                                                  |
+| `GET /api/v1/projects/metadata`                             | `project` path                                                | Read source metadata, project overrides, and effective metadata.                                              |
+| `PATCH /api/v1/projects/metadata`                           | JSON project and metadata fields                              | Persist TTSForge-owned project metadata overrides.                                                            |
+| `POST /api/v1/projects/metadata/validate`                   | JSON `{ "project": "/books/novel.ttsforge" }`                 | Validate effective audiobook metadata.                                                                        |
+| `GET /api/v1/projects/chapters`                             | `project` path                                                | List chapter status and workflow details for a saved project.                                                 |
+| `POST /api/v1/projects/chapters/select`                     | JSON project and selection                                    | Validate the existing project chapter selection without changing it.                                          |
+| `POST /api/v1/projects/qc`                                  | JSON project, optional narration ID                           | Aggregate product-level QC findings without inspecting specialist artifacts.                                  |
+| `POST /api/v1/setup/resolve`                                | Job-style request body                                        | Resolve setup without saving it or starting conversion.                                                       |
+| `POST /api/v1/conversions/preflight`                        | Job-style request body                                        | Prepare setup and workflow without rendering.                                                                 |
+
+### Narrations
+
+A narration is TTSForge's user-facing identity for a synthesis configuration. The
+primary setup is returned with ID `primary`; additional narration IDs are stable
+configuration identifiers. Display names are persisted separately from the ID and are
+used consistently for listing and default output names. The existing `variants/<key>`
+project storage remains unchanged. Readio continues to own workflow planning, artifact
+reuse, rendering, and export.
+
+Create requests use `project`, `display_name`, `engine`, and `target`, with optional
+`voice`, `engine_options`, `speed`, and `output`. For example:
+
+```json
+{
+  "project": "/books/novel.ttsforge",
+  "display_name": "Kokoro Heart",
+  "engine": "kokoro",
+  "target": "target-a",
+  "voice": "voice-a"
+}
+```
+
+The narration preflight endpoint prepares the saved setup and returns Readio's workflow
+plan. The jobs endpoint submits an asynchronous render using the same saved narration. A
+DELETE removes only an additional narration's TTSForge setup; already rendered audio is
+left in place. The primary narration cannot be deleted.
+
+### Preview
+
+`POST /api/v1/previews` synthesizes explicit user-provided text with a saved narration
+profile. The `project` field is required; `narration_id` defaults to `primary`, and
+`text` must contain non-blank text:
+
+```json
+{
+  "project": "/books/novel.ttsforge",
+  "narration_id": "kokoro-heart",
+  "text": "The station lights went out one by one."
+}
+```
+
+The response body is ephemeral WAV audio (`Content-Type: audio/wav`). Response headers
+include `X-TTSForge-Narration-Id`, `X-TTSForge-Sample-Rate`, `X-TTSForge-Channels`, and
+`X-TTSForge-Duration-Seconds`. No preview cache or project artifact is created. A client
+disconnect requests cooperative cancellation through Readio. `chapter` and `paragraph`
+inputs are rejected until Readio exposes a public source excerpt API; TTSForge does not
+read the book bundle or specialist artifacts for preview text.
+
+### Metadata, chapters, and project QC
+
+`GET /api/v1/projects/metadata?project=...` returns `source_metadata`, saved
+`overrides`, and effective metadata. Update metadata with
+`PATCH /api/v1/projects/metadata`:
+
+```json
+{
+  "project": "/books/novel.ttsforge",
+  "metadata": {
+    "title": "Novel",
+    "narrator": "Reader",
+    "year": "2024"
+  }
+}
+```
+
+`POST /api/v1/projects/metadata/validate` accepts `{ "project": "..." }` and returns
+validation findings. TTSForge stores project metadata overrides separately from Readio
+intent, render profiles, and workspace state.
+
+`GET /api/v1/projects/chapters?project=...` reports chapter selection, workflow state,
+and available duration information. `POST /api/v1/projects/chapters/select` accepts
+`{ "project": "...", "selection": "1-5" }`. It only validates that the requested
+selection matches the project's current shared selection. A different selection returns
+`409` and requires a separate project; this route does not mutate Readio's saved intent.
+
+`POST /api/v1/projects/qc` accepts `{ "project": "...", "narration_id": "primary" }` and
+returns a stable report with `passed` and structured findings. It combines safe TTSForge
+checks with Readio workflow findings. Deep M4B metadata, chapter-marker, and audio
+checks are reported as `unknown` until Readio exposes an authoritative public result.
+TTSForge does not inspect specialist-owned artifacts.
 
 ### Example catalog responses
 
@@ -413,6 +519,21 @@ For an empty project, setup and info responses are:
 }
 ```
 
+### Library discovery
+
+`GET /api/v1/library/projects?root=...` scans a directory for project candidates and
+returns `{ "root": "...", "projects": [...] }`. The `project_id` in each summary is
+stable for that project path and can be passed to
+`GET /api/v1/library/projects/{project_id}`. Summaries include source and effective book
+metadata when available, chapter and selected-chapter counts, narration summaries,
+configured outputs, QC state, TTSForge-owned setup activity time, and an active job ID
+when one exists.
+
+Discovery does not treat a `.ttsforge` suffix as proof of validity. Incomplete,
+malformed, and recognized legacy candidates remain visible with an `error` field.
+Project summaries are assembled through TTSForge application services; they do not
+inspect specialist-owned artifacts.
+
 `GET /api/v1/projects/status` returns the complete workflow plan.
 `GET /api/v1/projects/variants` returns variant summaries:
 
@@ -532,6 +653,8 @@ page.
       "finished_at": "2025-01-01T12:04:00+00:00",
       "project": "/books/book.ttsforge",
       "output": "/books/book.m4b",
+      "narration_id": null,
+      "retry_of": null,
       "event_sequence": 42
     }
   ]
@@ -539,8 +662,10 @@ page.
 ```
 
 At most 100 terminal jobs are retained. When this limit is exceeded, the oldest terminal
-records are removed. Queued, preparing, and running jobs are never pruned. Job records
-and event history remain in memory only and are cleared when the server restarts.
+records are removed. Queued, preparing, and running jobs are never pruned. Jobs and
+event history persist in SQLite at `<state-dir>/jobs.sqlite3`. On restart, queued jobs
+resume in FIFO order. Jobs left in `preparing` or `running` become failed with code
+`job_interrupted_by_restart` and can be retried.
 
 ### Poll status
 
@@ -556,9 +681,10 @@ these stage values directly. Do not average stage progress into a synthetic over
 percentage.
 
 A completed job has a `result` containing the output path, workspace, workspace mode,
-executed and reused stages, warnings, and variant information. Failed jobs have an
-`error` with the normalized application error fields. The unused `result` or `error` is
-`null`.
+executed and reused stages, warnings, variant information, and an optional `execution`
+summary. The summary includes per-stage actions, before/after states and durations,
+specialist versions, and total elapsed time. Failed jobs have an `error` with normalized
+application error fields. The unused `result` or `error` is `null`.
 
 ### Poll events
 
@@ -606,8 +732,17 @@ status. The server terminates the isolated worker process tree, waits briefly, a
 escalates to a kill if needed. The server remains running. Cancelling a terminal job
 returns its current status; an unknown ID returns 404.
 
-Jobs and event history are in memory only. A server restart clears them. The MVP runs
-one conversion worker at a time and does not provide pause or resume.
+Job records and bounded event history persist in SQLite at `<state-dir>/jobs.sqlite3`.
+The MVP runs one conversion worker at a time and does not provide pause or resume.
+
+### Retry a job
+
+`POST /api/v1/jobs/{job_id}/retry` creates a new queued job for a failed job. The source
+file and any explicitly referenced project directory must still exist. TTSForge reruns
+the normal worker preflight instead of reusing a previous preflight result. The new job
+has its own ID and exposes the previous ID as `retry_of` in job summaries. Completed,
+cancelled, and active jobs cannot be retried. An unknown job returns 404, missing source
+or project data returns 400, and an ineligible state returns 409.
 
 ## Versioning
 

@@ -215,6 +215,8 @@ def test_job_listing_filters_and_paginates_without_event_histories(
         "finished_at",
         "project",
         "output",
+        "narration_id",
+        "retry_of",
         "event_sequence",
     }
 
@@ -239,6 +241,7 @@ def test_job_status_serializes_successful_conversion_result(tmp_path: Path) -> N
         "reused_stages": ["convert"],
         "warnings": ["used cached cover"],
         "variant": "kokoro-target-voice",
+        "execution": None,
     }
     assert status["error"] is None
     assert status["finished_at"] is not None
@@ -256,3 +259,67 @@ def test_job_submission_rejects_invalid_explicit_fields_before_queueing(
 
     assert response.status_code == 400
     assert manager._jobs == {}
+
+
+def test_retry_endpoint_creates_a_new_job_with_retry_metadata(tmp_path: Path) -> None:
+    source = tmp_path / "book.epub"
+    source.write_text("source", encoding="utf-8")
+    source.with_suffix(".ttsforge").mkdir()
+    payload_file = tmp_path / "worker-payloads.json"
+    worker = f"""
+import json, sys
+from pathlib import Path
+payload = json.loads(sys.stdin.read())
+payload_file = Path({str(payload_file)!r})
+payloads = json.loads(payload_file.read_text()) if payload_file.exists() else []
+payloads.append(payload)
+payload_file.write_text(json.dumps(payloads), encoding="utf-8")
+if len(payloads) == 1:
+    print(json.dumps({{"type": "job.error", "error": {{
+        "type": "WorkflowFailureError", "message": "First attempt failed",
+        "category": "preflight", "code": "preflight_failed"
+    }}}}), flush=True)
+    sys.exit(1)
+project = {str(source.with_suffix(".ttsforge"))!r}
+output = "/books/book.m4b"
+for message in [
+    {{"type": "job.state", "state": "preparing"}},
+    {{"type": "job.prepared", "project": project, "output": output}},
+    {{"type": "job.state", "state": "running"}},
+    {{"type": "job.result", "result": {{
+        "output": output, "workspace": project, "workspace_mode": "modern",
+        "executed_stages": [], "reused_stages": [], "warnings": [], "variant": None
+    }}}}
+]:
+    print(json.dumps(message), flush=True)
+"""
+    app, manager = _app(tmp_path, worker)
+    with TestClient(app) as client:
+        created = client.post(
+            "/api/v1/jobs",
+            headers=_AUTH_HEADERS,
+            json=_submission(source),
+        )
+        original_id = created.json()["id"]
+        assert _wait_for_state(client, original_id, "failed")["state"] == "failed"
+        source.unlink()
+        missing_source = client.post(
+            f"/api/v1/jobs/{original_id}/retry", headers=_AUTH_HEADERS
+        )
+        assert missing_source.status_code == 400
+        source.write_text("source", encoding="utf-8")
+
+        retried = client.post(
+            f"/api/v1/jobs/{original_id}/retry", headers=_AUTH_HEADERS
+        )
+        assert retried.status_code == 202
+        retry_id = retried.json()["id"]
+        assert retry_id != original_id
+        status = _wait_for_state(client, retry_id, "completed")
+        assert status["retry_of"] == original_id
+
+    payloads = json.loads(payload_file.read_text(encoding="utf-8"))
+    assert len(payloads) == 2
+    assert payloads[1]["request"] == payloads[0]["request"]
+    assert payloads[1]["explicit_fields"] == payloads[0]["explicit_fields"]
+    assert manager.get(retry_id).retry_of == original_id

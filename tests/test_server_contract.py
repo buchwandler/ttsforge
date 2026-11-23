@@ -17,6 +17,7 @@ from ttsforge.server.app import create_app
 EXPECTED_V1_ROUTES = {
     ("GET", "/api/v1/health"),
     ("GET", "/api/v1/system"),
+    ("GET", "/api/v1/system/capabilities"),
     ("GET", "/api/v1/system/runtime"),
     ("POST", "/api/v1/sources/inspect"),
     ("POST", "/api/v1/sources/import"),
@@ -31,16 +32,32 @@ EXPECTED_V1_ROUTES = {
     ("GET", "/api/v1/resources/speech-profiles"),
     ("POST", "/api/v1/resources/speech-profiles/inspect"),
     ("GET", "/api/v1/projects/status"),
+    ("GET", "/api/v1/projects/narrations"),
+    ("POST", "/api/v1/projects/narrations"),
+    ("GET", "/api/v1/projects/narrations/{narration_id}"),
+    ("DELETE", "/api/v1/projects/narrations/{narration_id}"),
+    ("POST", "/api/v1/previews"),
+    ("POST", "/api/v1/projects/narrations/{narration_id}/preflight"),
+    ("POST", "/api/v1/projects/narrations/{narration_id}/jobs"),
     ("GET", "/api/v1/projects/variants"),
     ("GET", "/api/v1/jobs"),
     ("POST", "/api/v1/jobs"),
     ("GET", "/api/v1/jobs/{job_id}"),
     ("GET", "/api/v1/jobs/{job_id}/events"),
     ("POST", "/api/v1/jobs/{job_id}/cancel"),
+    ("POST", "/api/v1/jobs/{job_id}/retry"),
     ("POST", "/api/v1/setup/resolve"),
     ("POST", "/api/v1/conversions/preflight"),
     ("GET", "/api/v1/projects/setup"),
     ("GET", "/api/v1/projects/info"),
+    ("GET", "/api/v1/library/projects"),
+    ("GET", "/api/v1/library/projects/{project_id}"),
+    ("GET", "/api/v1/projects/metadata"),
+    ("PATCH", "/api/v1/projects/metadata"),
+    ("POST", "/api/v1/projects/metadata/validate"),
+    ("GET", "/api/v1/projects/chapters"),
+    ("POST", "/api/v1/projects/chapters/select"),
+    ("POST", "/api/v1/projects/qc"),
 }
 
 
@@ -120,8 +137,20 @@ def test_openapi_documents_typed_responses_bearer_and_public_health(
         operation = schema["paths"][path][method.lower()]
         if path != "/api/v1/health":
             assert operation["security"] == [{"HTTPBearer": []}]
-        success_code = "202" if (method, path) == ("POST", "/api/v1/jobs") else "200"
+        success_code = (
+            "201"
+            if (method, path) == ("POST", "/api/v1/projects/narrations")
+            else "202"
+            if method == "POST" and (path.endswith("/jobs") or path.endswith("/retry"))
+            else "200"
+        )
         response = operation["responses"][success_code]
+        if path == "/api/v1/previews":
+            assert response["content"]["audio/wav"]["schema"] == {
+                "type": "string",
+                "format": "binary",
+            }
+            continue
         response_schema = response["content"]["application/json"]["schema"]
         assert response_schema != {"type": "object"}, (path, method)
 

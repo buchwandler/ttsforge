@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import hmac
+from typing import Annotated
 
 from fastapi import Depends, HTTPException, Request
 from fastapi.security import HTTPAuthorizationCredentials, HTTPBearer
@@ -24,7 +25,9 @@ def valid_bearer_token(authorization: str | None, expected: str) -> bool:
 
 def require_bearer_token(
     request: Request,
-    _credentials: HTTPAuthorizationCredentials | None = Depends(_bearer_scheme),
+    _credentials: Annotated[
+        HTTPAuthorizationCredentials | None, Depends(_bearer_scheme)
+    ],
 ) -> None:
     expected = request.app.state.token
     if not valid_bearer_token(request.headers.get("authorization"), expected):

@@ -14,7 +14,6 @@ def test_removed_configuration_and_ssmd_commands_are_not_registered() -> None:
         "config",
         "ssmd",
         "formats",
-        "preview",
         "plan",
     ):
         assert f"{obsolete_command} " not in result.output

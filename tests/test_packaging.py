@@ -26,7 +26,7 @@ def test_setuptools_scm_has_intentional_fallback() -> None:
 
 def test_readio_requirement_uses_the_released_preflight_api_floor() -> None:
     dependencies = _project()["project"]["dependencies"]
-    assert "readio[audioexport]>=0.6.7,<0.7" in dependencies
+    assert "readio[audioexport]>=0.6.8,<0.7" in dependencies
     assert "readio" not in dependencies
 
 
@@ -57,3 +57,9 @@ def test_built_wheels_do_not_report_zero_version_or_ship_legacy_orchestration() 
         assert "Requires-Dist: readio" in metadata
         assert "ttsforge/conversion.py" not in names
         assert "ttsforge/pykokoro_adapter.py" not in names
+
+
+def test_audiobook_skill_files_are_declared_as_package_data() -> None:
+    package_data = _project()["tool"]["setuptools"]["package-data"]["ttsforge"]
+    assert "skills/ttsforge/*.md" in package_data
+    assert "skills/ttsforge/references/*.md" in package_data
