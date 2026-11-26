@@ -1,0 +1,33 @@
+rows:
+  - sha: 382b4f94c065c028c310d4d4a5d0f176581da117
+    inspected: true
+    inspected_paths:
+      - README.md
+      - docs/api/index.md
+      - docs/application-architecture.md
+      - docs/installation.md
+      - docs/studio-api.md
+      - docs/testing.md
+      - pyproject.toml
+      - tests/test_application_resource_service.py
+      - tests/test_readio_backend.py
+      - tests/test_server_api.py
+      - tests/test_server_resource_operations.py
+      - ttsforge/application/resources.py
+      - ttsforge/readio_backend.py
+      - ttsforge/server/app.py
+      - ttsforge/server/models.py
+      - ttsforge/server/resource_operations.py
+    observed_behavior: >-
+      Added Studio endpoints for normalized engine-model inventory and status, plus
+      queued install, update, verify, and remove operations. A single worker serializes
+      operations, cache mutations are blocked during active audiobook jobs, and
+      operation responses expose normalized results and errors. Readio minimum is raised
+      to 0.6.9 and the Studio extra no longer bundles a synthesis engine. Documentation,
+      API schema, and tests cover the changes.
+    public_impact: public
+    decision: accepted
+    target_entry_key: null
+    target_entry_id: null
+    notes: ""
+    stale: false

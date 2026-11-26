@@ -1,0 +1,53 @@
+{
+  "candidate_count": 1,
+  "candidates": [
+    {
+      "additions": 3885,
+      "deletions": 1361,
+      "patch_file": "382b4f9.patch",
+      "patch_sha256": "0feb806b4eb3689abe3882a682171f1ab700b3bf3c70c21941a0825bd5cdcca0",
+      "paths": [
+        "README.md",
+        "docs/README.md",
+        "docs/api/index.md",
+        "docs/api/openapi-v1.json",
+        "docs/application-architecture.md",
+        "docs/index.md",
+        "docs/installation.md",
+        "docs/quickstart.md",
+        "docs/studio-api.md",
+        "docs/testing.md",
+        "pyproject.toml",
+        "tests/test_application_resource_service.py",
+        "tests/test_dependency_contract.py",
+        "tests/test_packaging.py",
+        "tests/test_readio_api_contract.py",
+        "tests/test_readio_backend.py",
+        "tests/test_server_api.py",
+        "tests/test_server_contract.py",
+        "tests/test_server_jobs.py",
+        "tests/test_server_resource_operations.py",
+        "ttsforge/application/__init__.py",
+        "ttsforge/application/errors.py",
+        "ttsforge/application/models.py",
+        "ttsforge/application/resources.py",
+        "ttsforge/readio_backend.py",
+        "ttsforge/server/app.py",
+        "ttsforge/server/jobs.py",
+        "ttsforge/server/models.py",
+        "ttsforge/server/resource_operations.py"
+      ],
+      "sha": "382b4f94c065c028c310d4d4a5d0f176581da117",
+      "short_sha": "382b4f9",
+      "source_ref": "git:382b4f94c065c028c310d4d4a5d0f176581da117"
+    }
+  ],
+  "git_base_ref": "f470ce82447aff03c2ecee9662749e62771b82c4",
+  "git_base_sha": "f470ce82447aff03c2ecee9662749e62771b82c4",
+  "git_head_ref": "382b4f94c065c028c310d4d4a5d0f176581da117",
+  "git_head_sha": "382b4f94c065c028c310d4d4a5d0f176581da117",
+  "include_merges": "nontrivial",
+  "object_type": "git_evidence_manifest",
+  "release_version": "0.5.2",
+  "schema_version": 1
+}

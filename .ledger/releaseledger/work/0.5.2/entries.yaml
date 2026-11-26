@@ -1,0 +1,48 @@
+schema: releaseledger.entry-batch.v1
+operation: create
+schema_version: 1
+object_type: release_entry_batch
+release_version: 0.5.2
+git_base_ref: f470ce82447aff03c2ecee9662749e62771b82c4
+git_base_sha: f470ce82447aff03c2ecee9662749e62771b82c4
+git_head_ref: 382b4f94c065c028c310d4d4a5d0f176581da117
+git_head_sha: 382b4f94c065c028c310d4d4a5d0f176581da117
+include_merges: nontrivial
+entries:
+  - kind: added
+    summary:
+      Added Studio endpoints to browse Readio engine models and queue installation,
+      updates, verification, and removal
+    status: accepted
+    source_refs:
+      - git:382b4f94c065c028c310d4d4a5d0f176581da117
+    paths:
+      - ttsforge/application/resources.py
+      - ttsforge/readio_backend.py
+      - ttsforge/server/app.py
+      - ttsforge/server/models.py
+      - ttsforge/server/resource_operations.py
+      - docs/studio-api.md
+    sources:
+      - git:382b4f94c065c028c310d4d4a5d0f176581da117
+    prs: []
+    issues: []
+    contributors:
+      - "@holgern"
+  - kind: changed
+    summary:
+      Changed the minimum Readio version to 0.6.9 and made Studio engine integrations a
+      separate installation
+    status: accepted
+    source_refs: []
+    paths:
+      - pyproject.toml
+      - README.md
+      - docs/installation.md
+      - docs/quickstart.md
+    sources:
+      - git:382b4f94c065c028c310d4d4a5d0f176581da117
+    prs: []
+    issues: []
+    contributors:
+      - "@holgern"

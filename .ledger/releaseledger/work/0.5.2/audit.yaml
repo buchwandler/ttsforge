@@ -1,0 +1,57 @@
+schema_version: 1
+object_type: commit_audit_sheet
+versioning:
+  schema_version: 1
+  revision: 1
+release_version: 0.5.2
+git_base_ref: v0.5.1
+git_base_sha: f470ce82447aff03c2ecee9662749e62771b82c4
+git_head_ref: HEAD
+git_head_sha: 382b4f94c065c028c310d4d4a5d0f176581da117
+git_range: f470ce82447aff03c2ecee9662749e62771b82c4..382b4f94c065c028c310d4d4a5d0f176581da117
+commit_count: 1
+rows:
+  - sha: 382b4f94c065c028c310d4d4a5d0f176581da117
+    source_ref: git:382b4f94c065c028c310d4d4a5d0f176581da117
+    short_sha: 382b4f9
+    changed_paths:
+      - README.md
+      - docs/README.md
+      - docs/api/index.md
+      - docs/api/openapi-v1.json
+      - docs/application-architecture.md
+      - docs/index.md
+      - docs/installation.md
+      - docs/quickstart.md
+      - docs/studio-api.md
+      - docs/testing.md
+      - pyproject.toml
+      - tests/test_application_resource_service.py
+      - tests/test_dependency_contract.py
+      - tests/test_packaging.py
+      - tests/test_readio_api_contract.py
+      - tests/test_readio_backend.py
+      - tests/test_server_api.py
+      - tests/test_server_contract.py
+      - tests/test_server_jobs.py
+      - tests/test_server_resource_operations.py
+      - ttsforge/application/__init__.py
+      - ttsforge/application/errors.py
+      - ttsforge/application/models.py
+      - ttsforge/application/resources.py
+      - ttsforge/readio_backend.py
+      - ttsforge/server/app.py
+      - ttsforge/server/jobs.py
+      - ttsforge/server/models.py
+      - ttsforge/server/resource_operations.py
+    stats:
+      files_changed: 29
+      insertions: 3885
+      deletions: 1361
+    inspected: false
+    inspected_paths: []
+    observed_behavior: ""
+    public_impact: unknown
+    decision: needs_review
+    stale: false
+    evidence_subject: "feat: support readio model api"
