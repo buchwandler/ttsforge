@@ -47,7 +47,7 @@ def test_readio_requirement_uses_the_released_preflight_api_floor() -> None:
         item for item in dependencies if item.split("[", 1)[0].startswith("readio")
     ]
 
-    assert readio == ["readio[audioexport]>=0.6.8,<0.7"]
+    assert readio == ["readio[audioexport]>=0.6.9,<0.7"]
 
 
 def test_ttsforge_does_not_declare_backend_or_rendering_dependencies() -> None:
@@ -78,5 +78,17 @@ def test_server_and_studio_extras_define_the_optional_runtime() -> None:
         "pydantic>=2.9,<3",
         "uvicorn>=0.32,<1",
         "python-multipart>=0.0.20,<1",
-        "readio[spacy,kokoro]>=0.6.8,<0.7",
+        "readio[spacy]>=0.6.9,<0.7",
     ]
+
+
+def test_studio_readio_extra_does_not_force_synthesis_engines() -> None:
+    studio = _metadata()["project"]["optional-dependencies"]["studio"]
+    readio = [item for item in studio if item.split("[", 1)[0].startswith("readio")]
+
+    assert len(readio) == 1
+    extras = set(readio[0].split("[", 1)[1].split("]", 1)[0].split(","))
+    assert extras == {"spacy"}
+    assert not extras.intersection(
+        {"kokoro", "piper", "pocket", "kitten", "supertonic", "inflect"}
+    )

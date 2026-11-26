@@ -349,6 +349,19 @@ class JobManager:
         with self._condition:
             return self._snapshot(self._require_job(job_id))
 
+    def active_job(self) -> JobRecord | None:
+        """Return one queued or active audiobook job, if present."""
+        with self._condition:
+            for record in self._jobs.values():
+                if record.state.value in {
+                    "queued",
+                    "preparing",
+                    "running",
+                    "cancelling",
+                }:
+                    return self._snapshot(record)
+        return None
+
     def retry(self, job_id: str) -> JobRecord:
         with self._condition:
             previous = self._require_job(job_id)

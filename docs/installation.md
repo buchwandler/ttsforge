@@ -5,9 +5,10 @@ workflow API and does not bundle a speech engine.
 
 ## Requirements
 
-TTSForge requires Readio `>=0.6.8,<0.7`, which provides the workflow gateway,
-render-intent helpers, source inspection, and engine discovery used by this CLI. A
-Readio source checkout is not required for a normal installation.
+TTSForge requires Readio `>=0.6.9,<0.7`, which provides the workflow gateway,
+render-intent helpers, source inspection, engine discovery, and normalized engine-model
+inventory and lifecycle APIs used by the CLI and Studio. A Readio source checkout is not
+required for a normal installation.
 
 TTSForge supports Python 3.10 or newer. Engine runtimes and audio tooling depend on the
 selected Readio integration and platform.
@@ -39,10 +40,11 @@ The HTTP API is optional and does not install a frontend. Install its dependenci
 python -m pip install "ttsforge[server]"
 ```
 
-The `studio` extra additionally installs the Readio engine integrations used by the
-managed Studio environment. See the [server guide](server.md) for startup, token, and
-origin policy options, and the [Studio API reference](studio-api.md) for the HTTP
-contract.
+The `studio` extra installs the HTTP server dependencies and Readio's optional spaCy
+support. It does not install a synthesis-engine integration. Install a supported Readio
+engine integration separately when synthesis is needed. See the
+[server guide](server.md) for startup, token, and origin policy options, and the
+[Studio API reference](studio-api.md) for the HTTP contract.
 
 Set `TTSFORGE_TOKEN` and start the local server with an ephemeral port:
 
@@ -57,7 +59,7 @@ with the selected port; server diagnostics go to stderr.
 ## Development installation
 
 For local development, check out TTSForge beside a Readio checkout that provides the
-required `>=0.6.8,<0.7` API, then install both editable:
+required `>=0.6.9,<0.7` API, then install both editable:
 
 ```bash
 python -m venv .venv

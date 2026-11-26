@@ -59,6 +59,9 @@ from ..application import (
     ProjectPaths,
     ProjectSummary,
     QcApplicationService,
+    ResourceApplicationService,
+    ResourceOperationConflictError,
+    ResourceValidationError,
     WorkflowFailureError,
     error_view,
     json_value,
@@ -80,6 +83,7 @@ from .models import (
     ChapterSelectionResponseModel,
     DeleteSourceImportResponseModel,
     EngineChoiceResponseModel,
+    EngineModelResponseModel,
     EngineOptionResponseModel,
     HealthResponseModel,
     JobCreateResponseModel,
@@ -104,6 +108,8 @@ from .models import (
     ProjectSummaryResponseModel,
     ProjectVariantResponseModel,
     QcReportResponseModel,
+    ResourceOperationRequestModel,
+    ResourceOperationResponseModel,
     RuntimeStatusResponseModel,
     SetupResolutionResponseModel,
     SourceImportResponseModel,
@@ -120,6 +126,7 @@ from .models import (
     WorkflowPlanResponseModel,
 )
 from .requests import application_overrides, application_request, request_path
+from .resource_operations import ResourceOperationManager
 
 _LOG = logging.getLogger(__name__)
 _API_VERSION = 1
@@ -134,6 +141,7 @@ _TAURI_ORIGINS = (
 class ApplicationServices:
     audiobook: AudiobookApplicationService
     catalog: CatalogApplicationService
+    resources: ResourceApplicationService
     conversion: ConversionCoordinator
     preview: PreviewApplicationService | None = None
 
@@ -160,12 +168,15 @@ class OriginPolicyMiddleware(BaseHTTPMiddleware):
 
 def _job_lifespan(
     job_manager: JobManager,
+    resource_operations: ResourceOperationManager | None,
 ) -> Callable[[FastAPI], AbstractAsyncContextManager[None]]:
     @asynccontextmanager
     async def lifespan(_: FastAPI) -> AsyncIterator[None]:
         try:
             yield
         finally:
+            if resource_operations is not None:
+                await run_in_threadpool(resource_operations.shutdown)
             await run_in_threadpool(job_manager.shutdown)
 
     return lifespan
@@ -207,6 +218,12 @@ def create_app(  # noqa: C901
         if job_manager is not None
         else JobManager(debug=debug, store=SqliteJobStore(state / "jobs.sqlite3"))
     )
+    resource_service = getattr(app_services, "resources", None)
+    resource_operations = (
+        ResourceOperationManager(resource_service)
+        if resource_service is not None
+        else None
+    )
     origins = tuple(dict.fromkeys((*_TAURI_ORIGINS, *allowed_origins)))
 
     app = FastAPI(
@@ -214,13 +231,14 @@ def create_app(  # noqa: C901
         version="1",
         docs_url=None,
         redoc_url=None,
-        lifespan=_job_lifespan(jobs),
+        lifespan=_job_lifespan(jobs, resource_operations),
     )
     app.state.token = token
     app.state.state_dir = state
     app.state.imports_dir = imports_dir
     app.state.services = app_services
     app.state.job_manager = jobs
+    app.state.resource_operations = resource_operations
     app.state.max_upload_bytes = max_upload_bytes
     app.state.debug = debug
     app.add_middleware(
@@ -280,6 +298,13 @@ def create_app(  # noqa: C901
         del request
         return _error_response(error, 400)
 
+    @app.exception_handler(ResourceValidationError)
+    async def handle_resource_validation_error(
+        request: Request, error: ResourceValidationError
+    ) -> JSONResponse:
+        del request
+        return _error_response(error, 422)
+
     @app.exception_handler(OperationConflictError)
     async def handle_conflict_error(request: Request, error: Exception) -> JSONResponse:
         del request
@@ -298,8 +323,15 @@ def create_app(  # noqa: C901
     ) -> JSONResponse:
         del request
         status = (
-            503
-            if error.code in {"audioexport_unavailable", "spacy_model_missing_offline"}
+            404
+            if error.code == "model_not_found"
+            else 503
+            if error.code
+            in {
+                "audioexport_unavailable",
+                "spacy_model_missing_offline",
+                "resource_inventory_failed",
+            }
             else 422
         )
         return _error_response(error, status)
@@ -330,6 +362,10 @@ def create_app(  # noqa: C901
             "ttsforge_version": _distribution_version("ttsforge"),
             "python_version": platform.python_version(),
             "capabilities": {
+                "engine_models": resource_service is not None,
+                "model_operations": resource_operations is not None,
+                "model_updates": resource_operations is not None
+                and callable(getattr(resource_service, "update_model", None)),
                 "jobs": True,
                 "job_events": True,
                 "cancel": True,
@@ -495,6 +531,75 @@ def create_app(  # noqa: C901
     )
     def engine_options(engine: str, target: str | None = None) -> object:
         return json_value(app_services.catalog.engine_options(engine, target=target))
+
+    @router.get("/resources/models", response_model=list[EngineModelResponseModel])
+    def engine_models(
+        engine: str,
+        language: str | None = None,
+        installed: bool | None = None,
+        available: bool = False,
+        offline: bool = False,
+        refresh: bool = False,
+    ) -> object:
+        return json_value(
+            app_services.resources.models(
+                engine=engine,
+                language=language,
+                installed=installed,
+                available=available,
+                offline=offline,
+                refresh=refresh,
+            )
+        )
+
+    @router.get("/resources/models/status", response_model=EngineModelResponseModel)
+    def engine_model_status(
+        engine: str, target: str, quality: str | None = None
+    ) -> object:
+        return json_value(
+            app_services.resources.model_status(engine, target, quality=quality)
+        )
+
+    @router.post(
+        "/resources/model-operations",
+        status_code=202,
+        response_model=ResourceOperationResponseModel,
+    )
+    def create_resource_operation(body: ResourceOperationRequestModel) -> object:
+        if resource_operations is None:
+            raise HTTPException(
+                status_code=503, detail="Engine model operations are unavailable."
+            )
+        if body.action in {"install", "update", "remove"}:
+            active_job = jobs.active_job()
+            if active_job is not None:
+                raise ResourceOperationConflictError(active_job.id)
+        operation = resource_operations.submit(
+            body.action,
+            body.engine,
+            body.target,
+            quality=body.quality,
+            source=body.source,
+            force=body.force,
+        )
+        return json_value(operation)
+
+    @router.get(
+        "/resources/model-operations/{operation_id}",
+        response_model=ResourceOperationResponseModel,
+    )
+    def get_resource_operation(operation_id: str) -> object:
+        if resource_operations is None:
+            raise HTTPException(
+                status_code=503, detail="Engine model operations are unavailable."
+            )
+        try:
+            operation = resource_operations.get(operation_id)
+        except KeyError:
+            raise HTTPException(
+                status_code=404, detail="Model operation not found."
+            ) from None
+        return json_value(operation)
 
     @router.get("/resources/spacy", response_model=list[SpacyModelResponseModel])
     def spacy_models(language: str) -> object:
@@ -917,10 +1022,17 @@ def _application_services() -> ApplicationServices:
     audiobook = AudiobookApplicationService(backend)
     catalog = CatalogApplicationService(backend)
     conversion = ConversionCoordinator(audiobook, catalog)
+    resources = ResourceApplicationService(backend)
     preview = PreviewApplicationService(
         NarrationApplicationService(audiobook, catalog), backend
     )
-    return ApplicationServices(audiobook, catalog, conversion, preview)
+    return ApplicationServices(
+        audiobook=audiobook,
+        catalog=catalog,
+        conversion=conversion,
+        resources=resources,
+        preview=preview,
+    )
 
 
 def _get_job_record(job_manager: JobManager, job_id: str) -> JobRecord:

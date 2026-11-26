@@ -18,6 +18,7 @@ from .application.models import (
     BookChapterView,
     BookInspectionView,
     ConversionResultView,
+    EngineModelView,
     ExecutionSummaryView,
     PreviewAudio,
     ProjectPaths,
@@ -56,6 +57,8 @@ def _workflow_failure(
         selector=info.selector,
         code=info.code,
         details=info.details,
+        recoverable=info.recoverable,
+        suggested_action=info.suggested_action,
     )
 
 
@@ -133,6 +136,30 @@ def _spacy_model_view(info: readio_api.SpacyModelInfo) -> SpacyModelView:
     )
 
 
+def _engine_model_view(info: readio_api.EngineModelInfo) -> EngineModelView:
+    return EngineModelView(
+        engine=info.engine,
+        target=info.target,
+        quality=info.quality,
+        language=info.language,
+        label=info.label,
+        installed=info.installed,
+        available=info.available,
+        state=info.state,
+        local_version=info.local_version,
+        available_version=info.available_version,
+        update_state=info.update_state,
+        bytes_installed=info.bytes_installed,
+        bytes_download=info.bytes_download,
+        storage_id=info.storage_id,
+        installable=info.installable,
+        updatable=info.updatable,
+        removable=info.removable,
+        verifiable=info.verifiable,
+        reason=info.reason,
+    )
+
+
 class ReadioBackend:
     """Delegate workflow and discovery operations to Readio's public API."""
 
@@ -196,6 +223,98 @@ class ReadioBackend:
                 error,
                 category="runtime/backend unavailable",
             ) from error
+
+    def list_models(
+        self,
+        engine: str,
+        *,
+        language: str | None = None,
+        installed: bool | None = None,
+        available: bool = False,
+        offline: bool = False,
+        refresh: bool = False,
+    ) -> tuple[EngineModelView, ...]:
+        try:
+            models = self._app.list_models(
+                engine,
+                language=language,
+                installed=installed,
+                available=available,
+                offline=offline,
+                refresh=refresh,
+            )
+        except readio_api.ReadioError as error:
+            raise _workflow_failure(
+                error, category="resource inventory failure"
+            ) from error
+        return tuple(_engine_model_view(model) for model in models)
+
+    def model_status(
+        self, engine: str, target: str, *, quality: str | None = None
+    ) -> EngineModelView:
+        try:
+            model = self._app.model_status(engine, target, quality=quality)
+        except readio_api.ReadioError as error:
+            raise _workflow_failure(
+                error, category="resource inventory failure"
+            ) from error
+        return _engine_model_view(model)
+
+    def install_model(
+        self,
+        engine: str,
+        target: str,
+        *,
+        quality: str | None = None,
+        source: str | None = None,
+        force: bool = False,
+    ) -> EngineModelView:
+        try:
+            model = self._app.install_model(
+                engine,
+                target,
+                quality=quality,
+                source=source,
+                force=force,
+            )
+        except readio_api.ReadioError as error:
+            raise _workflow_failure(
+                error, category="resource operation failure"
+            ) from error
+        return _engine_model_view(model)
+
+    def update_model(
+        self, engine: str, target: str, *, quality: str | None = None
+    ) -> EngineModelView:
+        try:
+            model = self._app.update_model(engine, target, quality=quality)
+        except readio_api.ReadioError as error:
+            raise _workflow_failure(
+                error, category="resource operation failure"
+            ) from error
+        return _engine_model_view(model)
+
+    def verify_model(
+        self, engine: str, target: str, *, quality: str | None = None
+    ) -> EngineModelView:
+        try:
+            model = self._app.verify_model(engine, target, quality=quality)
+        except readio_api.ReadioError as error:
+            raise _workflow_failure(
+                error, category="resource operation failure"
+            ) from error
+        return _engine_model_view(model)
+
+    def remove_model(
+        self, engine: str, target: str, *, quality: str | None = None
+    ) -> EngineModelView:
+        try:
+            model = self._app.remove_model(engine, target, quality=quality)
+        except readio_api.ReadioError as error:
+            raise _workflow_failure(
+                error, category="resource operation failure"
+            ) from error
+        return _engine_model_view(model)
 
     def list_engine_options(
         self, engine: str, *, target: str | None = None

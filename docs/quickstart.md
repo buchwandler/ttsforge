@@ -1,7 +1,7 @@
 # Quick start
 
 Install TTSForge and a Readio engine integration if you want to render speech. TTSForge
-requires Readio `>=0.6.8,<0.7`; see [Installation](installation.md) for setup.
+requires Readio `>=0.6.9,<0.7`; see [Installation](installation.md) for setup.
 
 ## Inspect and convert
 

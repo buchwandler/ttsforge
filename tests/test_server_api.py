@@ -19,12 +19,14 @@ from ttsforge.application.catalog import (
     TargetChoiceView,
     VoiceChoiceView,
 )
+from ttsforge.application.errors import ResourceValidationError, WorkflowFailureError
 from ttsforge.application.library import ProjectSummary
 from ttsforge.application.models import (
     AudiobookCapabilitiesView,
     AudiobookRequest,
     BookChapterView,
     BookInspectionView,
+    EngineModelView,
     InputOverrides,
     ProjectPaths,
     ProjectVariantView,
@@ -178,6 +180,101 @@ class FakeCatalog:
         return SpacyModelView(language, tier, "en_core_web_lg", True, "3.8", "3.8.0")
 
 
+class FakeResources:
+    def __init__(self) -> None:
+        self.calls: list[tuple[str, dict[str, object]]] = []
+        self.model = EngineModelView(
+            engine="kitten",
+            target="kitten-v1",
+            quality=None,
+            language="en-US",
+            label="Kitten v1",
+            installed=True,
+            available=True,
+            state="ready",
+            local_version="provider-revision",
+            available_version="provider-revision",
+            update_state="current",
+            bytes_installed=123,
+            bytes_download=123,
+            storage_id="provider-storage-id",
+            installable=True,
+            updatable=True,
+            removable=True,
+            verifiable=True,
+            reason=None,
+        )
+
+    def models(self, **kwargs: object) -> tuple[EngineModelView, ...]:
+        self.calls.append(("models", kwargs))
+        if kwargs.get("installed") is not None and kwargs.get("available"):
+            raise ResourceValidationError(
+                "The installed and available model filters cannot both be true."
+            )
+        return (self.model,)
+
+    def model_status(
+        self, engine: str, target: str, *, quality: str | None = None
+    ) -> EngineModelView:
+        self.calls.append(
+            ("model_status", {"engine": engine, "target": target, "quality": quality})
+        )
+        if engine == "missing":
+            raise WorkflowFailureError(
+                "Engine model not found.",
+                category="resource inventory failure",
+                code="model_not_found",
+            )
+        return self.model
+
+    def validate_action(
+        self, action: str, engine: str, target: str, *, quality: str | None = None
+    ) -> EngineModelView:
+        self.calls.append(
+            ("validate_action", {"action": action, "engine": engine, "target": target})
+        )
+        attribute = {
+            "install": "installable",
+            "update": "updatable",
+            "verify": "verifiable",
+            "remove": "removable",
+        }[action]
+        if not getattr(self.model, attribute):
+            raise ResourceValidationError(
+                f"The {action} action is not supported for this engine model.",
+                code=f"model_{action}_unsupported",
+            )
+        return self.model
+
+    def install_model(
+        self, engine: str, target: str, *, quality=None, source=None, force=False
+    ) -> EngineModelView:
+        return self._model_action("install", engine, target, quality=quality)
+
+    def update_model(
+        self, engine: str, target: str, *, quality: str | None = None
+    ) -> EngineModelView:
+        return self._model_action("update", engine, target, quality=quality)
+
+    def verify_model(
+        self, engine: str, target: str, *, quality: str | None = None
+    ) -> EngineModelView:
+        return self._model_action("verify", engine, target, quality=quality)
+
+    def remove_model(
+        self, engine: str, target: str, *, quality: str | None = None
+    ) -> EngineModelView:
+        return self._model_action("remove", engine, target, quality=quality)
+
+    def _model_action(
+        self, action: str, engine: str, target: str, *, quality: str | None
+    ) -> EngineModelView:
+        self.calls.append(
+            (action, {"engine": engine, "target": target, "quality": quality})
+        )
+        return self.model
+
+
 class FakeConversion:
     def __init__(self, prepared) -> None:
         self.prepared = prepared
@@ -197,17 +294,30 @@ class FakeConversion:
         raise AssertionError("HTTP preflight must not execute rendering")
 
 
+class FakeActiveJobManager:
+    def __init__(self, state: str) -> None:
+        self.job = SimpleNamespace(id="active-job", state=state)
+
+    def active_job(self):
+        return self.job
+
+
 def make_client(
     tmp_path: Path,
     *,
     max_upload_bytes: int = 1024,
     allowed_origins: tuple[str, ...] = (),
     conversion: object | None = None,
+    job_manager: object | None = None,
 ):
     audiobook = FakeAudiobook()
     catalog = FakeCatalog()
+    resources = FakeResources()
     services = SimpleNamespace(
-        audiobook=audiobook, catalog=catalog, conversion=conversion
+        audiobook=audiobook,
+        catalog=catalog,
+        conversion=conversion,
+        resources=resources,
     )
     app = create_app(
         token="secret-token",
@@ -215,6 +325,7 @@ def make_client(
         services=services,
         max_upload_bytes=max_upload_bytes,
         allowed_origins=allowed_origins,
+        job_manager=job_manager,
     )
     return TestClient(app), audiobook, catalog
 
@@ -398,6 +509,209 @@ def test_catalog_and_spacy_endpoints_return_application_views(
     assert spacy.json()[0]["model"] == "en_core_web_lg"
     assert ensured.json()["installed"] is True
     assert catalog.spacy_args == ("en-US", "lg", True)
+
+
+def test_engine_model_inventory_requires_auth_and_forwards_filters(
+    tmp_path: Path,
+) -> None:
+    client, _, _ = make_client(tmp_path)
+    resources = client.app.state.services.resources
+
+    unauthorized = client.get("/api/v1/resources/models?engine=kitten")
+    response = client.get(
+        "/api/v1/resources/models",
+        headers=auth_headers(),
+        params={
+            "engine": "kitten",
+            "language": "en-US",
+            "available": "true",
+            "offline": "true",
+            "refresh": "true",
+        },
+    )
+
+    assert unauthorized.status_code == 401
+    assert response.status_code == 200
+    model = response.json()[0]
+    assert set(model) == {
+        "engine",
+        "target",
+        "quality",
+        "language",
+        "label",
+        "installed",
+        "available",
+        "state",
+        "local_version",
+        "available_version",
+        "update_state",
+        "bytes_installed",
+        "bytes_download",
+        "storage_id",
+        "installable",
+        "updatable",
+        "removable",
+        "verifiable",
+        "reason",
+    }
+    assert model["bytes_installed"] == 123
+    assert model["storage_id"] == "provider-storage-id"
+    assert resources.calls == [
+        (
+            "models",
+            {
+                "engine": "kitten",
+                "language": "en-US",
+                "installed": None,
+                "available": True,
+                "offline": True,
+                "refresh": True,
+            },
+        )
+    ]
+
+
+def test_engine_model_inventory_conflicting_filters_return_structured_422(
+    tmp_path: Path,
+) -> None:
+    client, _, _ = make_client(tmp_path)
+
+    response = client.get(
+        "/api/v1/resources/models",
+        headers=auth_headers(),
+        params={"engine": "kitten", "installed": "false", "available": "true"},
+    )
+
+    assert response.status_code == 422
+    assert response.json()["error"]["code"] == "invalid_resource_request"
+
+
+def test_engine_model_status_returns_model_and_unknown_model_is_structured_404(
+    tmp_path: Path,
+) -> None:
+    client, _, _ = make_client(tmp_path)
+
+    response = client.get(
+        "/api/v1/resources/models/status",
+        headers=auth_headers(),
+        params={"engine": "kitten", "target": "kitten-v1", "quality": "high"},
+    )
+    unknown = client.get(
+        "/api/v1/resources/models/status",
+        headers=auth_headers(),
+        params={"engine": "missing", "target": "unknown"},
+    )
+
+    assert response.status_code == 200
+    assert response.json()["engine"] == "kitten"
+    assert unknown.status_code == 404
+    assert unknown.json()["error"]["code"] == "model_not_found"
+
+
+def test_engine_model_operation_creation_and_polling(tmp_path: Path) -> None:
+    client, _, _ = make_client(tmp_path)
+    body = {
+        "action": "install",
+        "engine": "kitten",
+        "target": "kitten-v1",
+        "quality": None,
+        "source": None,
+        "force": False,
+    }
+
+    unauthorized = client.post("/api/v1/resources/model-operations", json=body)
+    created = client.post(
+        "/api/v1/resources/model-operations", headers=auth_headers(), json=body
+    )
+
+    assert unauthorized.status_code == 401
+    assert created.status_code == 202
+    operation = created.json()
+    assert set(operation) == {
+        "id",
+        "action",
+        "state",
+        "engine",
+        "target",
+        "quality",
+        "current",
+        "total",
+        "message",
+        "result",
+        "error",
+    }
+    assert operation["action"] == "install"
+    assert operation["state"] == "queued"
+    assert operation["current"] is None
+    assert operation["total"] is None
+    assert operation["message"] is None
+
+    polled = client.get(
+        f"/api/v1/resources/model-operations/{operation['id']}",
+        headers=auth_headers(),
+    )
+    missing = client.get(
+        "/api/v1/resources/model-operations/unknown", headers=auth_headers()
+    )
+
+    assert polled.status_code == 200
+    assert polled.json()["state"] in {"queued", "running", "completed"}
+    assert missing.status_code == 404
+
+
+def test_unsupported_model_operation_is_rejected_before_enqueue(tmp_path: Path) -> None:
+    client, _, _ = make_client(tmp_path)
+    client.app.state.services.resources.model = replace(
+        client.app.state.services.resources.model, updatable=False
+    )
+
+    response = client.post(
+        "/api/v1/resources/model-operations",
+        headers=auth_headers(),
+        json={"action": "update", "engine": "kitten", "target": "kitten-v1"},
+    )
+
+    assert response.status_code == 422
+    assert response.json()["error"]["code"] == "model_update_unsupported"
+
+
+@pytest.mark.parametrize("state", ["queued", "preparing", "running", "cancelling"])
+def test_active_audiobook_jobs_block_model_mutations_but_allow_reads(
+    tmp_path: Path, state: str
+) -> None:
+    client, _, _ = make_client(tmp_path, job_manager=FakeActiveJobManager(state))
+    headers = auth_headers()
+
+    try:
+        for action in ("install", "update", "remove"):
+            response = client.post(
+                "/api/v1/resources/model-operations",
+                headers=headers,
+                json={"action": action, "engine": "kitten", "target": "kitten-v1"},
+            )
+            assert response.status_code == 409
+            assert response.json()["error"]["code"] == "resource_operation_conflict"
+            assert response.json()["error"]["details"]["active_job_id"] == "active-job"
+
+        inventory = client.get(
+            "/api/v1/resources/models", headers=headers, params={"engine": "kitten"}
+        )
+        status = client.get(
+            "/api/v1/resources/models/status",
+            headers=headers,
+            params={"engine": "kitten", "target": "kitten-v1"},
+        )
+        verification = client.post(
+            "/api/v1/resources/model-operations",
+            headers=headers,
+            json={"action": "verify", "engine": "kitten", "target": "kitten-v1"},
+        )
+
+        assert inventory.status_code == 200
+        assert status.status_code == 200
+        assert verification.status_code == 202
+    finally:
+        client.app.state.resource_operations.shutdown()
 
 
 def test_catalog_voice_rejects_unknown_target(tmp_path: Path) -> None:
@@ -951,6 +1265,11 @@ def test_system_advertises_setup_and_preflight_capabilities(tmp_path: Path) -> N
     assert capabilities["narrations"] is True
 
     assert capabilities["library"] is True
+    assert capabilities["engine_models"] is True
+    assert capabilities["model_operations"] is True
+    assert capabilities["model_updates"] is True
+    assert "model_operation_progress" not in capabilities
+    assert "model_operation_cancel" not in capabilities
 
 
 def test_system_capabilities_exposes_ttsforge_product_view(tmp_path: Path) -> None:

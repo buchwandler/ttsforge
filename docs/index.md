@@ -9,7 +9,7 @@ and does not change the CLI workflow. See the [server guide](server.md), the
 [Studio API reference](studio-api.md), and the checked-in
 [OpenAPI schema](api/openapi-v1.json).
 
-TTSForge requires Readio `>=0.6.8,<0.7`. The base installation remains provider-neutral;
+TTSForge requires Readio `>=0.6.9,<0.7`. The base installation remains provider-neutral;
 engine integrations are installed separately. See [Installation](installation.md).
 
 ```{toctree}

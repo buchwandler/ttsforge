@@ -38,8 +38,28 @@ class InputValidationError(ApplicationError, ValueError):
     """An operation request or catalog selection is invalid."""
 
 
+class ResourceValidationError(InputValidationError):
+    """A model resource request is invalid at the application boundary."""
+
+    def __init__(self, message: str, *, code: str = "invalid_resource_request") -> None:
+        super().__init__(message)
+        self.code = code
+
+
 class OperationConflictError(ApplicationError, ValueError):
     """An operation conflicts with saved state or project requirements."""
+
+
+class ResourceOperationConflictError(OperationConflictError):
+    """A model mutation conflicts with an active audiobook job."""
+
+    def __init__(self, active_job_id: str) -> None:
+        super().__init__(
+            f"Engine model mutations are unavailable while audiobook job "
+            f"{active_job_id} is active."
+        )
+        self.code = "resource_operation_conflict"
+        self.details = {"active_job_id": active_job_id}
 
 
 class CatalogSelectionError(InputValidationError):
@@ -71,6 +91,8 @@ class WorkflowFailureError(ApplicationError):
         selector: str | None = None,
         code: str | None = None,
         details: Mapping[str, object] | None = None,
+        recoverable: bool = False,
+        suggested_action: str | None = None,
     ) -> None:
         super().__init__(message)
         self.category = category
@@ -79,3 +101,5 @@ class WorkflowFailureError(ApplicationError):
         self.selector = selector
         self.code = code
         self.details = dict(details or {})
+        self.recoverable = recoverable
+        self.suggested_action = suggested_action

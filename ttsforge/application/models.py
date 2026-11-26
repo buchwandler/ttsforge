@@ -295,6 +295,41 @@ class SpacyModelView:
     model_version: str | None
 
 
+ModelState = Literal[
+    "missing",
+    "ready",
+    "outdated",
+    "partial",
+    "corrupt",
+    "unavailable",
+    "unknown",
+]
+ModelUpdateState = Literal["current", "update_available", "unavailable", "unknown"]
+
+
+@dataclass(frozen=True, slots=True)
+class EngineModelView:
+    engine: str
+    target: str
+    quality: str | None
+    language: str | None
+    label: str | None
+    installed: bool
+    available: bool
+    state: ModelState
+    local_version: str | None
+    available_version: str | None
+    update_state: ModelUpdateState
+    bytes_installed: int | None
+    bytes_download: int | None
+    storage_id: str | None
+    installable: bool
+    updatable: bool
+    removable: bool
+    verifiable: bool
+    reason: str | None
+
+
 @dataclass(frozen=True, slots=True)
 class VoiceSetupView:
     language: str

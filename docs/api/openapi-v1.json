@@ -1405,6 +1405,497 @@
         }
       }
     },
+    "/api/v1/resources/models": {
+      "get": {
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ],
+        "parameters": [
+          {
+            "name": "engine",
+            "in": "query",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "language",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ]
+            }
+          },
+          {
+            "name": "installed",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "boolean"
+                },
+                {
+                  "type": "null"
+                }
+              ]
+            }
+          },
+          {
+            "name": "available",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "boolean",
+              "default": false
+            }
+          },
+          {
+            "name": "offline",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "boolean",
+              "default": false
+            }
+          },
+          {
+            "name": "refresh",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "boolean",
+              "default": false
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "array",
+                  "items": {
+                    "$ref": "#/components/schemas/EngineModelResponseModel"
+                  }
+                }
+              }
+            }
+          },
+          "400": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiErrorResponseModel"
+                }
+              }
+            }
+          },
+          "401": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiErrorResponseModel"
+                }
+              }
+            }
+          },
+          "403": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiErrorResponseModel"
+                }
+              }
+            }
+          },
+          "404": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiErrorResponseModel"
+                }
+              }
+            }
+          },
+          "409": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiErrorResponseModel"
+                }
+              }
+            }
+          },
+          "413": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiErrorResponseModel"
+                }
+              }
+            }
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiErrorResponseModel"
+                }
+              }
+            }
+          },
+          "503": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiErrorResponseModel"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v1/resources/models/status": {
+      "get": {
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ],
+        "parameters": [
+          {
+            "name": "engine",
+            "in": "query",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "target",
+            "in": "query",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "quality",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ]
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/EngineModelResponseModel"
+                }
+              }
+            }
+          },
+          "400": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiErrorResponseModel"
+                }
+              }
+            }
+          },
+          "401": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiErrorResponseModel"
+                }
+              }
+            }
+          },
+          "403": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiErrorResponseModel"
+                }
+              }
+            }
+          },
+          "404": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiErrorResponseModel"
+                }
+              }
+            }
+          },
+          "409": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiErrorResponseModel"
+                }
+              }
+            }
+          },
+          "413": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiErrorResponseModel"
+                }
+              }
+            }
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiErrorResponseModel"
+                }
+              }
+            }
+          },
+          "503": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiErrorResponseModel"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v1/resources/model-operations": {
+      "post": {
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/ResourceOperationRequestModel"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "202": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ResourceOperationResponseModel"
+                }
+              }
+            }
+          },
+          "400": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiErrorResponseModel"
+                }
+              }
+            }
+          },
+          "401": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiErrorResponseModel"
+                }
+              }
+            }
+          },
+          "403": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiErrorResponseModel"
+                }
+              }
+            }
+          },
+          "404": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiErrorResponseModel"
+                }
+              }
+            }
+          },
+          "409": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiErrorResponseModel"
+                }
+              }
+            }
+          },
+          "413": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiErrorResponseModel"
+                }
+              }
+            }
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiErrorResponseModel"
+                }
+              }
+            }
+          },
+          "503": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiErrorResponseModel"
+                }
+              }
+            }
+          }
+        },
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ]
+      }
+    },
+    "/api/v1/resources/model-operations/{operation_id}": {
+      "get": {
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ],
+        "parameters": [
+          {
+            "name": "operation_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ResourceOperationResponseModel"
+                }
+              }
+            }
+          },
+          "400": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiErrorResponseModel"
+                }
+              }
+            }
+          },
+          "401": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiErrorResponseModel"
+                }
+              }
+            }
+          },
+          "403": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiErrorResponseModel"
+                }
+              }
+            }
+          },
+          "404": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiErrorResponseModel"
+                }
+              }
+            }
+          },
+          "409": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiErrorResponseModel"
+                }
+              }
+            }
+          },
+          "413": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiErrorResponseModel"
+                }
+              }
+            }
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiErrorResponseModel"
+                }
+              }
+            }
+          },
+          "503": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiErrorResponseModel"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
     "/api/v1/resources/spacy": {
       "get": {
         "security": [
@@ -4174,8 +4665,8 @@
         }
       }
     },
-    "/api/v1/jobs/{job_id}/events": {
-      "get": {
+    "/api/v1/jobs/{job_id}/retry": {
+      "post": {
         "security": [
           {
             "HTTPBearer": []
@@ -4189,24 +4680,14 @@
             "schema": {
               "type": "string"
             }
-          },
-          {
-            "name": "after",
-            "in": "query",
-            "required": false,
-            "schema": {
-              "type": "integer",
-              "minimum": 0,
-              "default": 0
-            }
           }
         ],
         "responses": {
-          "200": {
+          "202": {
             "content": {
               "application/json": {
                 "schema": {
-                  "$ref": "#/components/schemas/JobEventsPageResponseModel"
+                  "$ref": "#/components/schemas/JobCreateResponseModel"
                 }
               }
             }
@@ -4286,8 +4767,8 @@
         }
       }
     },
-    "/api/v1/jobs/{job_id}/retry": {
-      "post": {
+    "/api/v1/jobs/{job_id}/events": {
+      "get": {
         "security": [
           {
             "HTTPBearer": []
@@ -4301,14 +4782,24 @@
             "schema": {
               "type": "string"
             }
+          },
+          {
+            "name": "after",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "integer",
+              "minimum": 0,
+              "default": 0
+            }
           }
         ],
         "responses": {
-          "202": {
+          "200": {
             "content": {
               "application/json": {
                 "schema": {
-                  "$ref": "#/components/schemas/JobCreateResponseModel"
+                  "$ref": "#/components/schemas/JobEventsPageResponseModel"
                 }
               }
             }
@@ -4743,6 +5234,134 @@
           "warnings"
         ]
       },
+      "AudiobookMetadataModel": {
+        "properties": {
+          "title": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "subtitle": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "author": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "narrator": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "series": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "series_number": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "language": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "publisher": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "year": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "cover": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          }
+        },
+        "additionalProperties": false,
+        "type": "object"
+      },
+      "AudiobookMetadataViewResponseModel": {
+        "properties": {
+          "project": {
+            "type": "string"
+          },
+          "source": {
+            "type": "string"
+          },
+          "source_metadata": {
+            "$ref": "#/components/schemas/AudiobookMetadataModel"
+          },
+          "overrides": {
+            "$ref": "#/components/schemas/AudiobookMetadataModel"
+          },
+          "effective": {
+            "$ref": "#/components/schemas/AudiobookMetadataModel"
+          }
+        },
+        "additionalProperties": false,
+        "type": "object",
+        "required": ["project", "source", "source_metadata", "overrides", "effective"]
+      },
       "AudiobookRequestModel": {
         "properties": {
           "source": {
@@ -5070,6 +5689,129 @@
           "cover"
         ]
       },
+      "ChapterListResponseModel": {
+        "properties": {
+          "project": {
+            "type": "string"
+          },
+          "chapters": {
+            "items": {
+              "$ref": "#/components/schemas/ChapterStatusResponseModel"
+            },
+            "type": "array"
+          }
+        },
+        "additionalProperties": false,
+        "type": "object",
+        "required": ["project", "chapters"]
+      },
+      "ChapterSelectionRequestModel": {
+        "properties": {
+          "project": {
+            "type": "string"
+          },
+          "selection": {
+            "type": "string"
+          }
+        },
+        "additionalProperties": false,
+        "type": "object",
+        "required": ["project", "selection"]
+      },
+      "ChapterSelectionResponseModel": {
+        "properties": {
+          "project": {
+            "type": "string"
+          },
+          "selection": {
+            "type": "string"
+          },
+          "selected_chapters": {
+            "items": {
+              "type": "integer"
+            },
+            "type": "array"
+          }
+        },
+        "additionalProperties": false,
+        "type": "object",
+        "required": ["project", "selection", "selected_chapters"]
+      },
+      "ChapterStatusResponseModel": {
+        "properties": {
+          "number": {
+            "type": "integer"
+          },
+          "title": {
+            "type": "string"
+          },
+          "source_id": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "char_count": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "selected": {
+            "type": "boolean"
+          },
+          "workflow_state": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "estimated_duration_seconds": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "final_duration_seconds": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          }
+        },
+        "additionalProperties": false,
+        "type": "object",
+        "required": [
+          "number",
+          "title",
+          "source_id",
+          "char_count",
+          "selected",
+          "workflow_state",
+          "estimated_duration_seconds",
+          "final_duration_seconds"
+        ]
+      },
       "ConversionResultResponseModel": {
         "properties": {
           "output": {
@@ -5140,78 +5882,6 @@
           "execution"
         ]
       },
-      "ExecutionSummaryResponseModel": {
-        "properties": {
-          "stages": {
-            "items": {
-              "$ref": "#/components/schemas/StageExecutionResponseModel"
-            },
-            "type": "array"
-          },
-          "specialist_versions": {
-            "additionalProperties": {
-              "anyOf": [
-                {
-                  "type": "string"
-                },
-                {
-                  "type": "null"
-                }
-              ]
-            },
-            "type": "object"
-          },
-          "elapsed_seconds": {
-            "type": "number"
-          }
-        },
-        "additionalProperties": false,
-        "type": "object",
-        "required": ["stages", "specialist_versions", "elapsed_seconds"]
-      },
-      "StageExecutionResponseModel": {
-        "properties": {
-          "stage": {
-            "type": "string"
-          },
-          "package": {
-            "type": "string"
-          },
-          "action": {
-            "type": "string"
-          },
-          "state_before": {
-            "type": "string"
-          },
-          "state_after": {
-            "anyOf": [
-              {
-                "type": "string"
-              },
-              {
-                "type": "null"
-              }
-            ]
-          },
-          "elapsed_seconds": {
-            "type": "number"
-          },
-          "reason_code": {
-            "type": "string"
-          }
-        },
-        "additionalProperties": false,
-        "type": "object",
-        "required": [
-          "stage",
-          "package",
-          "action",
-          "state_before",
-          "state_after",
-          "elapsed_seconds",
-          "reason_code"
-        ]
-      },
       "DeleteSourceImportResponseModel": {
         "properties": {
           "source_id": {
@@ -5266,6 +5936,163 @@
         "additionalProperties": false,
         "type": "object",
         "required": ["id", "version", "installed", "runnable", "features", "reason"]
+      },
+      "EngineModelResponseModel": {
+        "properties": {
+          "engine": {
+            "type": "string"
+          },
+          "target": {
+            "type": "string"
+          },
+          "quality": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "language": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "label": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "installed": {
+            "type": "boolean"
+          },
+          "available": {
+            "type": "boolean"
+          },
+          "state": {
+            "type": "string",
+            "enum": [
+              "missing",
+              "ready",
+              "outdated",
+              "partial",
+              "corrupt",
+              "unavailable",
+              "unknown"
+            ]
+          },
+          "local_version": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "available_version": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "update_state": {
+            "type": "string",
+            "enum": ["current", "update_available", "unavailable", "unknown"]
+          },
+          "bytes_installed": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "bytes_download": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "storage_id": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "installable": {
+            "type": "boolean"
+          },
+          "updatable": {
+            "type": "boolean"
+          },
+          "removable": {
+            "type": "boolean"
+          },
+          "verifiable": {
+            "type": "boolean"
+          },
+          "reason": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          }
+        },
+        "additionalProperties": false,
+        "type": "object",
+        "required": [
+          "engine",
+          "target",
+          "quality",
+          "language",
+          "label",
+          "installed",
+          "available",
+          "state",
+          "local_version",
+          "available_version",
+          "update_state",
+          "bytes_installed",
+          "bytes_download",
+          "storage_id",
+          "installable",
+          "updatable",
+          "removable",
+          "verifiable",
+          "reason"
+        ]
       },
       "EngineOptionResponseModel": {
         "properties": {
@@ -5344,6 +6171,35 @@
           "identity_affecting",
           "runtime_only"
         ]
+      },
+      "ExecutionSummaryResponseModel": {
+        "properties": {
+          "stages": {
+            "items": {
+              "$ref": "#/components/schemas/StageExecutionResponseModel"
+            },
+            "type": "array"
+          },
+          "specialist_versions": {
+            "additionalProperties": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ]
+            },
+            "type": "object"
+          },
+          "elapsed_seconds": {
+            "type": "number"
+          }
+        },
+        "additionalProperties": false,
+        "type": "object",
+        "required": ["stages", "specialist_versions", "elapsed_seconds"]
       },
       "HealthResponseModel": {
         "properties": {
@@ -5744,6 +6600,41 @@
         "required": ["type", "event"]
       },
       "JsonValue": {},
+      "LibraryProjectsResponseModel": {
+        "properties": {
+          "root": {
+            "type": "string"
+          },
+          "projects": {
+            "items": {
+              "$ref": "#/components/schemas/ProjectSummaryResponseModel"
+            },
+            "type": "array"
+          }
+        },
+        "additionalProperties": false,
+        "type": "object",
+        "required": ["root", "projects"]
+      },
+      "MetadataValidationResponseModel": {
+        "properties": {
+          "project": {
+            "type": "string"
+          },
+          "valid": {
+            "type": "boolean"
+          },
+          "findings": {
+            "items": {
+              "$ref": "#/components/schemas/QcFindingResponseModel"
+            },
+            "type": "array"
+          }
+        },
+        "additionalProperties": false,
+        "type": "object",
+        "required": ["project", "valid", "findings"]
+      },
       "NarrationCreateRequestModel": {
         "properties": {
           "project": {
@@ -6067,21 +6958,78 @@
         "type": "object",
         "required": ["project", "saved_setup", "workflow", "variants", "narrations"]
       },
-      "LibraryProjectsResponseModel": {
+      "ProjectMetadataSetRequestModel": {
         "properties": {
-          "root": {
+          "project": {
             "type": "string"
           },
-          "projects": {
-            "items": {
-              "$ref": "#/components/schemas/ProjectSummaryResponseModel"
-            },
-            "type": "array"
+          "metadata": {
+            "$ref": "#/components/schemas/AudiobookMetadataModel"
           }
         },
         "additionalProperties": false,
         "type": "object",
-        "required": ["root", "projects"]
+        "required": ["project", "metadata"]
+      },
+      "ProjectPathRequestModel": {
+        "properties": {
+          "project": {
+            "type": "string"
+          }
+        },
+        "additionalProperties": false,
+        "type": "object",
+        "required": ["project"]
+      },
+      "ProjectQcRequestModel": {
+        "properties": {
+          "project": {
+            "type": "string"
+          },
+          "narration_id": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          }
+        },
+        "additionalProperties": false,
+        "type": "object",
+        "required": ["project"]
+      },
+      "ProjectSetupResponseModel": {
+        "properties": {
+          "project": {
+            "type": "string"
+          },
+          "variant": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "saved_setup": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/AudiobookRequestModel"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          }
+        },
+        "additionalProperties": false,
+        "type": "object",
+        "required": ["project", "variant", "saved_setup"]
       },
       "ProjectSummaryResponseModel": {
         "properties": {
@@ -6209,36 +7157,6 @@
           "error"
         ]
       },
-      "ProjectSetupResponseModel": {
-        "properties": {
-          "project": {
-            "type": "string"
-          },
-          "variant": {
-            "anyOf": [
-              {
-                "type": "string"
-              },
-              {
-                "type": "null"
-              }
-            ]
-          },
-          "saved_setup": {
-            "anyOf": [
-              {
-                "$ref": "#/components/schemas/AudiobookRequestModel"
-              },
-              {
-                "type": "null"
-              }
-            ]
-          }
-        },
-        "additionalProperties": false,
-        "type": "object",
-        "required": ["project", "variant", "saved_setup"]
-      },
       "ProjectVariantResponseModel": {
         "properties": {
           "variant_key": {
@@ -6311,6 +7229,241 @@
         "additionalProperties": false,
         "type": "object",
         "required": ["version", "executable"]
+      },
+      "QcFindingResponseModel": {
+        "properties": {
+          "id": {
+            "type": "string"
+          },
+          "severity": {
+            "type": "string",
+            "enum": ["pass", "warning", "error", "unknown"]
+          },
+          "section": {
+            "type": "string"
+          },
+          "message": {
+            "type": "string"
+          },
+          "details": {
+            "additionalProperties": {
+              "$ref": "#/components/schemas/JsonValue"
+            },
+            "type": "object"
+          }
+        },
+        "additionalProperties": false,
+        "type": "object",
+        "required": ["id", "severity", "section", "message"]
+      },
+      "QcReportResponseModel": {
+        "properties": {
+          "project": {
+            "type": "string"
+          },
+          "narration_id": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "passed": {
+            "type": "boolean"
+          },
+          "findings": {
+            "items": {
+              "$ref": "#/components/schemas/QcFindingResponseModel"
+            },
+            "type": "array"
+          }
+        },
+        "additionalProperties": false,
+        "type": "object",
+        "required": ["project", "narration_id", "passed", "findings"]
+      },
+      "ResourceOperationErrorModel": {
+        "properties": {
+          "code": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "message": {
+            "type": "string"
+          },
+          "category": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "recoverable": {
+            "type": "boolean"
+          },
+          "suggested_action": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          }
+        },
+        "additionalProperties": false,
+        "type": "object",
+        "required": ["code", "message", "category", "recoverable", "suggested_action"]
+      },
+      "ResourceOperationRequestModel": {
+        "properties": {
+          "action": {
+            "type": "string",
+            "enum": ["install", "update", "verify", "remove"]
+          },
+          "engine": {
+            "type": "string"
+          },
+          "target": {
+            "type": "string"
+          },
+          "quality": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "source": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "force": {
+            "type": "boolean",
+            "default": false
+          }
+        },
+        "additionalProperties": false,
+        "type": "object",
+        "required": ["action", "engine", "target"]
+      },
+      "ResourceOperationResponseModel": {
+        "properties": {
+          "id": {
+            "type": "string"
+          },
+          "action": {
+            "type": "string",
+            "enum": ["install", "update", "verify", "remove"]
+          },
+          "state": {
+            "type": "string",
+            "enum": ["queued", "running", "completed", "failed", "cancelled"]
+          },
+          "engine": {
+            "type": "string"
+          },
+          "target": {
+            "type": "string"
+          },
+          "quality": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "current": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "total": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "message": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "result": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/EngineModelResponseModel"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "error": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/ResourceOperationErrorModel"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          }
+        },
+        "additionalProperties": false,
+        "type": "object",
+        "required": [
+          "id",
+          "action",
+          "state",
+          "engine",
+          "target",
+          "quality",
+          "current",
+          "total",
+          "message",
+          "result",
+          "error"
+        ]
       },
       "RuntimeProblemResponseModel": {
         "properties": {
@@ -6664,6 +7817,49 @@
         "type": "object",
         "required": ["directory", "profiles"]
       },
+      "StageExecutionResponseModel": {
+        "properties": {
+          "stage": {
+            "type": "string"
+          },
+          "package": {
+            "type": "string"
+          },
+          "action": {
+            "type": "string"
+          },
+          "state_before": {
+            "type": "string"
+          },
+          "state_after": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "elapsed_seconds": {
+            "type": "number"
+          },
+          "reason_code": {
+            "type": "string"
+          }
+        },
+        "additionalProperties": false,
+        "type": "object",
+        "required": [
+          "stage",
+          "package",
+          "action",
+          "state_before",
+          "state_after",
+          "elapsed_seconds",
+          "reason_code"
+        ]
+      },
       "SystemResponseModel": {
         "properties": {
           "api_version": {
@@ -6939,374 +8135,6 @@
           "executable",
           "variant"
         ]
-      },
-      "AudiobookMetadataModel": {
-        "properties": {
-          "title": {
-            "anyOf": [
-              {
-                "type": "string"
-              },
-              {
-                "type": "null"
-              }
-            ]
-          },
-          "subtitle": {
-            "anyOf": [
-              {
-                "type": "string"
-              },
-              {
-                "type": "null"
-              }
-            ]
-          },
-          "author": {
-            "anyOf": [
-              {
-                "type": "string"
-              },
-              {
-                "type": "null"
-              }
-            ]
-          },
-          "narrator": {
-            "anyOf": [
-              {
-                "type": "string"
-              },
-              {
-                "type": "null"
-              }
-            ]
-          },
-          "series": {
-            "anyOf": [
-              {
-                "type": "string"
-              },
-              {
-                "type": "null"
-              }
-            ]
-          },
-          "series_number": {
-            "anyOf": [
-              {
-                "type": "string"
-              },
-              {
-                "type": "null"
-              }
-            ]
-          },
-          "language": {
-            "anyOf": [
-              {
-                "type": "string"
-              },
-              {
-                "type": "null"
-              }
-            ]
-          },
-          "publisher": {
-            "anyOf": [
-              {
-                "type": "string"
-              },
-              {
-                "type": "null"
-              }
-            ]
-          },
-          "year": {
-            "anyOf": [
-              {
-                "type": "string"
-              },
-              {
-                "type": "null"
-              }
-            ]
-          },
-          "cover": {
-            "anyOf": [
-              {
-                "type": "string"
-              },
-              {
-                "type": "null"
-              }
-            ]
-          }
-        },
-        "additionalProperties": false,
-        "type": "object"
-      },
-      "AudiobookMetadataViewResponseModel": {
-        "properties": {
-          "project": {
-            "type": "string"
-          },
-          "source": {
-            "type": "string"
-          },
-          "source_metadata": {
-            "$ref": "#/components/schemas/AudiobookMetadataModel"
-          },
-          "overrides": {
-            "$ref": "#/components/schemas/AudiobookMetadataModel"
-          },
-          "effective": {
-            "$ref": "#/components/schemas/AudiobookMetadataModel"
-          }
-        },
-        "additionalProperties": false,
-        "type": "object",
-        "required": ["project", "source", "source_metadata", "overrides", "effective"]
-      },
-      "ChapterListResponseModel": {
-        "properties": {
-          "project": {
-            "type": "string"
-          },
-          "chapters": {
-            "items": {
-              "$ref": "#/components/schemas/ChapterStatusResponseModel"
-            },
-            "type": "array"
-          }
-        },
-        "additionalProperties": false,
-        "type": "object",
-        "required": ["project", "chapters"]
-      },
-      "ChapterSelectionRequestModel": {
-        "properties": {
-          "project": {
-            "type": "string"
-          },
-          "selection": {
-            "type": "string"
-          }
-        },
-        "additionalProperties": false,
-        "type": "object",
-        "required": ["project", "selection"]
-      },
-      "ChapterSelectionResponseModel": {
-        "properties": {
-          "project": {
-            "type": "string"
-          },
-          "selection": {
-            "type": "string"
-          },
-          "selected_chapters": {
-            "items": {
-              "type": "integer"
-            },
-            "type": "array"
-          }
-        },
-        "additionalProperties": false,
-        "type": "object",
-        "required": ["project", "selection", "selected_chapters"]
-      },
-      "ChapterStatusResponseModel": {
-        "properties": {
-          "number": {
-            "type": "integer"
-          },
-          "title": {
-            "type": "string"
-          },
-          "source_id": {
-            "anyOf": [
-              {
-                "type": "string"
-              },
-              {
-                "type": "null"
-              }
-            ]
-          },
-          "char_count": {
-            "anyOf": [
-              {
-                "type": "integer"
-              },
-              {
-                "type": "null"
-              }
-            ]
-          },
-          "selected": {
-            "type": "boolean"
-          },
-          "workflow_state": {
-            "anyOf": [
-              {
-                "type": "string"
-              },
-              {
-                "type": "null"
-              }
-            ]
-          },
-          "estimated_duration_seconds": {
-            "anyOf": [
-              {
-                "type": "number"
-              },
-              {
-                "type": "null"
-              }
-            ]
-          },
-          "final_duration_seconds": {
-            "anyOf": [
-              {
-                "type": "number"
-              },
-              {
-                "type": "null"
-              }
-            ]
-          }
-        },
-        "additionalProperties": false,
-        "type": "object",
-        "required": [
-          "number",
-          "title",
-          "source_id",
-          "char_count",
-          "selected",
-          "workflow_state",
-          "estimated_duration_seconds",
-          "final_duration_seconds"
-        ]
-      },
-      "MetadataValidationResponseModel": {
-        "properties": {
-          "project": {
-            "type": "string"
-          },
-          "valid": {
-            "type": "boolean"
-          },
-          "findings": {
-            "items": {
-              "$ref": "#/components/schemas/QcFindingResponseModel"
-            },
-            "type": "array"
-          }
-        },
-        "additionalProperties": false,
-        "type": "object",
-        "required": ["project", "valid", "findings"]
-      },
-      "ProjectMetadataSetRequestModel": {
-        "properties": {
-          "project": {
-            "type": "string"
-          },
-          "metadata": {
-            "$ref": "#/components/schemas/AudiobookMetadataModel"
-          }
-        },
-        "additionalProperties": false,
-        "type": "object",
-        "required": ["project", "metadata"]
-      },
-      "ProjectPathRequestModel": {
-        "properties": {
-          "project": {
-            "type": "string"
-          }
-        },
-        "additionalProperties": false,
-        "type": "object",
-        "required": ["project"]
-      },
-      "ProjectQcRequestModel": {
-        "properties": {
-          "project": {
-            "type": "string"
-          },
-          "narration_id": {
-            "anyOf": [
-              {
-                "type": "string"
-              },
-              {
-                "type": "null"
-              }
-            ]
-          }
-        },
-        "additionalProperties": false,
-        "type": "object",
-        "required": ["project"]
-      },
-      "QcFindingResponseModel": {
-        "properties": {
-          "id": {
-            "type": "string"
-          },
-          "severity": {
-            "type": "string",
-            "enum": ["pass", "warning", "error", "unknown"]
-          },
-          "section": {
-            "type": "string"
-          },
-          "message": {
-            "type": "string"
-          },
-          "details": {
-            "additionalProperties": {
-              "$ref": "#/components/schemas/JsonValue"
-            },
-            "type": "object"
-          }
-        },
-        "additionalProperties": false,
-        "type": "object",
-        "required": ["id", "severity", "section", "message"]
-      },
-      "QcReportResponseModel": {
-        "properties": {
-          "project": {
-            "type": "string"
-          },
-          "narration_id": {
-            "anyOf": [
-              {
-                "type": "string"
-              },
-              {
-                "type": "null"
-              }
-            ]
-          },
-          "passed": {
-            "type": "boolean"
-          },
-          "findings": {
-            "items": {
-              "$ref": "#/components/schemas/QcFindingResponseModel"
-            },
-            "type": "array"
-          }
-        },
-        "additionalProperties": false,
-        "type": "object",
-        "required": ["project", "narration_id", "passed", "findings"]
       },
       "WorkflowStepResponseModel": {
         "properties": {

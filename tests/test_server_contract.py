@@ -27,6 +27,10 @@ EXPECTED_V1_ROUTES = {
     ("GET", "/api/v1/catalog/targets"),
     ("GET", "/api/v1/catalog/voices"),
     ("GET", "/api/v1/catalog/engine-options"),
+    ("GET", "/api/v1/resources/models"),
+    ("GET", "/api/v1/resources/models/status"),
+    ("POST", "/api/v1/resources/model-operations"),
+    ("GET", "/api/v1/resources/model-operations/{operation_id}"),
     ("GET", "/api/v1/resources/spacy"),
     ("POST", "/api/v1/resources/spacy/ensure"),
     ("GET", "/api/v1/resources/speech-profiles"),
@@ -141,7 +145,8 @@ def test_openapi_documents_typed_responses_bearer_and_public_health(
             "201"
             if (method, path) == ("POST", "/api/v1/projects/narrations")
             else "202"
-            if method == "POST" and path.endswith(("/jobs", "/retry"))
+            if method == "POST"
+            and path.endswith(("/jobs", "/retry", "/model-operations"))
             else "200"
         )
         response = operation["responses"][success_code]

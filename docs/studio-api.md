@@ -43,9 +43,10 @@ Application errors use a structured body:
 ```
 
 Authentication failures return HTTP 401 with `WWW-Authenticate: Bearer`. Invalid request
-shapes and application inputs return HTTP 400, project conflicts return 409, blocked
-workflows and ordinary workflow failures return 422, and unavailable offline resources
-can return 503. Missing resources or jobs return 404. Oversized imports return 413.
+shapes and application inputs return HTTP 400. Project and active model-operation
+conflicts return 409. Blocked workflows, ordinary workflow failures, and unsupported
+engine-model actions return 422; unavailable offline resources can return 503. Missing
+resources, jobs, or model operations return 404. Oversized imports return 413.
 Validation and framework-generated HTTP errors use the same error envelope shown above.
 Unexpected server failures always return a generic response. `--debug` adds a
 server-side traceback to logs; it does not expose exception details to the client.
@@ -61,8 +62,10 @@ server-side traceback to logs; it does not expose exception details to the clien
 
 The capability map includes `jobs`, `job_events`, `cancel`, `source_upload`,
 `setup_resolve`, `preflight`, `project_setup`, `spacy_ensure`, `speech_profiles`,
-`narrations`, `library`, and `preview`. Studio can use these flags rather than inferring
-support from installed packages.
+`narrations`, `library`, `preview`, `engine_models`, `model_operations`, and
+`model_updates`. Model progress and cancellation flags are absent because the pinned
+Readio model-operation API does not provide those features. Studio should use capability
+flags rather than infer support from installed packages.
 
 `GET /api/v1/system/capabilities` separately reports TTSForge product capabilities:
 source inspection, synthesis preview, M4B export, persistent workspaces, runnable
@@ -89,7 +92,10 @@ current Studio surface:
     "speech_profiles": true,
     "narrations": true,
     "library": true,
-    "preview": true
+    "preview": true,
+    "engine_models": true,
+    "model_operations": true,
+    "model_updates": true
   }
 }
 ```
@@ -101,7 +107,7 @@ availability are reported, but the API does not install or download FFmpeg.
 ```json
 {
   "python": {"version": "3.13.0", "executable": "/usr/bin/python"},
-  "packages": {"ttsforge": "0.5.0", "readio": "0.6.8"},
+  "packages": {"ttsforge": "0.5.0", "readio": "0.6.9"},
   "audio": {
     "audioexport": {"available": true, "version": "0.1.8"},
     "ffmpeg": {"available": true, "path": "/usr/bin/ffmpeg"},
@@ -128,6 +134,10 @@ availability are reported, but the API does not install or download FFmpeg.
 | `GET /api/v1/catalog/engine-options`                        | `engine`, optional `target`                                   | Describe engine-specific options.                                                                             |
 | `GET /api/v1/resources/spacy`                               | `language`                                                    | List normalized spaCy model availability.                                                                     |
 | `POST /api/v1/resources/spacy/ensure`                       | JSON `{ "language": "en", "tier": "lg", "offline": false }`   | Inspect or provision the requested model through Readio.                                                      |
+| `GET /api/v1/resources/models`                              | `engine`, optional language and installed/available filters   | List normalized engine-model inventory from Readio.                                                           |
+| `GET /api/v1/resources/models/status`                       | `engine`, `target`, optional `quality`                        | Read one normalized model status.                                                                             |
+| `POST /api/v1/resources/model-operations`                   | JSON action and model selectors                               | Queue an install, update, verify, or remove operation.                                                        |
+| `GET /api/v1/resources/model-operations/{operation_id}`     | `operation_id`                                                | Poll process-local model-operation status and result.                                                         |
 | `GET /api/v1/resources/speech-profiles`                     | `directory`                                                   | Discover valid speech replacement profiles in one directory.                                                  |
 | `POST /api/v1/resources/speech-profiles/inspect`            | JSON `{ "path": "/profiles/custom.toml" }`                    | Validate one profile.                                                                                         |
 | `POST /api/v1/previews`                                     | JSON project, optional narration ID, and explicit text        | Synthesize a short preview and return `audio/wav`.                                                            |
@@ -151,6 +161,51 @@ availability are reported, but the API does not install or download FFmpeg.
 | `POST /api/v1/projects/qc`                                  | JSON project, optional narration ID                           | Aggregate product-level QC findings without inspecting specialist artifacts.                                  |
 | `POST /api/v1/setup/resolve`                                | Job-style request body                                        | Resolve setup without saving it or starting conversion.                                                       |
 | `POST /api/v1/conversions/preflight`                        | Job-style request body                                        | Prepare setup and workflow without rendering.                                                                 |
+
+### Engine model resources
+
+`GET /api/v1/resources/models?engine=...` returns Readio's normalized model inventory.
+It accepts optional `language`, `installed`, `available`, `offline`, and `refresh`
+filters. `installed=true` and `available=true` cannot be combined. The model status
+endpoint, `GET /api/v1/resources/models/status?engine=...&target=...`, returns the
+current normalized status, including provider versions, update state, storage identity,
+byte counts, and supported actions. TTSForge does not scan model caches or construct
+paths from provider identifiers.
+
+Start a lifecycle operation with `POST /api/v1/resources/model-operations`:
+
+```json
+{
+  "action": "install",
+  "engine": "kitten",
+  "target": "kitten-v1",
+  "quality": null,
+  "source": null,
+  "force": false
+}
+```
+
+The response is HTTP 202 and contains an `id`, action, state, selectors, nullable
+progress fields, and nullable result and error fields. Supported actions are `install`,
+`update`, `verify`, and `remove`. Updates are distinct from installs and are accepted
+only when Readio reports the selected model as updatable. `source` is reserved for
+advanced provider use. Desktop clients should omit it and must not send arbitrary cache
+paths.
+
+Poll with `GET /api/v1/resources/model-operations/{operation_id}`. Operations move
+through `queued`, `running`, and either `completed` or `failed`. The server uses one
+worker to serialize model operations. Readio 0.6.9 exposes no operation progress
+callback, so `current`, `total`, and `message` remain `null`; no percentage is
+synthesized. Model operation cancellation is not supported. Operation records are
+process-local and are lost on restart; query inventory or status to recover the
+authoritative model state.
+
+Install, update, and remove return HTTP 409 with code `resource_operation_conflict`
+while an audiobook job is queued, preparing, running, or cancelling. Inventory and
+status remain available. Verification is read-only and may run while an audiobook job is
+active. Unsupported model actions return HTTP 422, and unknown model-operation IDs
+return HTTP 404. The operation error contains a normalized Readio code and message,
+category, recoverability, and suggested action when available.
 
 ### Narrations
 

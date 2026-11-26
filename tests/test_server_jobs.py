@@ -225,6 +225,7 @@ time.sleep(30)
     try:
         running = manager.submit(_request(tmp_path))
         _wait_for_state(manager, running.id, JobState.RUNNING)
+        assert manager.active_job().id == running.id
         queued = manager.submit(_request(tmp_path))
         queued_record = manager.cancel(queued.id)
         running_record = manager.cancel(running.id)
@@ -235,6 +236,7 @@ time.sleep(30)
         assert cancelled.finished_at is not None
         assert manager.get(queued.id).started_at is None
         assert manager.get(running.id).state is JobState.CANCELLED
+        assert manager.active_job() is None
     finally:
         manager.shutdown()
 

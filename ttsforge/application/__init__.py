@@ -5,8 +5,10 @@ from .errors import (
     BlockedWorkflowError,
     CatalogSelectionError,
     InputValidationError,
+    ResourceValidationError,
     LegacyWorkspaceError,
     OperationConflictError,
+    ResourceOperationConflictError,
     ProjectScopeConflictError,
     SetupConflictError,
     WorkflowFailureError,
@@ -55,6 +57,9 @@ from .models import (
     ResolvedSetup,
     SetupOrigins,
     SetupPreparation,
+    EngineModelView,
+    ModelState,
+    ModelUpdateState,
     SpacyModelView,
     VoiceSetupView,
     WorkflowPlanView,
@@ -78,6 +83,7 @@ from .preview import (
 from .chapters import ChapterApplicationService
 from .metadata import MetadataApplicationService
 from .qc import QcApplicationService
+from .resources import ResourceApplicationService, ResourceBackend
 
 __all__ = [
     "ApplicationBackend",
@@ -104,6 +110,7 @@ __all__ = [
     "ConversionCoordinator",
     "ConversionResultView",
     "EngineChoiceView",
+    "EngineModelView",
     "EngineOptionView",
     "ErrorView",
     "ExecutionSummaryView",
@@ -114,6 +121,8 @@ __all__ = [
     "LibraryApplicationService",
     "MetadataApplicationService",
     "MetadataValidationReport",
+    "ModelState",
+    "ModelUpdateState",
     "NarrationApplicationService",
     "NarrationId",
     "NarrationView",
@@ -134,6 +143,9 @@ __all__ = [
     "QcFinding",
     "QcSeverity",
     "ResolvedSetup",
+    "ResourceApplicationService",
+    "ResourceBackend",
+    "ResourceValidationError",
     "SetupConflictError",
     "SetupOrigins",
     "SetupPreparation",

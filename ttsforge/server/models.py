@@ -80,6 +80,15 @@ class PreviewRequestModel(StrictModel):
     paragraph: int | None = Field(default=None, ge=1)
 
 
+class ResourceOperationRequestModel(StrictModel):
+    action: Literal["install", "update", "verify", "remove"]
+    engine: str
+    target: str
+    quality: str | None = None
+    source: str | None = None
+    force: bool = False
+
+
 class SpacyEnsureRequest(StrictModel):
     language: str
     tier: Literal["sm", "md", "lg", "trf"]
@@ -260,6 +269,58 @@ class SpacyModelResponseModel(StrictModel):
     installed: bool
     spacy_version: str | None
     model_version: str | None
+
+
+class EngineModelResponseModel(StrictModel):
+    engine: str
+    target: str
+    quality: str | None
+    language: str | None
+    label: str | None
+    installed: bool
+    available: bool
+    state: Literal[
+        "missing",
+        "ready",
+        "outdated",
+        "partial",
+        "corrupt",
+        "unavailable",
+        "unknown",
+    ]
+    local_version: str | None
+    available_version: str | None
+    update_state: Literal["current", "update_available", "unavailable", "unknown"]
+    bytes_installed: int | None
+    bytes_download: int | None
+    storage_id: str | None
+    installable: bool
+    updatable: bool
+    removable: bool
+    verifiable: bool
+    reason: str | None
+
+
+class ResourceOperationErrorModel(StrictModel):
+    code: str | None
+    message: str
+    category: str | None
+    recoverable: bool
+    suggested_action: str | None
+
+
+class ResourceOperationResponseModel(StrictModel):
+    id: str
+    action: Literal["install", "update", "verify", "remove"]
+    state: Literal["queued", "running", "completed", "failed", "cancelled"]
+    engine: str
+    target: str
+    quality: str | None
+    current: int | None
+    total: int | None
+    message: str | None
+    result: EngineModelResponseModel | None
+    error: ResourceOperationErrorModel | None
 
 
 class SpeechProfileChoiceResponseModel(StrictModel):

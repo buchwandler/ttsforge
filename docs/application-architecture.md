@@ -1,6 +1,6 @@
 # Application architecture
 
-TTSForge is an audiobook product layer over Readio `>=0.6.8,<0.7`. It supports the CLI
+TTSForge is an audiobook product layer over Readio `>=0.6.9,<0.7`. It supports the CLI
 and the local HTTP API used by TTSForge Studio. Readio owns the render workflow,
 persistent intent/profile formats, specialist integrations, stage reuse, composition,
 and export. TTSForge owns the EPUB-facing workflow, project-directory convention, setup
@@ -13,7 +13,7 @@ TTSForge CLI                 TTSForge Studio (local HTTP API)
      |                                     |
      v                                     v
 CLI presenters                         HTTP transport, auth,
-                                      DTOs, and job resources
+                                      DTOs, job management, and model resources
      |                                     |
      +-----------------+-------------------+
                        v
@@ -35,8 +35,24 @@ renders. The application layer does not depend on terminal or HTTP rendering. Th
 adapter is the only production integration seam and imports Readio through `readio.api`
 only.
 
-The server package owns HTTP authentication, strict transport DTOs, and job supervision.
-It uses the same application services as the CLI and does not import the CLI package.
+The server package owns HTTP authentication, strict transport DTOs, job supervision, and
+a process-local single-worker queue for long-running model operations. It uses the same
+application services as the CLI and does not import the CLI package.
+
+## Engine model lifecycle
+
+Model inventory and lifecycle requests pass through `ResourceApplicationService` and the
+Readio adapter. Readio owns provider discovery, cache identity, storage paths, and
+install, update, verification, and removal semantics. TTSForge does not scan caches,
+construct provider paths, or manage Python engine packages.
+
+The Studio server serializes model operations on one worker and retains pollable
+operation records only in process memory. Restarting the server loses operation history;
+normalized Readio inventory and status remain authoritative. Install, update, and remove
+are rejected while an audiobook job is queued or active so a renderer cannot race a
+cache mutation. Readio model verification is read-only and can run during an audiobook
+job. The API reports indeterminate progress and does not offer model-operation
+cancellation because the pinned Readio contract exposes neither feature.
 
 ## Conversion lifecycle
 

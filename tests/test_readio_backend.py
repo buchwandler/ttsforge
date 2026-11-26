@@ -196,6 +196,137 @@ def test_capabilities_project_normalized_readio_capability_apis() -> None:
     assert capabilities.warnings == ("Readio warning",)
 
 
+def test_engine_model_methods_map_public_api_records_and_delegate() -> None:
+    api = backend_module.readio_api
+    info = api.EngineModelInfo(
+        engine="kitten",
+        target="kitten-v1",
+        quality="high",
+        language="en-US",
+        label="Kitten v1",
+        installed=True,
+        available=True,
+        state="outdated",
+        local_version="local-revision",
+        available_version="remote-revision",
+        update_state="update_available",
+        bytes_installed=None,
+        bytes_download=4096,
+        storage_id="provider-storage-id",
+        installable=True,
+        updatable=True,
+        removable=True,
+        verifiable=True,
+        reason=None,
+    )
+    calls: list[tuple[str, tuple[object, ...], dict[str, object]]] = []
+
+    def invoke(name: str, result: object):
+        def call(*args: object, **kwargs: object) -> object:
+            calls.append((name, args, kwargs))
+            return result
+
+        return call
+
+    app = SimpleNamespace(
+        list_models=invoke("list", (info,)),
+        model_status=invoke("status", info),
+        install_model=invoke("install", info),
+        update_model=invoke("update", info),
+        verify_model=invoke("verify", info),
+        remove_model=invoke("remove", info),
+    )
+    backend = ReadioBackend(app=cast(Readio, app))
+
+    models = backend.list_models(
+        "kitten",
+        language="en-US",
+        installed=None,
+        available=True,
+        offline=True,
+        refresh=True,
+    )
+    status = backend.model_status("kitten", "kitten-v1", quality="high")
+    installed = backend.install_model(
+        "kitten", "kitten-v1", quality="high", source="mirror", force=True
+    )
+    updated = backend.update_model("kitten", "kitten-v1", quality="high")
+    verified = backend.verify_model("kitten", "kitten-v1", quality="high")
+    removed = backend.remove_model("kitten", "kitten-v1", quality="high")
+
+    expected = backend_module.EngineModelView(
+        engine="kitten",
+        target="kitten-v1",
+        quality="high",
+        language="en-US",
+        label="Kitten v1",
+        installed=True,
+        available=True,
+        state="outdated",
+        local_version="local-revision",
+        available_version="remote-revision",
+        update_state="update_available",
+        bytes_installed=None,
+        bytes_download=4096,
+        storage_id="provider-storage-id",
+        installable=True,
+        updatable=True,
+        removable=True,
+        verifiable=True,
+        reason=None,
+    )
+    assert models == (expected,)
+    assert (status, installed, updated, verified, removed) == (expected,) * 5
+    assert calls == [
+        (
+            "list",
+            ("kitten",),
+            {
+                "language": "en-US",
+                "installed": None,
+                "available": True,
+                "offline": True,
+                "refresh": True,
+            },
+        ),
+        ("status", ("kitten", "kitten-v1"), {"quality": "high"}),
+        (
+            "install",
+            ("kitten", "kitten-v1"),
+            {"quality": "high", "source": "mirror", "force": True},
+        ),
+        ("update", ("kitten", "kitten-v1"), {"quality": "high"}),
+        ("verify", ("kitten", "kitten-v1"), {"quality": "high"}),
+        ("remove", ("kitten", "kitten-v1"), {"quality": "high"}),
+    ]
+
+
+def test_engine_model_readio_errors_are_normalized_by_operation_category() -> None:
+    api = backend_module.readio_api
+    failure = api.ReadioError("provider failure")
+
+    def fail(*args: object, **kwargs: object) -> object:
+        raise failure
+
+    backend = ReadioBackend(
+        app=cast(
+            Readio,
+            SimpleNamespace(list_models=fail, install_model=fail),
+        )
+    )
+
+    with pytest.raises(WorkflowFailureError) as inventory_error:
+        backend.list_models("kitten")
+    with pytest.raises(WorkflowFailureError) as operation_error:
+        backend.install_model("kitten", "kitten-v1")
+
+    assert inventory_error.value.category == "resource inventory failure"
+    assert inventory_error.value.code == "readio_error"
+    assert operation_error.value.category == "resource operation failure"
+    assert operation_error.value.code == "readio_error"
+    assert "traceback" not in str(operation_error.value).casefold()
+
+
 def test_spacy_model_inventory_maps_public_readio_api_and_normalizes_errors(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:

@@ -13,8 +13,9 @@ audiobook Skill and its CLI, project, narration, and QC references are packaged 
 distribution.
 
 Python integrations should use Readio's public `readio.api` workflow gateway. TTSForge
-requires Readio `>=0.6.8,<0.7` and uses its typed source-inspection, render-intent,
-profile, discovery, workflow-inspection, and render operations.
+requires Readio `>=0.6.9,<0.7` and uses typed source inspection, render-intent helpers,
+engine discovery, workflow inspection, rendering, and normalized engine-model inventory
+and lifecycle APIs.
 
 ## Inspect and render a saved intent
 

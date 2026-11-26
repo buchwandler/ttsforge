@@ -1,4 +1,4 @@
-"""Contract checks for the Readio 0.6.8 public API used by TTSForge."""
+"""Contract checks for the Readio 0.6.9 public API used by TTSForge."""
 
 from __future__ import annotations
 
@@ -12,6 +12,7 @@ def test_required_public_api_symbols_are_available() -> None:
     required = {
         "Readio",
         "ReadioError",
+        "EngineModelInfo",
         "EngineInfo",
         "TargetInfo",
         "VoiceInfo",
@@ -51,7 +52,7 @@ def test_required_public_api_symbols_are_available() -> None:
     missing = sorted(name for name in required if not hasattr(readio_api, name))
     assert not missing, (
         "The installed Readio does not provide TTSForge's required public API: "
-        f"{', '.join(missing)}. Install Readio >=0.6.8,<0.7."
+        f"{', '.join(missing)}. Install Readio >=0.6.9,<0.7."
     )
 
 
@@ -77,6 +78,27 @@ def test_setup_intents_and_spacy_model_are_public_contracts() -> None:
 def test_normalized_catalog_dtos_and_workflow_results_are_public_contracts() -> None:
     expected_fields = {
         "EngineInfo": {"id", "version", "installed", "runnable", "features", "reason"},
+        "EngineModelInfo": {
+            "engine",
+            "target",
+            "quality",
+            "language",
+            "label",
+            "installed",
+            "available",
+            "state",
+            "local_version",
+            "available_version",
+            "update_state",
+            "bytes_installed",
+            "bytes_download",
+            "storage_id",
+            "installable",
+            "updatable",
+            "removable",
+            "verifiable",
+            "reason",
+        },
         "TargetInfo": {
             "id",
             "languages",
@@ -158,6 +180,12 @@ def test_readio_gateway_exposes_normalized_catalog_and_capability_methods() -> N
         "list_voices",
         "list_engine_options",
         "capabilities",
+        "list_models",
+        "model_status",
+        "install_model",
+        "update_model",
+        "verify_model",
+        "remove_model",
         "synthesis_capabilities",
         "export_capabilities",
     ):
